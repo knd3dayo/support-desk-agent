@@ -55,6 +55,9 @@ class RuntimeService:
     def context(self) -> RuntimeContext:
         return self._context
 
+    def resolve_case_id(self, *, prompt: str | None = None, case_id: str | None = None) -> str:
+        return self._context.case_id_resolver.resolve(prompt or "", explicit_case_id=case_id)
+
     def initialize_case(self, case_id: str, workspace_path: str | None = None) -> Path:
         case_paths = self._context.memory_store.initialize_case(case_id, workspace_path=workspace_path)
         for definition in self._context.agent_factory.build_default_definitions():
@@ -81,7 +84,7 @@ class RuntimeService:
         return agents
 
     def plan(self, *, prompt: str, workspace_path: str, case_id: str | None = None) -> dict[str, object]:
-        selected_case_id = self._context.case_id_resolver.resolve(prompt, explicit_case_id=case_id)
+        selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id)
         trace_id = self._new_trace_id()
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
 
@@ -125,7 +128,7 @@ class RuntimeService:
         execution_plan: str | None = None,
     ) -> dict[str, object]:
         session_state = self._load_state(case_id=case_id, trace_id=trace_id)
-        selected_case_id = case_id or str(session_state.get("case_id") or self._context.case_id_resolver.resolve(prompt))
+        selected_case_id = case_id or str(session_state.get("case_id") or self.resolve_case_id(prompt=prompt))
         current_trace_id = trace_id or str(session_state.get("trace_id") or self._new_trace_id())
 
         if not session_state:

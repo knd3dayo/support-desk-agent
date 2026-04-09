@@ -1,0 +1,25 @@
+{
+  "case_id": "CASE-OPS-888",
+  "trace_id": "TRACE-31acdca8b799492787276d0ffb92e375",
+  "thread_id": "TRACE-31acdca8b799492787276d0ffb92e375",
+  "workflow_run_id": "TRACE-31acdca8b799492787276d0ffb92e375",
+  "workflow_kind": "incident_investigation",
+  "execution_mode": "plan",
+  "workspace_path": "/tmp/support-case-888",
+  "created_at": "2026-04-09T16:05:59.862282+00:00",
+  "status": "WAITING_APPROVAL",
+  "raw_issue": "CASE-OPS-888 の障害調査をお願いします",
+  "plan_summary": "SuperVisorAgent は 障害調査ワークフロー を選択し、plan モードの結果を承認後に action モードへ引き継ぐ。",
+  "plan_steps": [
+    "問い合わせ内容と workspace から障害兆候を把握する",
+    "ログ解析とナレッジ探索を並列で実施する",
+    "原因仮説と暫定対応を統合して回答ドラフトを作成する"
+  ],
+  "draft_response": "plan モードでは実行計画のみを返却し、action モードでドラフト生成へ進みます。",
+  "approval_decision": "pending",
+  "approval_history": [],
+  "agent_errors": [],
+  "context_usage": {},
+  "current_agent": "ApprovalAgent",
+  "next_action": "この計画で action を実行するか確認してください。"
+}

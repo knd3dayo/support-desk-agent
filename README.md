@@ -31,25 +31,27 @@ python -m support_ope_agents.cli print-workflow --config config.yml
 ケース単位の作業ディレクトリを初期化します。
 
 ```bash
-python -m support_ope_agents.cli init-case CASE-001 --config config.yml
+python -m support_ope_agents.cli init-case --prompt "CASE-001 の調査を開始してください" --config config.yml
 ```
 
 外部ワークスペースを紐付けて初期化することもできます。
 
 ```bash
-python -m support_ope_agents.cli init-case CASE-002 --config config.yml --workspace-path /data/support/case-002
+python -m support_ope_agents.cli init-case --prompt "CASE-002 の調査を開始してください" --config config.yml --workspace-path /data/support/case-002
 ```
+
+`case_id` を指定しない場合は、入力文から解決を試み、見つからなければ自動採番します。
 
 plan モードでは、SuperVisorAgent が問い合わせ内容から workflow をルーティングし、同一セッションで action に引き継げる実行計画を返します。
 
 ```bash
-python -m support_ope_agents.cli plan "仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --case-id CASE-003 --config config.yml
+python -m support_ope_agents.cli plan "CASE-003 の仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --config config.yml
 ```
 
 action モードでは、plan モードの trace_id を指定して同一セッションで処理を継続します。
 
 ```bash
-python -m support_ope_agents.cli action "仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --case-id CASE-003 --trace-id TRACE-xxxx --config config.yml
+python -m support_ope_agents.cli action "CASE-003 の仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --trace-id TRACE-xxxx --config config.yml
 ```
 
 現在の workflow ルーティング対象は次の 3 系統です。

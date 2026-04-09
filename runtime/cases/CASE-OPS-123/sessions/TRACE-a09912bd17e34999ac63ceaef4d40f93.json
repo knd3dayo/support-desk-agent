@@ -6,7 +6,7 @@
   "workflow_kind": "incident_investigation",
   "execution_mode": "action",
   "workspace_path": "/tmp/support-case-004",
-  "created_at": "2026-04-09T15:58:05.898878+00:00",
+  "created_at": "2026-04-09T16:09:12.988763+00:00",
   "status": "WAITING_APPROVAL",
   "raw_issue": "CASE-OPS-123 の障害調査をお願いします",
   "plan_summary": "SuperVisorAgent は 障害調査ワークフロー を選択し、plan モードの結果を承認後に action モードへ引き継ぐ。",

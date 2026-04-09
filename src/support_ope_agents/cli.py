@@ -13,7 +13,8 @@ def _build_service(config_path: str) -> RuntimeService:
 
 def _cmd_init_case(args: argparse.Namespace) -> int:
     service = _build_service(args.config)
-    print(service.initialize_case(args.case_id, workspace_path=args.workspace_path))
+    resolved_case_id = service.resolve_case_id(prompt=args.prompt)
+    print(service.initialize_case(resolved_case_id, workspace_path=args.workspace_path))
     return 0
 
 
@@ -27,13 +28,14 @@ def _cmd_print_workflow(args: argparse.Namespace) -> int:
 
 def _cmd_describe_agents(args: argparse.Namespace) -> int:
     service = _build_service(args.config)
-    print(json.dumps(service.describe_agents(args.case_id), ensure_ascii=False, indent=2))
+    resolved_case_id = service.resolve_case_id(prompt=args.prompt)
+    print(json.dumps(service.describe_agents(resolved_case_id), ensure_ascii=False, indent=2))
     return 0
 
 
 def _cmd_plan(args: argparse.Namespace) -> int:
     service = _build_service(args.config)
-    result = service.plan(prompt=args.prompt, workspace_path=args.workspace_path, case_id=args.case_id)
+    result = service.plan(prompt=args.prompt, workspace_path=args.workspace_path)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -43,8 +45,7 @@ def _cmd_action(args: argparse.Namespace) -> int:
     result = service.action(
         prompt=args.prompt,
         workspace_path=args.workspace_path,
-        case_id=args.case_id,
-        trace_id=args.trace_id or args.session_id,
+        trace_id=args.trace_id,
         execution_plan=args.execution_plan,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -59,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--config", default="config.yml", help="Path to config.yml")
 
     init_case = subparsers.add_parser("init-case", help="Initialize case workspace", parents=[common])
-    init_case.add_argument("case_id", help="Case identifier")
+    init_case.add_argument("--prompt", required=True, help="User input used to resolve case_id")
     init_case.add_argument("--workspace-path", default=None, help="Optional external workspace path to register")
     init_case.set_defaults(func=_cmd_init_case)
 
@@ -67,21 +68,18 @@ def build_parser() -> argparse.ArgumentParser:
     print_workflow.set_defaults(func=_cmd_print_workflow)
 
     describe_agents = subparsers.add_parser("describe-agents", help="Describe default agent layout", parents=[common])
-    describe_agents.add_argument("case_id", help="Case identifier")
+    describe_agents.add_argument("--prompt", required=True, help="User input used to resolve case_id")
     describe_agents.set_defaults(func=_cmd_describe_agents)
 
     plan = subparsers.add_parser("plan", help="Create an execution plan for a case", parents=[common])
     plan.add_argument("prompt", help="User request for planning")
     plan.add_argument("--workspace-path", required=True, help="Workspace path for the case")
-    plan.add_argument("--case-id", default=None, help="Optional case identifier")
     plan.set_defaults(func=_cmd_plan)
 
     action = subparsers.add_parser("action", help="Execute action mode for a case", parents=[common])
     action.add_argument("prompt", help="User request for action execution")
     action.add_argument("--workspace-path", required=True, help="Workspace path for the case")
-    action.add_argument("--case-id", default=None, help="Optional case identifier")
     action.add_argument("--trace-id", default=None, help="Trace identifier from plan mode")
-    action.add_argument("--session-id", default=None, help="Deprecated alias for trace identifier")
     action.add_argument("--execution-plan", default=None, help="Optional execution plan text")
     action.set_defaults(func=_cmd_action)
 
