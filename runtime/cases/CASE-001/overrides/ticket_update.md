@@ -1,2 +1,0 @@
-# Override: ticket_update
-

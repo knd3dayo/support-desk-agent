@@ -1,2 +1,0 @@
-# Override: investigation_supervisor
-

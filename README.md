@@ -18,6 +18,7 @@ Deep Agents と LangGraph を組み合わせて、カスタマーサポート業
 - [config.yml](config.yml): 非秘匿設定
 - [.env.example](.env.example): 秘匿設定テンプレート
 - [src/support_ope_agents](src/support_ope_agents): アプリ本体
+- [src/support_ope_agents/interfaces](src/support_ope_agents/interfaces): API/MCP インターフェース層
 - [instructions](instructions): 共通指示と役割別指示
 
 ## 起動
@@ -40,19 +41,27 @@ python -m support_ope_agents.cli init-case --prompt "CASE-001 の調査を開始
 python -m support_ope_agents.cli init-case --prompt "CASE-002 の調査を開始してください" --config config.yml --workspace-path /data/support/case-002
 ```
 
-`case_id` を指定しない場合は、入力文から解決を試み、見つからなければ自動採番します。
+`case_id` を明示的に渡す必要はなく、入力文から解決を試み、見つからなければ自動採番します。
 
-plan モードでは、SuperVisorAgent が問い合わせ内容から workflow をルーティングし、同一セッションで action に引き継げる実行計画を返します。
+plan モードでは、SuperVisorAgent が問い合わせ内容から workflow をルーティングし、同一 trace_id で action に引き継げる実行計画を返します。
 
 ```bash
 python -m support_ope_agents.cli plan "CASE-003 の仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --config config.yml
 ```
 
-action モードでは、plan モードの trace_id を指定して同一セッションで処理を継続します。
+action モードでは、plan モードの trace_id を指定して同一 trace_id 上で処理を継続します。
 
 ```bash
 python -m support_ope_agents.cli action "CASE-003 の仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --trace-id TRACE-xxxx --config config.yml
 ```
+
+FastAPI 雛形も追加済みで、`trace_id` を継続識別子として plan/action を公開できます。
+
+```bash
+uvicorn support_ope_agents.interfaces.api:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+MCP は最小アダプタとして `plan` と `action` ツールを公開し、どちらも `trace_id` を正式な継続キーとして扱います。
 
 現在の workflow ルーティング対象は次の 3 系統です。
 

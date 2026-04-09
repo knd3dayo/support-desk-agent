@@ -7,7 +7,7 @@ support_ope_agents:
     model: gpt-4.1
     api_key: os.environ/OPENAI_API_KEY
   paths:
-    workspace_root: ./runtime/cases
+    workspace_root: ./work/cases
     instructions_root: ./instructions
     shared_memory_subdir: memory
     instruction_override_subdir: overrides

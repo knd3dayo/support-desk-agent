@@ -50,6 +50,7 @@ def build_runtime_context(config_path: str) -> RuntimeContext:
 class RuntimeService:
     def __init__(self, context: RuntimeContext):
         self._context = context
+        self._migrate_legacy_traces()
 
     @property
     def context(self) -> RuntimeContext:
@@ -127,18 +128,18 @@ class RuntimeService:
         trace_id: str | None = None,
         execution_plan: str | None = None,
     ) -> dict[str, object]:
-        session_state = self._load_state(case_id=case_id, trace_id=trace_id)
-        selected_case_id = case_id or str(session_state.get("case_id") or self.resolve_case_id(prompt=prompt))
-        current_trace_id = trace_id or str(session_state.get("trace_id") or self._new_trace_id())
+        saved_state = self._load_state(case_id=case_id, trace_id=trace_id)
+        selected_case_id = case_id or str(saved_state.get("case_id") or self.resolve_case_id(prompt=prompt))
+        current_trace_id = trace_id or str(saved_state.get("trace_id") or self._new_trace_id())
 
-        if not session_state:
+        if not saved_state:
             workflow_kind = route_workflow(prompt)
             plan_steps = build_plan_steps(workflow_kind)
             plan_summary = execution_plan or summarize_plan(workflow_kind)
         else:
-            workflow_kind = str(session_state.get("workflow_kind") or route_workflow(prompt))
-            plan_steps = list(session_state.get("plan_steps") or build_plan_steps(workflow_kind))
-            plan_summary = str(session_state.get("plan_summary") or execution_plan or summarize_plan(workflow_kind))
+            workflow_kind = str(saved_state.get("workflow_kind") or route_workflow(prompt))
+            plan_steps = list(saved_state.get("plan_steps") or build_plan_steps(workflow_kind))
+            plan_summary = str(saved_state.get("plan_summary") or execution_plan or summarize_plan(workflow_kind))
 
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
         state: CaseState = {
@@ -173,13 +174,14 @@ class RuntimeService:
 
     def state_file_path(self, case_id: str, trace_id: str) -> Path:
         case_paths = self._context.memory_store.resolve_case_paths(case_id)
-        sessions_dir = case_paths.root / "sessions"
-        sessions_dir.mkdir(parents=True, exist_ok=True)
-        return sessions_dir / f"{trace_id}.json"
+        state_dir = case_paths.root / "traces"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return state_dir / f"{trace_id}.json"
 
     def _save_state(self, case_id: str, trace_id: str, state: CaseState) -> None:
         state_path = self.state_file_path(case_id, trace_id)
-        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        normalized_state = self._normalize_state_ids(state, trace_id=trace_id)
+        state_path.write_text(json.dumps(normalized_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     def _load_state(self, *, case_id: str | None, trace_id: str | None) -> CaseState:
         if not trace_id:
@@ -188,14 +190,53 @@ class RuntimeService:
         if case_id:
             state_path = self.state_file_path(case_id, trace_id)
             if state_path.exists():
-                return json.loads(state_path.read_text(encoding="utf-8"))
+                loaded_state = json.loads(state_path.read_text(encoding="utf-8"))
+                return self._normalize_state_ids(loaded_state, trace_id=trace_id)
             return {}
 
         workspace_root = self._context.config.paths.workspace_root
-        for candidate in workspace_root.glob(f"*/sessions/{trace_id}.json"):
+        for candidate in workspace_root.glob(f"*/traces/{trace_id}.json"):
             if candidate.exists():
-                return json.loads(candidate.read_text(encoding="utf-8"))
+                loaded_state = json.loads(candidate.read_text(encoding="utf-8"))
+                return self._normalize_state_ids(loaded_state, trace_id=trace_id)
         return {}
+
+    def _migrate_legacy_traces(self) -> None:
+        workspace_root = self._context.config.paths.workspace_root
+        for legacy_dir in workspace_root.glob("*/sessions"):
+            case_root = legacy_dir.parent
+            trace_dir = case_root / "traces"
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            for legacy_file in legacy_dir.glob("*.json"):
+                loaded_state = json.loads(legacy_file.read_text(encoding="utf-8"))
+                normalized_trace_id = self._normalize_trace_id(
+                    str(loaded_state.get("trace_id") or loaded_state.get("session_id") or legacy_file.stem)
+                )
+                normalized_state = self._normalize_state_ids(loaded_state, trace_id=normalized_trace_id)
+                trace_file = trace_dir / f"{normalized_trace_id}.json"
+                trace_file.write_text(json.dumps(normalized_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                legacy_file.unlink()
+            if not any(legacy_dir.iterdir()):
+                legacy_dir.rmdir()
+
+    def _normalize_state_ids(self, state: dict[str, object], *, trace_id: str | None = None) -> CaseState:
+        normalized_trace_id = self._normalize_trace_id(
+            str(trace_id or state.get("trace_id") or state.get("session_id") or self._new_trace_id())
+        )
+        normalized_state: CaseState = dict(state)
+        normalized_state.pop("session_id", None)
+        normalized_state["trace_id"] = normalized_trace_id
+        normalized_state["thread_id"] = normalized_trace_id
+        normalized_state["workflow_run_id"] = normalized_trace_id
+        return normalized_state
+
+    @staticmethod
+    def _normalize_trace_id(value: str) -> str:
+        if value.startswith("SESSION-"):
+            return f"TRACE-{value.removeprefix('SESSION-')}"
+        if value.startswith("TRACE-"):
+            return value
+        return f"TRACE-{value}"
 
     @staticmethod
     def _new_trace_id() -> str:

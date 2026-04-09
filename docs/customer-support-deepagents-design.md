@@ -17,6 +17,7 @@
 - ユーザーからの入力インタフェースはCLI、API、MCPのいずれかとする。
 - 各種ログファイルや画像エビデンスなどの格納用のワークスペースディレクトリの指定が可能。　　
 　各エージェントはワークスペースの情報も参考にしてタスクを実行する。
+- 実行時生成物はプロジェクト直下の work ディレクトリに出力し、Git 管理対象から除外する。
 - configファイルには、アプリケーション共通設定項目の他、各エージェント用の設定カテゴリを持つ。
 - 実装はできるだけ共通化する。またレイヤー化することでコンポーネント間が疎結合となるようにする。
 - ワークフローは「仕様調査に関するもの」「障害調査に関するもの」「仕様なのか不具合なのかの判断が難しもの」でわけ、スーパーバイザーが問い合わせ内容からどのワークフローが適切かの判断とルーティングを行う。
@@ -28,10 +29,11 @@
   `action`メソッドの引数は下記のとおり
    - プロンプト(ユーザーからの指示(例：〇〇というケースの調査をお願いします))
    - ワークスペースの場所
+   - (オプション)trace_id(plan モードの継続実行に使う相関 ID)
    - (オプション)実行計画の内容
-- 同一セッションでの`plan`モードから`action`モードへの移行を可能にする。  
+- 同一trace_idでの`plan`モードから`action`モードへの移行を可能にする。  
   `plan`モード実行の後、「この計画で実行しますか？」とHITLを発生させ、ユーザーが了承した場合は
-  `plan`モードで作成した実行計画を引数にとり`action`を実行する。
+  `plan`モードで作成した trace_id と実行計画を引数にとり`action`を実行する。
 
    
 
@@ -64,6 +66,8 @@
 - thread_id: LangGraph の再開対象スレッド ID。PoC では trace_id と同一値を使う
 - workflow_run_id: 実行インスタンス ID。PoC では trace_id と同一値を使う
 
+CLI、API、MCP の継続系インターフェースは trace_id を唯一の継続識別子として扱う。内部実装上 thread_id や workflow_run_id が必要な場合も、外部には trace_id のみを公開する。
+
 ## 3. DeepAgent 構成
 
 ### 3.1 フェーズ別構成
@@ -72,6 +76,7 @@
 - サポート業務プロセスの統括者
 - 各エージェント、ツールに指示を出し、その結果を評価、統合し、ユーザーへの回答を行う。
 - サブエージェント、ノードの結果の評価、サブエージェントに追加の指示や質問などを行う。
+
 #### IntakeAgent
 
 - LangGraph ノードとして実装する
@@ -108,6 +113,7 @@
 - shared/context.md: 現在の共通知識、調査方針、重要事実
 - shared/progress.md: 進捗、未完了タスク、ブロッカー
 - shared/summary.md: 圧縮済みサマリ
+- traces/<trace_id>.json: plan/action 継続用の状態保存
 - agents/<agent_name>/working.md: 各エージェントの作業ログ
 - instructions/<agent_name>.md: ケース固有の追加指示
 
@@ -130,7 +136,7 @@
 
 - 共通指示: instructions/common.md
 - 役割別指示: instructions/<role>.md
-- ケース固有上書き: runtime/cases/<case_id>/overrides/<role>.md
+- ケース固有上書き: work/cases/<case_id>/overrides/<role>.md
 
 読み込み時は上から順に結合し、後勝ちで追加指示を適用する。
 
@@ -160,6 +166,7 @@
 - src/support_ope_agents/agents: DeepAgent 定義と生成
 - src/support_ope_agents/workflow: LangGraph 状態とワークフロー構築
 - src/support_ope_agents/cli.py: 起動用 CLI
+- src/support_ope_agents/interfaces: API / MCP のインターフェース層
 
 ## 8. 非同期 HITL
 

@@ -42,7 +42,7 @@ def load_config(config_path: str | Path) -> AppConfig:
     base_dir = path.parent
 
     paths = resolved.get("paths", {})
-    paths["workspace_root"] = _resolve_path(base_dir, paths.get("workspace_root", "./runtime/cases"))
+    paths["workspace_root"] = _resolve_path(base_dir, paths.get("workspace_root", "./work/cases"))
     paths["instructions_root"] = _resolve_path(base_dir, paths.get("instructions_root", "./instructions"))
     resolved["paths"] = paths
 
