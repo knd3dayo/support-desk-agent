@@ -5,12 +5,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from support_ope_agents.agents import DeepAgentFactory
+from support_ope_agents.agents.deep_agent_factory import DeepAgentFactory
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverTool
 from support_ope_agents.tools import ToolRegistry
+from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
     build_case_workflow,
@@ -35,7 +36,8 @@ def build_runtime_context(config_path: str) -> RuntimeContext:
     config = load_config(config_path)
     memory_store = CaseMemoryStore(config)
     instruction_loader = InstructionLoader(config, memory_store)
-    tool_registry = ToolRegistry(config)
+    mcp_override_resolver = McpToolOverrideResolver.from_config(config) if config.tools.has_overrides() else None
+    tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
     agent_factory = DeepAgentFactory(config, instruction_loader, tool_registry, memory_store)
     return RuntimeContext(
         config=config,

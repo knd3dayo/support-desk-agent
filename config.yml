@@ -36,6 +36,9 @@ support_ope_agents:
     enable_redmine: false
     enable_knowledge_base: false
     enable_python_analysis: true
+    mcp_manifest_path:
+    mcp_timeout_seconds: 30
+    overrides: {}
   agents:
     SuperVisorAgent:
       enabled: true

@@ -46,4 +46,10 @@ def load_config(config_path: str | Path) -> AppConfig:
     paths["instructions_root"] = _resolve_path(base_dir, paths.get("instructions_root", "./instructions"))
     resolved["paths"] = paths
 
+    tools = resolved.get("tools", {})
+    manifest_path = tools.get("mcp_manifest_path")
+    if manifest_path:
+        tools["mcp_manifest_path"] = _resolve_path(base_dir, manifest_path)
+    resolved["tools"] = tools
+
     return AppConfig.model_validate(resolved)

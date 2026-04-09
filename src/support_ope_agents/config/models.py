@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -41,11 +41,23 @@ class TracingSettings(BaseModel):
     project_name: str = "support-ope-agents"
 
 
+class McpToolBinding(BaseModel):
+    type: Literal["mcp"] = "mcp"
+    server: str
+    tool: str
+
+
 class ToolSettings(BaseModel):
     enable_zendesk: bool = False
     enable_redmine: bool = False
     enable_knowledge_base: bool = False
     enable_python_analysis: bool = True
+    mcp_manifest_path: Path | None = None
+    mcp_timeout_seconds: float = 30.0
+    overrides: dict[str, dict[str, McpToolBinding]] = Field(default_factory=dict)
+
+    def has_overrides(self) -> bool:
+        return any(self.overrides.values())
 
 
 class InterfaceSettings(BaseModel):
