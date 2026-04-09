@@ -2,46 +2,46 @@ from __future__ import annotations
 
 SUPERVISOR_AGENT = "SuperVisorAgent"
 INTAKE_AGENT = "IntakeAgent"
-INVESTIGATION_AGENT = "InvestigationAgent"
-LOG_ANALYZER_SPECIALIST = "LogAnalyzerSpecialist"
-KNOWLEDGE_RETRIEVER_SPECIALIST = "KnowledgeRetrieverSpecialist"
+LOG_ANALYZER_AGENT = "LogAnalyzerAgent"
+KNOWLEDGE_RETRIEVER_AGENT = "KnowledgeRetrieverAgent"
 RESOLUTION_AGENT = "ResolutionAgent"
-DRAFT_WRITER_SPECIALIST = "DraftWriterSpecialist"
-COMPLIANCE_REVIEWER_SPECIALIST = "ComplianceReviewerSpecialist"
+DRAFT_WRITER_AGENT = "DraftWriterAgent"
+COMPLIANCE_REVIEWER_AGENT = "ComplianceReviewerAgent"
 APPROVAL_AGENT = "ApprovalAgent"
 TICKET_UPDATE_AGENT = "TicketUpdateAgent"
 
 LEGACY_ROLE_ALIASES: dict[str, str] = {
     "intake_supervisor": INTAKE_AGENT,
-    "investigation_supervisor": INVESTIGATION_AGENT,
-    "log_analyzer": LOG_ANALYZER_SPECIALIST,
-    "knowledge_retriever": KNOWLEDGE_RETRIEVER_SPECIALIST,
+    "log_analyzer": LOG_ANALYZER_AGENT,
+    "LogAnalyzerSpecialist": LOG_ANALYZER_AGENT,
+    "knowledge_retriever": KNOWLEDGE_RETRIEVER_AGENT,
+    "KnowledgeRetrieverSpecialist": KNOWLEDGE_RETRIEVER_AGENT,
     "resolution_supervisor": RESOLUTION_AGENT,
-    "draft_writer": DRAFT_WRITER_SPECIALIST,
-    "compliance_reviewer": COMPLIANCE_REVIEWER_SPECIALIST,
+    "draft_writer": DRAFT_WRITER_AGENT,
+    "DraftWriterSpecialist": DRAFT_WRITER_AGENT,
+    "compliance_reviewer": COMPLIANCE_REVIEWER_AGENT,
+    "ComplianceReviewerSpecialist": COMPLIANCE_REVIEWER_AGENT,
     "ticket_update": TICKET_UPDATE_AGENT,
 }
 
 LEGACY_FILE_NAMES: dict[str, tuple[str, ...]] = {
     INTAKE_AGENT: ("intake_supervisor",),
-    INVESTIGATION_AGENT: ("investigation_supervisor",),
-    LOG_ANALYZER_SPECIALIST: ("log_analyzer",),
-    KNOWLEDGE_RETRIEVER_SPECIALIST: ("knowledge_retriever",),
+    LOG_ANALYZER_AGENT: ("LogAnalyzerSpecialist", "log_analyzer"),
+    KNOWLEDGE_RETRIEVER_AGENT: ("KnowledgeRetrieverSpecialist", "knowledge_retriever"),
     RESOLUTION_AGENT: ("resolution_supervisor",),
-    DRAFT_WRITER_SPECIALIST: ("draft_writer",),
-    COMPLIANCE_REVIEWER_SPECIALIST: ("compliance_reviewer",),
+    DRAFT_WRITER_AGENT: ("DraftWriterSpecialist", "draft_writer"),
+    COMPLIANCE_REVIEWER_AGENT: ("ComplianceReviewerSpecialist", "compliance_reviewer"),
     TICKET_UPDATE_AGENT: ("ticket_update",),
 }
 
 DEFAULT_AGENT_ROLES: tuple[str, ...] = (
     SUPERVISOR_AGENT,
     INTAKE_AGENT,
-    INVESTIGATION_AGENT,
-    LOG_ANALYZER_SPECIALIST,
-    KNOWLEDGE_RETRIEVER_SPECIALIST,
+    LOG_ANALYZER_AGENT,
+    KNOWLEDGE_RETRIEVER_AGENT,
     RESOLUTION_AGENT,
-    DRAFT_WRITER_SPECIALIST,
-    COMPLIANCE_REVIEWER_SPECIALIST,
+    DRAFT_WRITER_AGENT,
+    COMPLIANCE_REVIEWER_AGENT,
     APPROVAL_AGENT,
     TICKET_UPDATE_AGENT,
 )

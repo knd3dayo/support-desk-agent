@@ -5,13 +5,12 @@ from typing import Any, Callable, Iterable
 
 from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
-    COMPLIANCE_REVIEWER_SPECIALIST,
+    COMPLIANCE_REVIEWER_AGENT,
     DEFAULT_AGENT_ROLES,
-    DRAFT_WRITER_SPECIALIST,
+    DRAFT_WRITER_AGENT,
     INTAKE_AGENT,
-    INVESTIGATION_AGENT,
-    KNOWLEDGE_RETRIEVER_SPECIALIST,
-    LOG_ANALYZER_SPECIALIST,
+    KNOWLEDGE_RETRIEVER_AGENT,
+    LOG_ANALYZER_AGENT,
     RESOLUTION_AGENT,
     SUPERVISOR_AGENT,
     TICKET_UPDATE_AGENT,
@@ -62,37 +61,35 @@ class ToolRegistry:
                 ToolSpec("inspect_workflow_state", "Inspect case workflow state", _not_implemented_tool("inspect_workflow_state")),
                 ToolSpec("evaluate_agent_result", "Evaluate a child agent result", _not_implemented_tool("evaluate_agent_result")),
                 ToolSpec("route_phase_agent", "Select next phase agent", _not_implemented_tool("route_phase_agent")),
+                ToolSpec("read_shared_memory", "Read shared case memory", _not_implemented_tool("read_shared_memory")),
+                ToolSpec("scan_workspace_artifacts", "Scan workspace artifacts", _not_implemented_tool("scan_workspace_artifacts")),
+                ToolSpec("spawn_log_analyzer_agent", "Delegate to log analyzer agent", _not_implemented_tool("spawn_log_analyzer_agent")),
+                ToolSpec("spawn_knowledge_retriever_agent", "Delegate to knowledge retriever agent", _not_implemented_tool("spawn_knowledge_retriever_agent")),
             ],
             INTAKE_AGENT: [
                 ToolSpec("pii_mask", "Mask PII from issue text or logs", _not_implemented_tool("pii_mask")),
                 ToolSpec("classify_ticket", "Classify customer support ticket", _not_implemented_tool("classify_ticket")),
                 ToolSpec("write_shared_memory", "Update shared memory files", _not_implemented_tool("write_shared_memory")),
             ],
-            INVESTIGATION_AGENT: [
-                ToolSpec("read_shared_memory", "Read shared case memory", _not_implemented_tool("read_shared_memory")),
-                ToolSpec("scan_workspace_artifacts", "Scan workspace artifacts", _not_implemented_tool("scan_workspace_artifacts")),
-                ToolSpec("spawn_log_analyzer_specialist", "Delegate to log analyzer specialist", _not_implemented_tool("spawn_log_analyzer_specialist")),
-                ToolSpec("spawn_knowledge_retriever_specialist", "Delegate to knowledge retriever specialist", _not_implemented_tool("spawn_knowledge_retriever_specialist")),
-            ],
-            LOG_ANALYZER_SPECIALIST: [
+            LOG_ANALYZER_AGENT: [
                 ToolSpec("read_log_file", "Read attached log file", _not_implemented_tool("read_log_file")),
                 ToolSpec("run_python_analysis", "Run code-based log analysis", _not_implemented_tool("run_python_analysis")),
                 ToolSpec("write_working_memory", "Write agent working memory", _not_implemented_tool("write_working_memory")),
             ],
-            KNOWLEDGE_RETRIEVER_SPECIALIST: [
+            KNOWLEDGE_RETRIEVER_AGENT: [
                 ToolSpec("search_kb", "Search knowledge base", _not_implemented_tool("search_kb")),
                 ToolSpec("search_ticket_history", "Search historical tickets", _not_implemented_tool("search_ticket_history")),
                 ToolSpec("write_working_memory", "Write agent working memory", _not_implemented_tool("write_working_memory")),
             ],
             RESOLUTION_AGENT: [
                 ToolSpec("read_shared_memory", "Read shared case memory", _not_implemented_tool("read_shared_memory")),
-                ToolSpec("spawn_draft_writer_specialist", "Delegate draft creation", _not_implemented_tool("spawn_draft_writer_specialist")),
-                ToolSpec("spawn_compliance_reviewer_specialist", "Delegate compliance review", _not_implemented_tool("spawn_compliance_reviewer_specialist")),
+                ToolSpec("spawn_draft_writer_agent", "Delegate draft creation", _not_implemented_tool("spawn_draft_writer_agent")),
+                ToolSpec("spawn_compliance_reviewer_agent", "Delegate compliance review", _not_implemented_tool("spawn_compliance_reviewer_agent")),
             ],
-            DRAFT_WRITER_SPECIALIST: [
+            DRAFT_WRITER_AGENT: [
                 ToolSpec("write_draft", "Write draft response", _not_implemented_tool("write_draft")),
             ],
-            COMPLIANCE_REVIEWER_SPECIALIST: [
+            COMPLIANCE_REVIEWER_AGENT: [
                 ToolSpec("check_policy", "Check compliance policy", _not_implemented_tool("check_policy")),
                 ToolSpec("request_revision", "Request draft revision", _not_implemented_tool("request_revision")),
             ],

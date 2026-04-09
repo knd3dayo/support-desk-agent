@@ -73,7 +73,8 @@ class RuntimeService:
         for definition in self._context.agent_factory.build_default_definitions():
             agent = self._context.agent_factory.build_agent(case_id, definition)
             if isinstance(agent, dict):
-                agent["config"] = self._context.config.agents.get(definition.role).model_dump() if definition.role in self._context.config.agents else {}
+                settings = self._context.agent_factory.get_agent_settings(definition.role)
+                agent["config"] = settings.model_dump() if settings is not None else {}
                 agents.append(agent)
             else:
                 agents.append(

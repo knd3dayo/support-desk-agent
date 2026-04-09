@@ -76,6 +76,7 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 - サポート業務プロセスの統括者
 - 各エージェント、ツールに指示を出し、その結果を評価、統合し、ユーザーへの回答を行う。
 - サブエージェント、ノードの結果の評価、サブエージェントに追加の指示や質問などを行う。
+- 調査フェーズでは LogAnalyzerAgent と KnowledgeRetrieverAgent を直接起動し、結果を統合する。
 
 #### IntakeAgent
 
@@ -83,17 +84,33 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 - Intake Agent は DeepAgent とし、PII マスキング、カテゴリ判定、初期メモ作成を行う
 - 必要に応じて分類系 Specialist を task ツールで起動できる
 
-#### InvestigationAgent
+#### LogAnalyzerAgent
 
-- Investigation Agent を DeepAgent として実装する
-- Log Analyzer Specialist と Knowledge Retriever Specialist を並列起動する
-- 両者は共有メモリを参照しつつ、自身のワーキングメモリに詳細ログを保持する
+- LogAnalyzerAgent を DeepAgent として実装する
+- ログ、エビデンス、ワークスペース情報から異常兆候と再現条件を抽出する
+- 自身のワーキングメモリに試行錯誤を保持し、確度の高い事実のみ共有メモリへ反映する
+
+#### KnowledgeRetrieverAgent
+
+- KnowledgeRetrieverAgent を DeepAgent として実装する
+- 既知エラー、過去チケット、ナレッジベースから関連情報を探索する
+- 自身のワーキングメモリに検索履歴を保持し、根拠付き候補のみ共有メモリへ反映する
 
 #### ResolutionAgent
 
 - Resolution Agent を DeepAgent として実装する
-- Draft Writer Specialist と Compliance Reviewer Specialist を起動する
-- Compliance Reviewer が差戻し判断した場合、Draft Writer を再起動する
+- DraftWriterAgent と ComplianceReviewerAgent を起動する
+- ComplianceReviewerAgent が差戻し判断した場合、DraftWriterAgent を再起動する
+
+#### DraftWriterAgent
+
+- DraftWriterAgent を DeepAgent として実装する
+- 顧客向け回答ドラフトを作成し、技術的事実と顧客向け表現の橋渡しを行う
+
+#### ComplianceReviewerAgent
+
+- ComplianceReviewerAgent を DeepAgent として実装する
+- 回答ドラフトが事実、ポリシー、表現上の制約に反していないかを検査する
 
 #### ApprovalAgent
 
@@ -145,12 +162,13 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 ツールは役割別に構成し、Registry から解決する。
 
 - CaseIdResolverTool: ユーザー入力から case_id を解決し、未指定時は UUID ベースで自動生成する
-- intake_supervisor: pii_mask, classify_ticket, write_shared_memory
-- investigation_supervisor: read_shared_memory, spawn_log_analyzer, spawn_knowledge_retriever
-- log_analyzer: read_log_file, run_python_analysis, write_working_memory
-- knowledge_retriever: search_kb, search_ticket_history, write_working_memory
-- resolution_supervisor: read_shared_memory, spawn_draft_writer, spawn_compliance_reviewer
-- compliance_reviewer: check_policy, request_revision
+- SuperVisorAgent: inspect_workflow_state, evaluate_agent_result, route_phase_agent, read_shared_memory, scan_workspace_artifacts, spawn_log_analyzer_agent, spawn_knowledge_retriever_agent
+- IntakeAgent: pii_mask, classify_ticket, write_shared_memory
+- LogAnalyzerAgent: read_log_file, run_python_analysis, write_working_memory
+- KnowledgeRetrieverAgent: search_kb, search_ticket_history, write_working_memory
+- ResolutionAgent: read_shared_memory, spawn_draft_writer_agent, spawn_compliance_reviewer_agent
+- DraftWriterAgent: write_draft
+- ComplianceReviewerAgent: check_policy, request_revision
 - ticket_update: zendesk_reply, redmine_update
 
 初期実装では外部システム接続をスタブ化し、後続で MCP ツールまたは API アダプタに置き換える。

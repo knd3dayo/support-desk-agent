@@ -46,22 +46,19 @@ support_ope_agents:
     IntakeAgent:
       enabled: true
       auto_compress: true
-    InvestigationAgent:
+    LogAnalyzerAgent:
       enabled: true
       auto_compress: true
-    LogAnalyzerSpecialist:
-      enabled: true
-      auto_compress: true
-    KnowledgeRetrieverSpecialist:
+    KnowledgeRetrieverAgent:
       enabled: true
       auto_compress: true
     ResolutionAgent:
       enabled: true
       auto_compress: true
-    DraftWriterSpecialist:
+    DraftWriterAgent:
       enabled: true
       auto_compress: true
-    ComplianceReviewerSpecialist:
+    ComplianceReviewerAgent:
       enabled: true
       auto_compress: true
     ApprovalAgent:

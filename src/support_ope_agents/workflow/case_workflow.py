@@ -8,7 +8,6 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
     INTAKE_AGENT,
-    INVESTIGATION_AGENT,
     RESOLUTION_AGENT,
     SUPERVISOR_AGENT,
     TICKET_UPDATE_AGENT,
@@ -69,9 +68,9 @@ def _intake(state: CaseState) -> CaseState:
 def _investigation(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "INVESTIGATING"
-    update["current_agent"] = INVESTIGATION_AGENT
+    update["current_agent"] = SUPERVISOR_AGENT
     if update.get("execution_mode") == "action":
-        update["investigation_summary"] = str(update.get("investigation_summary") or "調査フローを開始する準備が整っています。")
+        update["investigation_summary"] = str(update.get("investigation_summary") or "SuperVisorAgent 配下でログ解析とナレッジ探索を開始する準備が整っています。")
     return cast(CaseState, update)
 
 
