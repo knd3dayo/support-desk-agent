@@ -14,6 +14,11 @@
 - 各エージェントは役割に応じたツールを持つ
 - 業務プロセスはワークフローに従うが、細部は指示ファイルで追加指示を出せる
 - 各エージェントのツールは後から追加可能な構成とする
+- ユーザーからの入力インタフェースはCLI、API、MCPのいずれかとする。
+- 各種ログファイルや画像エビデンスなどの格納用のワークスペースディレクトリの指定が可能。　　
+　各エージェントはワークスペースの情報も参考にしてタスクを実行する。
+- configファイルには、アプリケーション共通設定項目の他、各エージェント用の設定カテゴリを持つ。
+
 
 ## 2. 全体アーキテクチャ
 
@@ -48,33 +53,38 @@
 
 ### 3.1 フェーズ別構成
 
-#### IntakeWF
+#### SuperVisorAgent
+- サポート業務プロセスの統括者
+- 各エージェント、ツールに指示を出し、その結果を評価、統合し、ユーザーへの回答を行う。
+- サブエージェント、ノードの結果の評価、サブエージェントに追加の指示や質問などを行う。
+#### IntakeAgent
 
 - LangGraph ノードとして実装する
-- Intake Supervisor は DeepAgent とし、PII マスキング、カテゴリ判定、初期メモ作成を行う
+- Intake Agent は DeepAgent とし、PII マスキング、カテゴリ判定、初期メモ作成を行う
 - 必要に応じて分類系 Specialist を task ツールで起動できる
 
-#### InvestigationWF
+#### InvestigationAgent
 
-- Investigation Supervisor を DeepAgent として実装する
+- Investigation Agent を DeepAgent として実装する
 - Log Analyzer Specialist と Knowledge Retriever Specialist を並列起動する
 - 両者は共有メモリを参照しつつ、自身のワーキングメモリに詳細ログを保持する
 
-#### ResolutionWF
+#### ResolutionAgent
 
-- Resolution Supervisor を DeepAgent として実装する
+- Resolution Agent を DeepAgent として実装する
 - Draft Writer Specialist と Compliance Reviewer Specialist を起動する
 - Compliance Reviewer が差戻し判断した場合、Draft Writer を再起動する
 
-#### ApprovalWF
+#### ApprovalAgent
 
 - LangGraph ノードとして WAITING_APPROVAL で interrupt する
 - 人間の承認、差戻し、追加調査要求に応じて resume する
 
-#### TicketUpdateWF
+#### TicketUpdateAgent
 
 - LangGraph ノードとして実装する
 - 承認後に Zendesk / Redmine への更新を行う
+- 更新の前には必ずHITLを発生させる。
 
 ### 3.2 DeepAgent 間の情報共有
 

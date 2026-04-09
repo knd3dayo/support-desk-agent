@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from support_ope_agents.agents import DeepAgentFactory
+from support_ope_agents.agents.roles import canonical_role
 from support_ope_agents.config import load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
@@ -23,7 +24,7 @@ def _build_runtime(config_path: str):
 
 def _cmd_init_case(args: argparse.Namespace) -> int:
     _, memory_store, instruction_loader, _, agent_factory = _build_runtime(args.config)
-    case_paths = memory_store.initialize_case(args.case_id)
+    case_paths = memory_store.initialize_case(args.case_id, workspace_path=args.workspace_path)
     for definition in agent_factory.build_default_definitions():
         memory_store.ensure_agent_working_memory(args.case_id, definition.role)
         instruction_loader.ensure_override_file(args.case_id, definition.role)
@@ -47,14 +48,22 @@ def _cmd_print_workflow(args: argparse.Namespace) -> int:
 
 
 def _cmd_describe_agents(args: argparse.Namespace) -> int:
-    _, _, _, _, agent_factory = _build_runtime(args.config)
+    config, _, _, _, agent_factory = _build_runtime(args.config)
     agents: list[dict[str, Any]] = []
     for definition in agent_factory.build_default_definitions():
         agent = agent_factory.build_agent(args.case_id, definition)
         if isinstance(agent, dict):
+            agent["config"] = config.agents.get(canonical_role(definition.role)).model_dump() if canonical_role(definition.role) in config.agents else {}
             agents.append(agent)
         else:
-            agents.append({"role": definition.role, "description": definition.description})
+            agents.append(
+                {
+                    "role": canonical_role(definition.role),
+                    "description": definition.description,
+                    "kind": definition.kind,
+                    "parent_role": definition.parent_role,
+                }
+            )
     print(json.dumps(agents, ensure_ascii=False, indent=2))
     return 0
 
@@ -68,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_case = subparsers.add_parser("init-case", help="Initialize case workspace", parents=[common])
     init_case.add_argument("case_id", help="Case identifier")
+    init_case.add_argument("--workspace-path", default=None, help="Optional external workspace path to register")
     init_case.set_defaults(func=_cmd_init_case)
 
     print_workflow = subparsers.add_parser("print-workflow", help="Print workflow diagram", parents=[common])

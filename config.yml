@@ -11,16 +11,59 @@ support_ope_agents:
     instructions_root: ./instructions
     shared_memory_subdir: memory
     instruction_override_subdir: overrides
+    artifacts_subdir: artifacts
+    evidence_subdir: evidence
+    workspace_manifest_filename: workspace.json
   workflow:
     max_context_chars: 12000
     compress_threshold_chars: 9000
     approval_node: wait_for_approval
+    auto_compress: true
+    max_summary_chars: 4000
   tracing:
     enabled: false
     provider: langsmith
     project_name: support-ope-agents
+  interfaces:
+    enable_cli: true
+    enable_api: false
+    enable_mcp: false
+    api_host: 127.0.0.1
+    api_port: 8000
+    mcp_transport: streamable-http
   tools:
     enable_zendesk: false
     enable_redmine: false
     enable_knowledge_base: false
     enable_python_analysis: true
+  agents:
+    SuperVisorAgent:
+      enabled: true
+      auto_compress: true
+    IntakeAgent:
+      enabled: true
+      auto_compress: true
+    InvestigationAgent:
+      enabled: true
+      auto_compress: true
+    LogAnalyzerSpecialist:
+      enabled: true
+      auto_compress: true
+    KnowledgeRetrieverSpecialist:
+      enabled: true
+      auto_compress: true
+    ResolutionAgent:
+      enabled: true
+      auto_compress: true
+    DraftWriterSpecialist:
+      enabled: true
+      auto_compress: true
+    ComplianceReviewerSpecialist:
+      enabled: true
+      auto_compress: true
+    ApprovalAgent:
+      enabled: true
+      auto_compress: false
+    TicketUpdateAgent:
+      enabled: true
+      auto_compress: false

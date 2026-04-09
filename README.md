@@ -9,6 +9,8 @@ Deep Agents と LangGraph を組み合わせて、カスタマーサポート業
 - エージェント間の情報共有と進捗共有は、ケース単位の共有メモリファイルで行う
 - 各エージェントは役割別ツールを持ち、コンテキスト逼迫時は圧縮済みサマリへ退避する
 - 指示ファイルを差し替えることで、業務手順の細部を後から拡張できる
+- CLI に加えて API と MCP を追加できる構成を前提にする
+- ケースごとに workspace を登録でき、artifact と evidence を分離管理する
 
 ## 初期構成
 
@@ -30,6 +32,12 @@ python -m support_ope_agents.cli print-workflow --config config.yml
 
 ```bash
 python -m support_ope_agents.cli init-case CASE-001 --config config.yml
+```
+
+外部ワークスペースを紐付けて初期化することもできます。
+
+```bash
+python -m support_ope_agents.cli init-case CASE-002 --config config.yml --workspace-path /data/support/case-002
 ```
 
 ## 今後の実装対象
