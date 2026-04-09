@@ -1,0 +1,26 @@
+support_ope_agents:
+  app:
+    name: support-ope-agents
+    environment: local
+  llm:
+    provider: openai
+    model: gpt-4.1
+    api_key: os.environ/OPENAI_API_KEY
+  paths:
+    workspace_root: ./runtime/cases
+    instructions_root: ./instructions
+    shared_memory_subdir: memory
+    instruction_override_subdir: overrides
+  workflow:
+    max_context_chars: 12000
+    compress_threshold_chars: 9000
+    approval_node: wait_for_approval
+  tracing:
+    enabled: false
+    provider: langsmith
+    project_name: support-ope-agents
+  tools:
+    enable_zendesk: false
+    enable_redmine: false
+    enable_knowledge_base: false
+    enable_python_analysis: true

@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any
+
+from dotenv import load_dotenv
+import yaml
+
+from .models import AppConfig
+
+ROOT_KEY = "support_ope_agents"
+ENV_REF_PREFIX = "os.environ/"
+
+
+def _resolve_env_refs(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _resolve_env_refs(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolve_env_refs(item) for item in value]
+    if isinstance(value, str) and value.startswith(ENV_REF_PREFIX):
+        env_name = value.removeprefix(ENV_REF_PREFIX)
+        return os.getenv(env_name, "")
+    return value
+
+
+def _resolve_path(base_dir: Path, value: str) -> Path:
+    candidate = Path(value).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    return (base_dir / candidate).resolve()
+
+
+def load_config(config_path: str | Path) -> AppConfig:
+    load_dotenv()
+    path = Path(config_path).resolve()
+    with path.open("r", encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle) or {}
+
+    section = raw.get(ROOT_KEY, {})
+    resolved = _resolve_env_refs(section)
+    base_dir = path.parent
+
+    paths = resolved.get("paths", {})
+    paths["workspace_root"] = _resolve_path(base_dir, paths.get("workspace_root", "./runtime/cases"))
+    paths["instructions_root"] = _resolve_path(base_dir, paths.get("instructions_root", "./instructions"))
+    resolved["paths"] = paths
+
+    return AppConfig.model_validate(resolved)
