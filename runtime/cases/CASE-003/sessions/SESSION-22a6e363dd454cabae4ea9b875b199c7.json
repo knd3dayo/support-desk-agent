@@ -1,0 +1,27 @@
+{
+  "case_id": "CASE-003",
+  "session_id": "SESSION-22a6e363dd454cabae4ea9b875b199c7",
+  "trace_id": "SESSION-22a6e363dd454cabae4ea9b875b199c7",
+  "thread_id": "SESSION-22a6e363dd454cabae4ea9b875b199c7",
+  "workflow_run_id": "SESSION-22a6e363dd454cabae4ea9b875b199c7",
+  "workflow_kind": "ambiguous_case",
+  "execution_mode": "action",
+  "workspace_path": "/tmp/support-case-003",
+  "created_at": "2026-04-09T15:48:41.756245+00:00",
+  "status": "WAITING_APPROVAL",
+  "raw_issue": "データ仮想化サーバーが停止した。仕様か不具合か切り分けてください。",
+  "plan_summary": "SuperVisorAgent は 判定困難ワークフロー を選択し、plan モードの結果を承認後に action モードへ引き継ぐ。",
+  "plan_steps": [
+    "仕様か不具合かの判定観点を整理する",
+    "仕様調査と障害調査の両観点で情報を集める",
+    "判定結果と次アクションを整理して回答ドラフトを作成する"
+  ],
+  "investigation_summary": "調査フローを開始する準備が整っています。",
+  "draft_response": "action モードで回答ドラフトを生成する準備が整っています。",
+  "approval_decision": "pending",
+  "approval_history": [],
+  "agent_errors": [],
+  "context_usage": {},
+  "current_agent": "ApprovalAgent",
+  "next_action": "回答ドラフトを確認し、チケット更新を承認してください。"
+}

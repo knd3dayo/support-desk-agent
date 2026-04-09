@@ -40,6 +40,24 @@ python -m support_ope_agents.cli init-case CASE-001 --config config.yml
 python -m support_ope_agents.cli init-case CASE-002 --config config.yml --workspace-path /data/support/case-002
 ```
 
+plan モードでは、SuperVisorAgent が問い合わせ内容から workflow をルーティングし、同一セッションで action に引き継げる実行計画を返します。
+
+```bash
+python -m support_ope_agents.cli plan "仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --case-id CASE-003 --config config.yml
+```
+
+action モードでは、plan モードの session_id を指定して同一セッションで処理を継続します。
+
+```bash
+python -m support_ope_agents.cli action "仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --case-id CASE-003 --session-id SESSION-xxxx --config config.yml
+```
+
+現在の workflow ルーティング対象は次の 3 系統です。
+
+- 仕様調査ワークフロー
+- 障害調査ワークフロー
+- 判定困難ワークフロー
+
 ## 今後の実装対象
 
 - DeepAgent の task ツール経由でのサブエージェント起動

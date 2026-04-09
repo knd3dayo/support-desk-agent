@@ -4,67 +4,50 @@ import argparse
 import json
 from typing import Any
 
-from support_ope_agents.agents import DeepAgentFactory
-from support_ope_agents.agents.roles import canonical_role
-from support_ope_agents.config import load_config
-from support_ope_agents.instructions import InstructionLoader
-from support_ope_agents.memory import CaseMemoryStore
-from support_ope_agents.tools import ToolRegistry
-from support_ope_agents.workflow import build_case_workflow
+from support_ope_agents.runtime import RuntimeService, build_runtime_context
 
 
-def _build_runtime(config_path: str):
-    config = load_config(config_path)
-    memory_store = CaseMemoryStore(config)
-    instruction_loader = InstructionLoader(config, memory_store)
-    tool_registry = ToolRegistry(config)
-    agent_factory = DeepAgentFactory(config, instruction_loader, tool_registry, memory_store)
-    return config, memory_store, instruction_loader, tool_registry, agent_factory
+def _build_service(config_path: str) -> RuntimeService:
+    return RuntimeService(build_runtime_context(config_path))
 
 
 def _cmd_init_case(args: argparse.Namespace) -> int:
-    _, memory_store, instruction_loader, _, agent_factory = _build_runtime(args.config)
-    case_paths = memory_store.initialize_case(args.case_id, workspace_path=args.workspace_path)
-    for definition in agent_factory.build_default_definitions():
-        memory_store.ensure_agent_working_memory(args.case_id, definition.role)
-        instruction_loader.ensure_override_file(args.case_id, definition.role)
-
-    print(case_paths.root)
+    service = _build_service(args.config)
+    print(service.initialize_case(args.case_id, workspace_path=args.workspace_path))
     return 0
 
 
 def _cmd_print_workflow(args: argparse.Namespace) -> int:
-    _build_runtime(args.config)
-    app = build_case_workflow()
-    graph = app.get_graph()
-    try:
-        print(graph.draw_ascii())
-    except ImportError:
-        node_names = sorted(node.id for node in graph.nodes.values())
-        print("Workflow nodes:")
-        for node_name in node_names:
-            print(f"- {node_name}")
+    service = _build_service(args.config)
+    print("Workflow nodes:")
+    for node_name in service.print_workflow_nodes():
+        print(f"- {node_name}")
     return 0
 
 
 def _cmd_describe_agents(args: argparse.Namespace) -> int:
-    config, _, _, _, agent_factory = _build_runtime(args.config)
-    agents: list[dict[str, Any]] = []
-    for definition in agent_factory.build_default_definitions():
-        agent = agent_factory.build_agent(args.case_id, definition)
-        if isinstance(agent, dict):
-            agent["config"] = config.agents.get(canonical_role(definition.role)).model_dump() if canonical_role(definition.role) in config.agents else {}
-            agents.append(agent)
-        else:
-            agents.append(
-                {
-                    "role": canonical_role(definition.role),
-                    "description": definition.description,
-                    "kind": definition.kind,
-                    "parent_role": definition.parent_role,
-                }
-            )
-    print(json.dumps(agents, ensure_ascii=False, indent=2))
+    service = _build_service(args.config)
+    print(json.dumps(service.describe_agents(args.case_id), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_plan(args: argparse.Namespace) -> int:
+    service = _build_service(args.config)
+    result = service.plan(prompt=args.prompt, workspace_path=args.workspace_path, case_id=args.case_id)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_action(args: argparse.Namespace) -> int:
+    service = _build_service(args.config)
+    result = service.action(
+        prompt=args.prompt,
+        workspace_path=args.workspace_path,
+        case_id=args.case_id,
+        session_id=args.session_id,
+        execution_plan=args.execution_plan,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -86,6 +69,20 @@ def build_parser() -> argparse.ArgumentParser:
     describe_agents = subparsers.add_parser("describe-agents", help="Describe default agent layout", parents=[common])
     describe_agents.add_argument("case_id", help="Case identifier")
     describe_agents.set_defaults(func=_cmd_describe_agents)
+
+    plan = subparsers.add_parser("plan", help="Create an execution plan for a case", parents=[common])
+    plan.add_argument("prompt", help="User request for planning")
+    plan.add_argument("--workspace-path", required=True, help="Workspace path for the case")
+    plan.add_argument("--case-id", default=None, help="Optional case identifier")
+    plan.set_defaults(func=_cmd_plan)
+
+    action = subparsers.add_parser("action", help="Execute action mode for a case", parents=[common])
+    action.add_argument("prompt", help="User request for action execution")
+    action.add_argument("--workspace-path", required=True, help="Workspace path for the case")
+    action.add_argument("--case-id", default=None, help="Optional case identifier")
+    action.add_argument("--session-id", default=None, help="Session identifier from plan mode")
+    action.add_argument("--execution-plan", default=None, help="Optional execution plan text")
+    action.set_defaults(func=_cmd_action)
 
     return parser
 

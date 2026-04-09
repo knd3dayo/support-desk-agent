@@ -52,6 +52,8 @@ def _receive_case(state: CaseState) -> CaseState:
     update.setdefault("approval_history", [])
     update.setdefault("agent_errors", [])
     update.setdefault("context_usage", {})
+    update.setdefault("plan_steps", [])
+    update.setdefault("plan_summary", "")
     return cast(CaseState, update)
 
 
@@ -59,6 +61,8 @@ def _intake(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "TRIAGED"
     update["current_agent"] = INTAKE_AGENT
+    if update.get("execution_mode") == "plan":
+        update["next_action"] = "ユーザーに計画を提示して承認を得る"
     return cast(CaseState, update)
 
 
@@ -66,6 +70,8 @@ def _investigation(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "INVESTIGATING"
     update["current_agent"] = INVESTIGATION_AGENT
+    if update.get("execution_mode") == "action":
+        update["investigation_summary"] = str(update.get("investigation_summary") or "調査フローを開始する準備が整っています。")
     return cast(CaseState, update)
 
 
@@ -73,6 +79,10 @@ def _resolution(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "DRAFT_READY"
     update["current_agent"] = RESOLUTION_AGENT
+    if update.get("execution_mode") == "plan":
+        update["draft_response"] = "plan モードでは実行計画のみを返却し、action モードでドラフト生成へ進みます。"
+    else:
+        update.setdefault("draft_response", "action モードで回答ドラフトを生成する準備が整っています。")
     return cast(CaseState, update)
 
 
@@ -81,6 +91,10 @@ def _wait_for_approval(state: CaseState) -> CaseState:
     update["status"] = "WAITING_APPROVAL"
     update["current_agent"] = APPROVAL_AGENT
     update.setdefault("approval_decision", "pending")
+    if update.get("execution_mode") == "plan":
+        update["next_action"] = "この計画で action を実行するか確認してください。"
+    else:
+        update["next_action"] = "回答ドラフトを確認し、チケット更新を承認してください。"
     return cast(CaseState, update)
 
 
@@ -88,6 +102,7 @@ def _ticket_update(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "CLOSED"
     update["current_agent"] = TICKET_UPDATE_AGENT
+    update["next_action"] = "Zendesk と Redmine の更新を実行する"
     return cast(CaseState, update)
 
 
