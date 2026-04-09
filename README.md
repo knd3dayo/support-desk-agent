@@ -63,18 +63,22 @@ uvicorn support_ope_agents.interfaces.api:create_app --factory --host 127.0.0.1 
 
 MCP は最小アダプタとして `plan` と `action` ツールを公開し、どちらも `trace_id` を正式な継続キーとして扱います。
 
-役割別ツールは [config.yml](config.yml) の `tools.overrides` で外部 MCP サーバー実装に差し替えできます。`tools.mcp_manifest_path` で単一の `mcp.json` を指定し、設定した server 名や tool 名が参照先に存在しない場合は、CLI / API / MCP いずれの起動経路でも fail fast で起動エラーになります。
+共通の built-in ツールとして、画像/PDF/Office の解析、Office→PDF 変換、PDF→画像変換、テキスト抽出、Zip 操作を各エージェントへ配布します。役割別ツールはその上に追加され、最終的に [config.yml](config.yml) の `tools.overrides` で `builtin` / `mcp` / `disabled` に差し替えできます。`tools.mcp_manifest_path` で単一の `mcp.json` を指定し、設定した server 名や tool 名が参照先に存在しない場合は、CLI / API / MCP いずれの起動経路でも fail fast で起動エラーになります。
 
 ```yaml
 support_ope_agents:
 	tools:
 		mcp_manifest_path: ../ai-chat-util/app/ai-chat-util-mcp.json
 		overrides:
-			LogAnalyzerSpecialist:
+			LogAnalyzerAgent:
+				analyze_pdf_files:
+					type: builtin
 				read_log_file:
 					type: mcp
 					server: AIChatUtilLocal
 					tool: analyze_files
+				convert_office_files_to_pdf:
+					type: disabled
 ```
 
 現在の workflow ルーティング対象は次の 3 系統です。

@@ -16,8 +16,9 @@ from support_ope_agents.agents.roles import (
     TICKET_UPDATE_AGENT,
     canonical_role,
 )
-from support_ope_agents.config.models import AppConfig
+from support_ope_agents.config.models import AppConfig, BuiltinToolBinding, DisabledToolBinding, McpToolBinding
 
+from .builtin_tools import build_builtin_tools
 from .mcp_overrides import McpToolOverrideResolver, ToolConfigurationError
 
 
@@ -44,18 +45,34 @@ class ToolRegistry:
     def __init__(self, config: AppConfig, mcp_override_resolver: McpToolOverrideResolver | None = None):
         self._config = config
         self._mcp_override_resolver = mcp_override_resolver
-        self._base_tools = self._build_base_tools()
+        self._builtin_tools = {
+            name: ToolSpec(
+                name=builtin.name,
+                description=builtin.description,
+                handler=builtin.handler,
+                provider="builtin",
+                target=builtin.name,
+            )
+            for name, builtin in build_builtin_tools(config).items()
+        }
+        self._role_tools = self._build_role_tools()
         self._normalized_overrides = self._normalize_overrides()
         self._validate_overrides()
 
     def get_tools(self, role: str) -> list[ToolSpec]:
         normalized_role = canonical_role(role)
-        return [self._resolve_tool_override(normalized_role, tool) for tool in self._base_tools.get(normalized_role, [])]
+        base_tools = [*self._builtin_tools.values(), *self._role_tools.get(normalized_role, [])]
+        resolved_tools: list[ToolSpec] = []
+        for tool in base_tools:
+            resolved = self._resolve_tool_override(normalized_role, tool)
+            if resolved is not None:
+                resolved_tools.append(resolved)
+        return resolved_tools
 
     def list_roles(self) -> Iterable[str]:
         return DEFAULT_AGENT_ROLES
 
-    def _build_base_tools(self) -> dict[str, list[ToolSpec]]:
+    def _build_role_tools(self) -> dict[str, list[ToolSpec]]:
         return {
             SUPERVISOR_AGENT: [
                 ToolSpec("inspect_workflow_state", "Inspect case workflow state", _not_implemented_tool("inspect_workflow_state")),
@@ -105,6 +122,15 @@ class ToolRegistry:
             ],
         }
 
+    def _available_tools_for_role(self, role: str) -> dict[str, ToolSpec]:
+        combined = [*self._builtin_tools.values(), *self._role_tools.get(role, [])]
+        available: dict[str, ToolSpec] = {}
+        for tool in combined:
+            if tool.name in available:
+                raise ToolConfigurationError(f"Duplicate logical tool '{tool.name}' is defined for role '{role}'")
+            available[tool.name] = tool
+        return available
+
     def _normalize_overrides(self) -> dict[str, dict[str, Any]]:
         normalized: dict[str, dict[str, Any]] = {}
         for raw_role, overrides in self._config.tools.overrides.items():
@@ -123,13 +149,14 @@ class ToolRegistry:
             return
 
         for normalized_role, overrides in self._normalized_overrides.items():
-            if normalized_role not in self._base_tools:
+            if normalized_role not in self._role_tools:
                 available_roles = ", ".join(DEFAULT_AGENT_ROLES)
                 raise ToolConfigurationError(
                     f"tools.overrides references unknown role '{normalized_role}'. Available roles=[{available_roles}]"
                 )
 
-            available_tool_names = {tool.name for tool in self._base_tools[normalized_role]}
+            available_tools = self._available_tools_for_role(normalized_role)
+            available_tool_names = set(available_tools)
             for logical_tool_name, binding in overrides.items():
                 if logical_tool_name not in available_tool_names:
                     known_tools = ", ".join(sorted(available_tool_names))
@@ -137,6 +164,17 @@ class ToolRegistry:
                         f"tools.overrides.{normalized_role}.{logical_tool_name} does not match any logical tool for role '{normalized_role}'. "
                         f"available_tools=[{known_tools}]"
                     )
+                if isinstance(binding, BuiltinToolBinding):
+                    target_name = binding.tool or logical_tool_name
+                    if target_name not in self._builtin_tools:
+                        available_builtins = ", ".join(sorted(self._builtin_tools))
+                        raise ToolConfigurationError(
+                            f"tools.overrides.{normalized_role}.{logical_tool_name} references unknown builtin tool '{target_name}'. "
+                            f"available_builtin_tools=[{available_builtins}]"
+                        )
+                    continue
+                if isinstance(binding, DisabledToolBinding):
+                    continue
                 if binding.type == "mcp":
                     if self._mcp_override_resolver is None:
                         raise ToolConfigurationError(
@@ -148,13 +186,27 @@ class ToolRegistry:
                         binding=binding,
                     )
 
-    def _resolve_tool_override(self, role: str, tool: ToolSpec) -> ToolSpec:
+    def _resolve_tool_override(self, role: str, tool: ToolSpec) -> ToolSpec | None:
         overrides = self._normalized_overrides.get(role, {})
         binding = overrides.get(tool.name)
         if binding is None:
             return tool
 
-        if binding.type == "mcp":
+        if isinstance(binding, DisabledToolBinding):
+            return None
+
+        if isinstance(binding, BuiltinToolBinding):
+            target_name = binding.tool or tool.name
+            builtin = self._builtin_tools[target_name]
+            return ToolSpec(
+                name=tool.name,
+                description=tool.description,
+                handler=builtin.handler,
+                provider="builtin",
+                target=target_name,
+            )
+
+        if isinstance(binding, McpToolBinding):
             if self._mcp_override_resolver is None:
                 raise ToolConfigurationError(
                     f"tools.overrides.{role}.{tool.name} requested an MCP binding but no MCP resolver is configured"

@@ -38,6 +38,9 @@ support_ope_agents:
     enable_python_analysis: true
     mcp_manifest_path:
     mcp_timeout_seconds: 30
+    download_timeout_seconds: 30
+    analysis_max_chars: 16000
+    libreoffice_command:
     overrides: {}
   agents:
     SuperVisorAgent:

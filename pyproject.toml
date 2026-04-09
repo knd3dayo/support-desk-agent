@@ -19,6 +19,14 @@ dependencies = [
   "langchain-openai>=0.2.0",
   "deepagents>=0.0.7",
   "mcp>=1,<2",
+  "requests>=2.32,<3",
+  "Pillow>=11,<12",
+  "PyMuPDF>=1.24,<2",
+  "python-docx>=1.1,<2",
+  "python-pptx>=1.0,<2",
+  "openpyxl>=3.1,<4",
+  "pdfminer.six>=20231228",
+  "pyzipper>=0.3,<1",
 ]
 
 [project.scripts]

@@ -47,6 +47,18 @@ class McpToolBinding(BaseModel):
     tool: str
 
 
+class BuiltinToolBinding(BaseModel):
+    type: Literal["builtin"] = "builtin"
+    tool: str | None = None
+
+
+class DisabledToolBinding(BaseModel):
+    type: Literal["disabled"] = "disabled"
+
+
+ToolBinding = BuiltinToolBinding | McpToolBinding | DisabledToolBinding
+
+
 class ToolSettings(BaseModel):
     enable_zendesk: bool = False
     enable_redmine: bool = False
@@ -54,7 +66,10 @@ class ToolSettings(BaseModel):
     enable_python_analysis: bool = True
     mcp_manifest_path: Path | None = None
     mcp_timeout_seconds: float = 30.0
-    overrides: dict[str, dict[str, McpToolBinding]] = Field(default_factory=dict)
+    download_timeout_seconds: float = 30.0
+    analysis_max_chars: int = 16000
+    libreoffice_command: str | None = None
+    overrides: dict[str, dict[str, ToolBinding]] = Field(default_factory=dict)
 
     def has_overrides(self) -> bool:
         return any(self.overrides.values())
