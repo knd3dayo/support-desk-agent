@@ -59,10 +59,10 @@
 
 主要識別子は次の通りとする。
 
-- case_id: 外部問い合わせの識別子
-- trace_id: トレース基盤横断の相関 ID
-- thread_id: LangGraph の再開対象スレッド ID
-- workflow_run_id: 実行インスタンス ID
+- case_id: 外部問い合わせの識別子。ユーザー入力から CaseIdResolverAgent または CaseIdResolverTool が抽出し、見当たらない場合は UUID ベースで自動採番する
+- trace_id: トレース基盤横断の相関 ID。workflow_run_id および thread_id は内部実装上この値へ集約し、同一値を使う
+- thread_id: LangGraph の再開対象スレッド ID。PoC では trace_id と同一値を使う
+- workflow_run_id: 実行インスタンス ID。PoC では trace_id と同一値を使う
 
 ## 3. DeepAgent 構成
 
@@ -138,6 +138,7 @@
 
 ツールは役割別に構成し、Registry から解決する。
 
+- CaseIdResolverTool: ユーザー入力から case_id を解決し、未指定時は UUID ベースで自動生成する
 - intake_supervisor: pii_mask, classify_ticket, write_shared_memory
 - investigation_supervisor: read_shared_memory, spawn_log_analyzer, spawn_knowledge_retriever
 - log_analyzer: read_log_file, run_python_analysis, write_working_memory

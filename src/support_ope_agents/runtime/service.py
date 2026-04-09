@@ -9,6 +9,7 @@ from support_ope_agents.agents import DeepAgentFactory
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
+from support_ope_agents.runtime.case_id_resolver import CaseIdResolverTool
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
@@ -27,6 +28,7 @@ class RuntimeContext:
     instruction_loader: InstructionLoader
     tool_registry: ToolRegistry
     agent_factory: DeepAgentFactory
+    case_id_resolver: CaseIdResolverTool
 
 
 def build_runtime_context(config_path: str) -> RuntimeContext:
@@ -41,6 +43,7 @@ def build_runtime_context(config_path: str) -> RuntimeContext:
         instruction_loader=instruction_loader,
         tool_registry=tool_registry,
         agent_factory=agent_factory,
+        case_id_resolver=CaseIdResolverTool(),
     )
 
 
@@ -78,8 +81,8 @@ class RuntimeService:
         return agents
 
     def plan(self, *, prompt: str, workspace_path: str, case_id: str | None = None) -> dict[str, object]:
-        selected_case_id = case_id or self._new_case_id()
-        session_id = self._new_session_id()
+        selected_case_id = self._context.case_id_resolver.resolve(prompt, explicit_case_id=case_id)
+        trace_id = self._new_trace_id()
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
 
         workflow_kind = route_workflow(prompt)
@@ -87,10 +90,9 @@ class RuntimeService:
         plan_summary = summarize_plan(workflow_kind)
         state: CaseState = {
             "case_id": selected_case_id,
-            "session_id": session_id,
-            "workflow_run_id": session_id,
-            "trace_id": session_id,
-            "thread_id": session_id,
+            "workflow_run_id": trace_id,
+            "trace_id": trace_id,
+            "thread_id": trace_id,
             "workflow_kind": workflow_kind,
             "execution_mode": "plan",
             "workspace_path": workspace_path,
@@ -99,10 +101,12 @@ class RuntimeService:
             "plan_steps": plan_steps,
         }
         result = build_case_workflow().invoke(state)
-        self._save_session(selected_case_id, session_id, result)
+        self._save_state(selected_case_id, trace_id, result)
         return {
             "case_id": selected_case_id,
-            "session_id": session_id,
+            "trace_id": trace_id,
+            "thread_id": trace_id,
+            "workflow_run_id": trace_id,
             "workflow_kind": workflow_kind,
             "workflow_label": WORKFLOW_LABELS[workflow_kind],
             "plan_summary": plan_summary,
@@ -117,12 +121,12 @@ class RuntimeService:
         prompt: str,
         workspace_path: str,
         case_id: str | None = None,
-        session_id: str | None = None,
+        trace_id: str | None = None,
         execution_plan: str | None = None,
     ) -> dict[str, object]:
-        session_state = self._load_session(case_id=case_id, session_id=session_id)
-        selected_case_id = case_id or str(session_state.get("case_id") or self._new_case_id())
-        current_session_id = session_id or str(session_state.get("session_id") or self._new_session_id())
+        session_state = self._load_state(case_id=case_id, trace_id=trace_id)
+        selected_case_id = case_id or str(session_state.get("case_id") or self._context.case_id_resolver.resolve(prompt))
+        current_trace_id = trace_id or str(session_state.get("trace_id") or self._new_trace_id())
 
         if not session_state:
             workflow_kind = route_workflow(prompt)
@@ -136,10 +140,9 @@ class RuntimeService:
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
         state: CaseState = {
             "case_id": selected_case_id,
-            "session_id": current_session_id,
-            "workflow_run_id": current_session_id,
-            "trace_id": str(session_state.get("trace_id") or current_session_id),
-            "thread_id": str(session_state.get("thread_id") or current_session_id),
+            "workflow_run_id": current_trace_id,
+            "trace_id": current_trace_id,
+            "thread_id": current_trace_id,
             "workflow_kind": workflow_kind,  # type: ignore[typeddict-item]
             "execution_mode": "action",
             "workspace_path": workspace_path,
@@ -149,10 +152,12 @@ class RuntimeService:
             "approval_decision": "pending",
         }
         result = build_case_workflow().invoke(state)
-        self._save_session(selected_case_id, current_session_id, result)
+        self._save_state(selected_case_id, current_trace_id, result)
         return {
             "case_id": selected_case_id,
-            "session_id": current_session_id,
+            "trace_id": current_trace_id,
+            "thread_id": current_trace_id,
+            "workflow_run_id": current_trace_id,
             "workflow_kind": workflow_kind,
             "workflow_label": WORKFLOW_LABELS[workflow_kind],
             "execution_mode": "action",
@@ -163,28 +168,32 @@ class RuntimeService:
         graph = build_case_workflow().get_graph()
         return sorted(node.id for node in graph.nodes.values())
 
-    def session_file_path(self, case_id: str, session_id: str) -> Path:
+    def state_file_path(self, case_id: str, trace_id: str) -> Path:
         case_paths = self._context.memory_store.resolve_case_paths(case_id)
         sessions_dir = case_paths.root / "sessions"
         sessions_dir.mkdir(parents=True, exist_ok=True)
-        return sessions_dir / f"{session_id}.json"
+        return sessions_dir / f"{trace_id}.json"
 
-    def _save_session(self, case_id: str, session_id: str, state: CaseState) -> None:
-        session_path = self.session_file_path(case_id, session_id)
-        session_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    def _save_state(self, case_id: str, trace_id: str, state: CaseState) -> None:
+        state_path = self.state_file_path(case_id, trace_id)
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    def _load_session(self, *, case_id: str | None, session_id: str | None) -> CaseState:
-        if not case_id or not session_id:
+    def _load_state(self, *, case_id: str | None, trace_id: str | None) -> CaseState:
+        if not trace_id:
             return {}
-        session_path = self.session_file_path(case_id, session_id)
-        if not session_path.exists():
+
+        if case_id:
+            state_path = self.state_file_path(case_id, trace_id)
+            if state_path.exists():
+                return json.loads(state_path.read_text(encoding="utf-8"))
             return {}
-        return json.loads(session_path.read_text(encoding="utf-8"))
+
+        workspace_root = self._context.config.paths.workspace_root
+        for candidate in workspace_root.glob(f"*/sessions/{trace_id}.json"):
+            if candidate.exists():
+                return json.loads(candidate.read_text(encoding="utf-8"))
+        return {}
 
     @staticmethod
-    def _new_case_id() -> str:
-        return f"CASE-{uuid4().hex[:8].upper()}"
-
-    @staticmethod
-    def _new_session_id() -> str:
-        return f"SESSION-{uuid4().hex}"
+    def _new_trace_id() -> str:
+        return f"TRACE-{uuid4().hex}"

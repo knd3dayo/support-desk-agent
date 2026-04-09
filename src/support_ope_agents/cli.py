@@ -44,7 +44,7 @@ def _cmd_action(args: argparse.Namespace) -> int:
         prompt=args.prompt,
         workspace_path=args.workspace_path,
         case_id=args.case_id,
-        session_id=args.session_id,
+        trace_id=args.trace_id or args.session_id,
         execution_plan=args.execution_plan,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -80,7 +80,8 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument("prompt", help="User request for action execution")
     action.add_argument("--workspace-path", required=True, help="Workspace path for the case")
     action.add_argument("--case-id", default=None, help="Optional case identifier")
-    action.add_argument("--session-id", default=None, help="Session identifier from plan mode")
+    action.add_argument("--trace-id", default=None, help="Trace identifier from plan mode")
+    action.add_argument("--session-id", default=None, help="Deprecated alias for trace identifier")
     action.add_argument("--execution-plan", default=None, help="Optional execution plan text")
     action.set_defaults(func=_cmd_action)
 

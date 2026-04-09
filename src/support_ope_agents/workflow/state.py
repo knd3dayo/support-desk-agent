@@ -23,7 +23,6 @@ ExecutionMode = Literal["plan", "action"]
 
 class CaseState(TypedDict, total=False):
     case_id: str
-    session_id: str
     trace_id: str
     thread_id: str
     workflow_run_id: str
