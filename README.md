@@ -19,7 +19,7 @@ Deep Agents と LangGraph を組み合わせて、カスタマーサポート業
 - [.env.example](.env.example): 秘匿設定テンプレート
 - [src/support_ope_agents](src/support_ope_agents): アプリ本体
 - [src/support_ope_agents/interfaces](src/support_ope_agents/interfaces): API/MCP インターフェース層
-- [instructions](instructions): 共通指示と役割別指示
+- [.instructions](.instructions): 共通指示と役割別指示の既定ディレクトリ
 
 ## 起動
 
@@ -32,16 +32,16 @@ python -m support_ope_agents.cli print-workflow --config config.yml
 ケース単位の作業ディレクトリを初期化します。
 
 ```bash
-python -m support_ope_agents.cli init-case --prompt "CASE-001 の調査を開始してください" --config config.yml
+python -m support_ope_agents.cli init-case --prompt "CASE-001 の調査を開始してください" --workspace-path /data/support/case-001 --config config.yml
 ```
 
-外部ワークスペースを紐付けて初期化することもできます。
+指定した workspace が、そのケースの実体ディレクトリとして使われます。`.memory`、`.artifacts`、`.evidence`、`traces` などの管理用ファイルもこの workspace 配下に作られます。
 
 ```bash
 python -m support_ope_agents.cli init-case --prompt "CASE-002 の調査を開始してください" --config config.yml --workspace-path /data/support/case-002
 ```
 
-`case_id` を明示的に渡す必要はなく、入力文から解決を試み、見つからなければ自動採番します。
+`case_id` を明示的に渡す必要はなく、入力文から解決を試み、見つからなければ自動採番します。workspace 配下には `.support-ope-case-id` が作成され、次回以降はそのファイルから同じ case_id を再解決できます。
 
 plan モードでは、SuperVisorAgent が問い合わせ内容から workflow をルーティングし、同一 trace_id で action に引き継げる実行計画を返します。
 

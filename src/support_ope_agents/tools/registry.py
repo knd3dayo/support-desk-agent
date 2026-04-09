@@ -14,7 +14,6 @@ from support_ope_agents.agents.roles import (
     RESOLUTION_AGENT,
     SUPERVISOR_AGENT,
     TICKET_UPDATE_AGENT,
-    canonical_role,
 )
 from support_ope_agents.config.models import AppConfig, BuiltinToolBinding, DisabledToolBinding, McpToolBinding
 
@@ -60,11 +59,10 @@ class ToolRegistry:
         self._validate_overrides()
 
     def get_tools(self, role: str) -> list[ToolSpec]:
-        normalized_role = canonical_role(role)
-        base_tools = [*self._builtin_tools.values(), *self._role_tools.get(normalized_role, [])]
+        base_tools = [*self._builtin_tools.values(), *self._role_tools.get(role, [])]
         resolved_tools: list[ToolSpec] = []
         for tool in base_tools:
-            resolved = self._resolve_tool_override(normalized_role, tool)
+            resolved = self._resolve_tool_override(role, tool)
             if resolved is not None:
                 resolved_tools.append(resolved)
         return resolved_tools
@@ -133,13 +131,12 @@ class ToolRegistry:
 
     def _normalize_overrides(self) -> dict[str, dict[str, Any]]:
         normalized: dict[str, dict[str, Any]] = {}
-        for raw_role, overrides in self._config.tools.overrides.items():
-            canonical = canonical_role(raw_role)
-            role_overrides = normalized.setdefault(canonical, {})
+        for role, overrides in self._config.tools.overrides.items():
+            role_overrides = normalized.setdefault(role, {})
             for logical_tool_name, binding in overrides.items():
                 if logical_tool_name in role_overrides:
                     raise ToolConfigurationError(
-                        f"tools.overrides defines duplicate logical tool '{logical_tool_name}' for role '{canonical}'"
+                        f"tools.overrides defines duplicate logical tool '{logical_tool_name}' for role '{role}'"
                     )
                 role_overrides[logical_tool_name] = binding
         return normalized

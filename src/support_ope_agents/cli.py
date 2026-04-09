@@ -13,7 +13,7 @@ def _build_service(config_path: str) -> RuntimeService:
 
 def _cmd_init_case(args: argparse.Namespace) -> int:
     service = _build_service(args.config)
-    resolved_case_id = service.resolve_case_id(prompt=args.prompt)
+    resolved_case_id = service.resolve_case_id(prompt=args.prompt, workspace_path=args.workspace_path)
     print(service.initialize_case(resolved_case_id, workspace_path=args.workspace_path))
     return 0
 
@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_case = subparsers.add_parser("init-case", help="Initialize case workspace", parents=[common])
     init_case.add_argument("--prompt", required=True, help="User input used to resolve case_id")
-    init_case.add_argument("--workspace-path", default=None, help="Optional external workspace path to register")
+    init_case.add_argument("--workspace-path", required=True, help="Workspace path for the case")
     init_case.set_defaults(func=_cmd_init_case)
 
     print_workflow = subparsers.add_parser("print-workflow", help="Print workflow diagram", parents=[common])

@@ -132,7 +132,7 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 - shared/summary.md: 圧縮済みサマリ
 - traces/<trace_id>.json: plan/action 継続用の状態保存
 - agents/<agent_name>/working.md: 各エージェントの作業ログ
-- instructions/<agent_name>.md: ケース固有の追加指示
+- .instructions/<agent_name>.md: 既定の役割別指示
 
 共有対象は事実、進捗、次アクションに限定する。試行錯誤の生ログは agent 別 working.md に残し、必要に応じて summary.md に圧縮転記する。
 
@@ -149,13 +149,12 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 
 ## 5. 指示ファイル設計
 
-指示ファイルは 3 層構成とする。
+指示ファイルは 2 層構成とする。
 
-- 共通指示: instructions/common.md
-- 役割別指示: instructions/<role>.md
-- ケース固有上書き: work/cases/<case_id>/overrides/<role>.md
+- 共通指示: .instructions/common.md
+- 役割別指示: .instructions/<role>.md
 
-読み込み時は上から順に結合し、後勝ちで追加指示を適用する。
+読み込み時は共通指示と役割別指示を結合して適用する。
 
 ## 6. ツール設計
 

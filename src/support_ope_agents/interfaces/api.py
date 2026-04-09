@@ -17,7 +17,7 @@ def create_app(config_path: str = "config.yml") -> FastAPI:
 
     @app.post("/init-case", response_model=InitCaseResponse)
     def init_case(request: InitCaseRequest) -> InitCaseResponse:
-        case_id = service.resolve_case_id(prompt=request.prompt)
+        case_id = service.resolve_case_id(prompt=request.prompt, workspace_path=request.workspace_path)
         case_path = service.initialize_case(case_id, workspace_path=request.workspace_path)
         return InitCaseResponse(case_id=case_id, case_path=str(case_path))
 

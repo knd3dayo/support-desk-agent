@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from uuid import uuid4
+
+
+CASE_ID_FILENAME = ".support-ope-case-id"
 
 
 class CaseIdResolverTool:
@@ -12,9 +16,16 @@ class CaseIdResolverTool:
             re.compile(r"(?:問い合わせ番号|ケースID|case_id)\s*[:：]\s*([A-Za-z0-9_-]+)", re.IGNORECASE),
         )
 
-    def resolve(self, prompt: str, explicit_case_id: str | None = None) -> str:
+    def resolve(self, prompt: str, explicit_case_id: str | None = None, workspace_path: str | None = None) -> str:
         if explicit_case_id:
             return explicit_case_id
+
+        if workspace_path:
+            marker_path = Path(workspace_path).expanduser().resolve() / CASE_ID_FILENAME
+            if marker_path.exists():
+                value = marker_path.read_text(encoding="utf-8").strip()
+                if value:
+                    return value.upper()
 
         for pattern in self._patterns:
             match = pattern.search(prompt)

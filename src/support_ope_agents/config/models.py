@@ -6,25 +6,20 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-class AppSettings(BaseModel):
-    name: str
-    environment: str = "local"
-
-
 class LlmSettings(BaseModel):
     provider: str
     model: str
     api_key: str
 
 
-class PathSettings(BaseModel):
-    workspace_root: Path
-    instructions_root: Path
-    shared_memory_subdir: str = "memory"
-    instruction_override_subdir: str = "overrides"
-    artifacts_subdir: str = "artifacts"
-    evidence_subdir: str = "evidence"
-    workspace_manifest_filename: str = "workspace.json"
+class ConfigPathSettings(BaseModel):
+    instructions_path: Path
+
+
+class DataPathSettings(BaseModel):
+    shared_memory_subdir: str = ".memory"
+    artifacts_subdir: str = ".artifacts"
+    evidence_subdir: str = ".evidence"
 
 
 class WorkflowSettings(BaseModel):
@@ -94,10 +89,10 @@ class AgentSettings(BaseModel):
 
 
 class AppConfig(BaseModel):
-    app: AppSettings
     llm: LlmSettings
-    paths: PathSettings
-    workflow: WorkflowSettings
+    config_paths: ConfigPathSettings
+    data_paths: DataPathSettings
+    workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)
     tools: ToolSettings = Field(default_factory=ToolSettings)
     interfaces: InterfaceSettings = Field(default_factory=InterfaceSettings)

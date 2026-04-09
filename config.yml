@@ -1,72 +1,163 @@
 support_ope_agents:
-  app:
-    name: support-ope-agents
-    environment: local
+  # LLM の接続設定です。
+  # api_key は YAML に直書きせず、環境変数または .env から読み込む前提です。
   llm:
+    # 使用する LLM プロバイダです。
     provider: openai
+
+    # 使用するモデル名です。
     model: gpt-4.1
+
+    # 環境変数参照です。実際の値は OPENAI_API_KEY から読み込みます。
     api_key: os.environ/OPENAI_API_KEY
-  paths:
-    workspace_root: ./work/cases
-    instructions_root: ./instructions
-    shared_memory_subdir: memory
-    instruction_override_subdir: overrides
-    artifacts_subdir: artifacts
-    evidence_subdir: evidence
-    workspace_manifest_filename: workspace.json
-  workflow:
-    max_context_chars: 12000
-    compress_threshold_chars: 9000
-    approval_node: wait_for_approval
-    auto_compress: true
-    max_summary_chars: 4000
-  tracing:
-    enabled: false
-    provider: langsmith
-    project_name: support-ope-agents
-  interfaces:
-    enable_cli: true
-    enable_api: false
-    enable_mcp: false
-    api_host: 127.0.0.1
-    api_port: 8000
-    mcp_transport: streamable-http
-  tools:
-    enable_zendesk: false
-    enable_redmine: false
-    enable_knowledge_base: false
-    enable_python_analysis: true
-    mcp_manifest_path:
-    mcp_timeout_seconds: 30
-    download_timeout_seconds: 30
-    analysis_max_chars: 16000
-    libreoffice_command:
-    overrides: {}
-  agents:
-    SuperVisorAgent:
-      enabled: true
-      auto_compress: true
-    IntakeAgent:
-      enabled: true
-      auto_compress: true
-    LogAnalyzerAgent:
-      enabled: true
-      auto_compress: true
-    KnowledgeRetrieverAgent:
-      enabled: true
-      auto_compress: true
-    ResolutionAgent:
-      enabled: true
-      auto_compress: true
-    DraftWriterAgent:
-      enabled: true
-      auto_compress: true
-    ComplianceReviewerAgent:
-      enabled: true
-      auto_compress: true
-    ApprovalAgent:
-      enabled: true
-      auto_compress: false
-    TicketUpdateAgent:
-      enabled: true
-      auto_compress: false
+
+  # 静的な設定ファイルや指示ファイルの場所です。
+  # 既定値のままでよければ未指定で構いません。
+  # config_paths:
+  #   # 共通指示や各 Agent の指示ファイルを置くディレクトリです。
+  #   # 必要に応じて、この配下の各 Agent 用 Markdown を直接編集します。
+  #   instructions_path: ./.instructions
+
+  # ケース管理データや実行時生成物の保存先です。
+  # 既定値のままでよければ未指定で構いません。
+  # data_paths:
+  #   # ケース用 workspace 配下に作る共有メモリディレクトリ名です。
+  #   shared_memory_subdir: .memory
+  #
+  #   # ケース用 workspace 配下に作る成果物ディレクトリ名です。
+  #   artifacts_subdir: .artifacts
+  #
+  #   # ケース用 workspace 配下に作る証跡ディレクトリ名です。
+  #   evidence_subdir: .evidence
+
+  # ワークフロー実行時のコンテキスト圧縮や承認ノードの設定です。
+  # 通常は既定値のままで構いません。
+  # workflow:
+  #   # 圧縮前に扱うコンテキスト最大文字数です。
+  #   max_context_chars: 12000
+  #
+  #   # この文字数を超えると圧縮を検討します。
+  #   compress_threshold_chars: 9000
+  #
+  #   # 承認待ちに入るノード名です。
+  #   approval_node: wait_for_approval
+  #
+  #   # true の場合は必要時に自動圧縮します。
+  #   auto_compress: true
+  #
+  #   # 圧縮サマリの最大文字数です。
+  #   max_summary_chars: 4000
+
+  # トレース基盤の設定です。
+  # トレースを使わない場合は未指定で構いません。
+  # tracing:
+  #   # true にするとトレースを有効化します。
+  #   enabled: false
+  #
+  #   # トレース送信先プロバイダです。
+  #   provider: langsmith
+  #
+  #   # トレースのプロジェクト名です。
+  #   project_name: support-ope-agents
+
+  # 外部インターフェースの有効化設定です。
+  # CLI 以外を使わない場合は未指定で構いません。
+  # interfaces:
+  #   # CLI を有効化します。
+  #   enable_cli: true
+  #
+  #   # API を有効化します。
+  #   enable_api: false
+  #
+  #   # MCP サーバー公開を有効化します。
+  #   enable_mcp: false
+  #
+  #   # API の待受ホストです。
+  #   api_host: 127.0.0.1
+  #
+  #   # API の待受ポートです。
+  #   api_port: 8000
+  #
+  #   # MCP のトランスポート種別です。
+  #   mcp_transport: streamable-http
+
+  # ツールの有効化や外部 MCP への差し替え設定です。
+  # 通常は未指定で構いません。
+  # tools:
+  #   # Zendesk 連携ツールを有効化します。
+  #   enable_zendesk: false
+  #
+  #   # Redmine 連携ツールを有効化します。
+  #   enable_redmine: false
+  #
+  #   # ナレッジベース連携ツールを有効化します。
+  #   enable_knowledge_base: false
+  #
+  #   # Python を使う解析ツールを有効化します。
+  #   enable_python_analysis: true
+  #
+  #   # 外部 MCP 定義ファイルへのパスです。
+  #   mcp_manifest_path:
+  #
+  #   # MCP 呼び出しの既定タイムアウト秒です。
+  #   mcp_timeout_seconds: 30
+  #
+  #   # URL ダウンロード系ツールの既定タイムアウト秒です。
+  #   download_timeout_seconds: 30
+  #
+  #   # 解析前に各ファイルから取り出す最大文字数です。
+  #   analysis_max_chars: 16000
+  #
+  #   # Office 変換に使う LibreOffice 実行ファイルのパスです。
+  #   libreoffice_command:
+  #
+  #   # 論理ツール名ごとの上書き設定です。
+  #   overrides: {}
+
+  # Agent ごとの個別設定です。
+  # 既定値のままでよければ未指定で構いません。
+  # agents:
+  #   # スーパーバイザー Agent の設定です。
+  #   SuperVisorAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # 受付 Agent の設定です。
+  #   IntakeAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # ログ解析 Agent の設定です。
+  #   LogAnalyzerAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # ナレッジ検索 Agent の設定です。
+  #   KnowledgeRetrieverAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # 解決方針作成 Agent の設定です。
+  #   ResolutionAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # ドラフト作成 Agent の設定です。
+  #   DraftWriterAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # コンプライアンス確認 Agent の設定です。
+  #   ComplianceReviewerAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # 承認 Agent の設定です。
+  #   ApprovalAgent:
+  #     enabled: true
+  #     auto_compress: false
+  #
+  #   # 外部チケット更新 Agent の設定です。
+  #   TicketUpdateAgent:
+  #     enabled: true
+  #     auto_compress: false

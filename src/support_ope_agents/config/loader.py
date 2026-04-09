@@ -41,10 +41,11 @@ def load_config(config_path: str | Path) -> AppConfig:
     resolved = _resolve_env_refs(section)
     base_dir = path.parent
 
-    paths = resolved.get("paths", {})
-    paths["workspace_root"] = _resolve_path(base_dir, paths.get("workspace_root", "./work/cases"))
-    paths["instructions_root"] = _resolve_path(base_dir, paths.get("instructions_root", "./instructions"))
-    resolved["paths"] = paths
+    config_paths = resolved.get("config_paths", {})
+    config_paths["instructions_path"] = _resolve_path(base_dir, config_paths.get("instructions_path", "./.instructions"))
+    resolved["config_paths"] = config_paths
+
+    resolved["data_paths"] = resolved.get("data_paths", {})
 
     tools = resolved.get("tools", {})
     manifest_path = tools.get("mcp_manifest_path")

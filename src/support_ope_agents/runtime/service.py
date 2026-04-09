@@ -58,14 +58,24 @@ class RuntimeService:
     def context(self) -> RuntimeContext:
         return self._context
 
-    def resolve_case_id(self, *, prompt: str | None = None, case_id: str | None = None) -> str:
-        return self._context.case_id_resolver.resolve(prompt or "", explicit_case_id=case_id)
+    def resolve_case_id(
+        self,
+        *,
+        prompt: str | None = None,
+        case_id: str | None = None,
+        workspace_path: str | None = None,
+    ) -> str:
+        return self._context.case_id_resolver.resolve(
+            prompt or "",
+            explicit_case_id=case_id,
+            workspace_path=workspace_path,
+        )
 
-    def initialize_case(self, case_id: str, workspace_path: str | None = None) -> Path:
+    def initialize_case(self, case_id: str, workspace_path: str) -> Path:
         case_paths = self._context.memory_store.initialize_case(case_id, workspace_path=workspace_path)
         for definition in self._context.agent_factory.build_default_definitions():
-            self._context.memory_store.ensure_agent_working_memory(case_id, definition.role)
-            self._context.instruction_loader.ensure_override_file(case_id, definition.role)
+            self._context.memory_store.ensure_agent_working_memory(case_id, definition.role, workspace_path=workspace_path)
+            self._context.instruction_loader.ensure_instruction_file(case_id, definition.role)
         return case_paths.root
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:
@@ -88,7 +98,7 @@ class RuntimeService:
         return agents
 
     def plan(self, *, prompt: str, workspace_path: str, case_id: str | None = None) -> dict[str, object]:
-        selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id)
+        selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id, workspace_path=workspace_path)
         trace_id = self._new_trace_id()
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
 
@@ -131,8 +141,9 @@ class RuntimeService:
         trace_id: str | None = None,
         execution_plan: str | None = None,
     ) -> dict[str, object]:
-        saved_state = self._load_state(case_id=case_id, trace_id=trace_id)
-        selected_case_id = case_id or str(saved_state.get("case_id") or self.resolve_case_id(prompt=prompt))
+        resolved_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id, workspace_path=workspace_path)
+        saved_state = self._load_state(case_id=resolved_case_id, trace_id=trace_id, workspace_path=workspace_path)
+        selected_case_id = str(saved_state.get("case_id") or resolved_case_id)
         current_trace_id = trace_id or str(saved_state.get("trace_id") or self._new_trace_id())
 
         if not saved_state:
@@ -175,52 +186,37 @@ class RuntimeService:
         graph = build_case_workflow().get_graph()
         return sorted(node.id for node in graph.nodes.values())
 
-    def state_file_path(self, case_id: str, trace_id: str) -> Path:
-        case_paths = self._context.memory_store.resolve_case_paths(case_id)
+    def state_file_path(self, case_id: str, trace_id: str, workspace_path: str) -> Path:
+        case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
         state_dir = case_paths.root / "traces"
         state_dir.mkdir(parents=True, exist_ok=True)
         return state_dir / f"{trace_id}.json"
 
     def _save_state(self, case_id: str, trace_id: str, state: CaseState) -> None:
-        state_path = self.state_file_path(case_id, trace_id)
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        if not workspace_path:
+            raise ValueError("workspace_path is required to save state")
+        state_path = self.state_file_path(case_id, trace_id, workspace_path=workspace_path)
         normalized_state = self._normalize_state_ids(state, trace_id=trace_id)
         state_path.write_text(json.dumps(normalized_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    def _load_state(self, *, case_id: str | None, trace_id: str | None) -> CaseState:
+    def _load_state(self, *, case_id: str | None, trace_id: str | None, workspace_path: str | None = None) -> CaseState:
         if not trace_id:
             return {}
 
+        if not workspace_path:
+            return {}
+
         if case_id:
-            state_path = self.state_file_path(case_id, trace_id)
+            state_path = self.state_file_path(case_id, trace_id, workspace_path=workspace_path)
             if state_path.exists():
                 loaded_state = json.loads(state_path.read_text(encoding="utf-8"))
                 return self._normalize_state_ids(loaded_state, trace_id=trace_id)
             return {}
-
-        workspace_root = self._context.config.paths.workspace_root
-        for candidate in workspace_root.glob(f"*/traces/{trace_id}.json"):
-            if candidate.exists():
-                loaded_state = json.loads(candidate.read_text(encoding="utf-8"))
-                return self._normalize_state_ids(loaded_state, trace_id=trace_id)
         return {}
 
     def _migrate_legacy_traces(self) -> None:
-        workspace_root = self._context.config.paths.workspace_root
-        for legacy_dir in workspace_root.glob("*/sessions"):
-            case_root = legacy_dir.parent
-            trace_dir = case_root / "traces"
-            trace_dir.mkdir(parents=True, exist_ok=True)
-            for legacy_file in legacy_dir.glob("*.json"):
-                loaded_state = json.loads(legacy_file.read_text(encoding="utf-8"))
-                normalized_trace_id = self._normalize_trace_id(
-                    str(loaded_state.get("trace_id") or loaded_state.get("session_id") or legacy_file.stem)
-                )
-                normalized_state = self._normalize_state_ids(loaded_state, trace_id=normalized_trace_id)
-                trace_file = trace_dir / f"{normalized_trace_id}.json"
-                trace_file.write_text(json.dumps(normalized_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                legacy_file.unlink()
-            if not any(legacy_dir.iterdir()):
-                legacy_dir.rmdir()
+        return
 
     def _normalize_state_ids(self, state: dict[str, object], *, trace_id: str | None = None) -> CaseState:
         normalized_trace_id = self._normalize_trace_id(

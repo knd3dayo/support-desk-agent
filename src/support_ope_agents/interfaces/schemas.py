@@ -23,7 +23,7 @@ class DescribeAgentsRequest(BaseModel):
 
 class InitCaseRequest(BaseModel):
     prompt: str
-    workspace_path: str | None = None
+    workspace_path: str
 
 
 class RuntimeEnvelope(BaseModel):
