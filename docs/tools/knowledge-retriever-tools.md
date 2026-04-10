@@ -38,3 +38,49 @@
 - 明示指定がなければ RuntimeService が trace_id から既定値を生成する
 - MCP 実装は、少なくとも ticket_id に対応する要約テキスト、もしくは JSON 文字列を返す
 - handler が旧シグネチャで `ticket_id` を受け取れない場合でも既定実装は後方互換で呼べるが、新規 MCP 実装では `ticket_id` 対応を前提とする
+
+### 6.1 request 例
+
+external_ticket / internal_ticket に対応する MCP ツール呼び出しは、概念上は次の入力を想定する。
+
+```json
+{
+	"ticket_id": "EXT-TRACE-0f4c9c3d"
+}
+```
+
+```json
+{
+	"ticket_id": "INT-A-02-02"
+}
+```
+
+### 6.2 response 例
+
+最小限の応答は文字列でもよいが、構造化できる場合は次のような JSON を推奨する。
+
+```json
+{
+	"ticket_id": "EXT-A-02-02",
+	"status": "open",
+	"summary": "ai-platform-poc の resume targeted test が circular import で失敗する。",
+	"details": [
+		"pytest collection error で停止する",
+		"ai_chat_util.workflow.chat_client と agent_client の相互 import が疑わしい"
+	]
+}
+```
+
+```json
+{
+	"ticket_id": "INT-A-02-02",
+	"status": "investigating",
+	"summary": "ai-chat-util チームへ circular import の調査依頼を実施済み。",
+	"details": [
+		"agent_client.py の top-level import を遅延化する方針",
+		"resume targeted test の rerun 回復を確認予定"
+	]
+}
+```
+
+既定実装や後方互換 handler は文字列応答でもよいが、MCP 連携では `ticket_id` を echo した JSON を返せると、Supervisor や後続の監査で扱いやすい。

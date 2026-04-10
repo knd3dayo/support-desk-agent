@@ -1,0 +1,73 @@
+support_ope_agents:
+  llm:
+    provider: openai
+    model: gpt-4.1
+    api_key: os.environ/OPENAI_API_KEY
+
+  knowledge_retrieval:
+    document_sources:
+      - name: ai-platform-poc
+        description: ai-platform-poc の技術検証資料と設計資料
+        path: /home/user/source/repos/ai-platform-poc
+      - name: ai-chat-util
+        description: ai-chat-util のソースコードと関連実装
+        path: /home/user/source/repos/ai-chat-util
+      - name: langchain-docs
+        description: LangChain のローカルドキュメント
+        path: /home/user/oss/langchain-ai/langchain
+
+    external_ticket:
+      description: ai-platform-poc チームの顧客向け検証問い合わせ
+      mcp_server: support-ticket-mcp
+      mcp_tool: get_external_ticket
+
+    internal_ticket:
+      description: ai-platform-poc チームの内部管理チケット
+      mcp_server: support-ticket-mcp
+      mcp_tool: get_internal_ticket
+
+  tools:
+    enable_python_analysis: true
+    # ai-chat-util 側に manifest を配置している場合は有効化する
+    # mcp_manifest_path: /home/user/source/repos/ai-chat-util/app/ai-chat-util-mcp.json
+    # overrides:
+    #   KnowledgeRetrieverAgent:
+    #     external_ticket:
+    #       type: mcp
+    #       server: support-ticket-mcp
+    #       tool: get_external_ticket
+    #     internal_ticket:
+    #       type: mcp
+    #       server: support-ticket-mcp
+    #       tool: get_internal_ticket
+
+  interfaces:
+    enable_cli: true
+    enable_api: false
+    enable_mcp: false
+
+  agents:
+    SuperVisorAgent:
+      enabled: true
+      auto_compress: true
+    IntakeAgent:
+      enabled: true
+      auto_compress: true
+    LogAnalyzerAgent:
+      enabled: true
+      auto_compress: true
+    KnowledgeRetrieverAgent:
+      enabled: true
+      auto_compress: true
+    DraftWriterAgent:
+      enabled: true
+      auto_compress: true
+    ComplianceReviewerAgent:
+      enabled: true
+      auto_compress: true
+    BackSupportEscalationAgent:
+      enabled: true
+      auto_compress: true
+    BackSupportInquiryWriterAgent:
+      enabled: true
+      auto_compress: true
