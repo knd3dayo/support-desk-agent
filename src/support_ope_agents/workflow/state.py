@@ -49,6 +49,9 @@ class CaseState(TypedDict, total=False):
     investigation_summary: str
     log_analysis_summary: str
     log_analysis_file: str
+    knowledge_retrieval_summary: str
+    knowledge_retrieval_results: list[dict[str, object]]
+    knowledge_retrieval_adopted_sources: list[str]
     escalation_required: bool
     escalation_reason: str
     escalation_summary: str

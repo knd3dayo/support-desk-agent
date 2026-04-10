@@ -48,6 +48,13 @@ def load_config(config_path: str | Path) -> AppConfig:
 
     resolved["data_paths"] = resolved.get("data_paths", {})
 
+    knowledge_retrieval = resolved.get("knowledge_retrieval", {})
+    document_sources = knowledge_retrieval.get("document_sources", [])
+    for source in document_sources:
+        if isinstance(source, dict) and source.get("path"):
+            source["path"] = _resolve_path(base_dir, source["path"])
+    resolved["knowledge_retrieval"] = knowledge_retrieval
+
     tools = resolved.get("tools", {})
     manifest_path = tools.get("mcp_manifest_path")
     if manifest_path:

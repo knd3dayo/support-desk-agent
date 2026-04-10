@@ -4,12 +4,14 @@
 
 KnowledgeRetrieverAgent は既知エラー、過去チケット、ナレッジベースから関連情報を探索する専門エージェントである。
 LogAnalyzerAgent が返した兆候や IntakeAgent の分類結果と照合し、根拠付きの候補を SuperVisorAgent へ返す。
+文書系ナレッジは [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の knowledge_retrieval.document_sources に定義した名称、説明、格納先パスに従って管理し、DeepAgents backend のファイルシステム面から参照する方針とする。
+また、過去チケットは external_ticket と internal_ticket に分け、各々 [config.yml](/home/user/source/repos/support-ope-agents/config.yml) で指定した MCP ツールを用いて取得する方針とする。
 
 ## 2. 呼び出し元 / 呼び出し先
 
 - 呼び出し元: SuperVisorAgent の investigation フェーズ
 - 呼び出し先: 現時点ではなし。結果は SuperVisorAgent に返す
-- 参照先: shared/context.md、shared/progress.md、KB、過去チケット、agent working memory
+- 参照先: shared/context.md、shared/progress.md、config 定義済み文書群、external_ticket、internal_ticket、agent working memory
 
 ## 3. 入力
 
@@ -38,11 +40,14 @@ KnowledgeRetrieverAgent の使用ツール詳細は次を参照する。
 1. 検索観点整理
    Intake / LogAnalyzer の結果から検索語と比較軸を決める。
 2. KB・履歴探索
-   既知エラー、仕様文書、過去チケットを横断して候補を集める。
+   config で定義した document_sources を DeepAgents backend から参照し、external_ticket と internal_ticket も分けて照会して候補を集める。
 3. 根拠評価
    類似度、再現条件、影響範囲の一致度で候補を絞る。
 4. 要約化
    SuperVisorAgent が採用判断しやすい形で要約して返す。
+
+返却結果は source 単位で構造化し、少なくとも source_name、summary、matched_paths、evidence を含める。
+Supervisor はこの結果から、どの document_source を根拠として採用したかを判断する。
 
 ## 7. 共有メモリ更新
 
@@ -56,11 +61,15 @@ KnowledgeRetrieverAgent の使用ツール詳細は次を参照する。
 
 ## 9. 実装方針
 
-- 当面は DeepAgent 想定の metadata を維持しつつ、検索系 tool の具体化を後続で進める
+- document_sources は config.yml で名称、説明、格納先パスを管理し、DeepAgents backend ではそれらの path をルート配下へ mount または route して read / grep / glob 対象に含める
+- document_sources の backend 上の仮想パスは /knowledge/<source_name>/ を標準とし、たとえば python312_manual は /knowledge/python312_manual/、denodo93_manual は /knowledge/denodo93_manual/ として見せる
+- external_ticket と internal_ticket は論理ツールを分け、各々 config で指定した MCP ツールへ接続する方針とする
+- external_ticket と internal_ticket は tools.overrides に明示指定がなければ、knowledge_retrieval.external_ticket / internal_ticket で指定した mcp_server / mcp_tool から ToolRegistry が自動で MCP binding を組み立てる
+- default 実装では external_ticket / internal_ticket が利用できない場合、情報を取得できない旨を返す
 - LogAnalyzerAgent の出力と競合しないよう、KnowledgeRetrieverAgent は「既知情報との照合」に責務を寄せる
 
 ## 10. 未決事項
 
-- KB と過去チケットの優先順位付け
+- document_sources の選択順序と検索優先順位
 - 根拠スコアを構造化データとして保持するかどうか
-- 外部検索系 tool の MCP 化方針
+- DeepAgents backend で external_ticket / internal_ticket 結果を一時ファイルへ投影するかどうか

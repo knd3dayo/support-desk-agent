@@ -77,6 +77,38 @@ support_ope_agents:
   #         - 発生条件を示す追加ログ
   #         - 期待動作と実際の動作差分
 
+  # KnowledgeRetrieverAgent が参照する文書群とチケットソースの設定です。
+  # 通常はここで文書名称、説明、格納先パスを定義し、DeepAgents backend から参照します。
+  # knowledge_retrieval:
+  #   document_sources:
+  #     - name: python312_manual
+  #       description: Python 3.12 の公式仕様・標準ライブラリ資料
+  #       path: ./docsources/python312_manual
+  #     - name: denodo93_manual
+  #       description: Denodo 9.3 の製品マニュアル
+  #       path: ./docsources/denodo93_manual
+  #     - name: growi_knowledge
+  #       description: 社内 GROWI にエクスポートした運用ナレッジ
+  #       path: ./docsources/growi_knowledge
+  #     - name: ai-platform-poc
+  #       description: 生成AI基盤のアーキテクチャ検討資料
+  #       path: /home/user/source/repos/ai-platform-poc
+  #   # DeepAgents backend では各 source を /knowledge/<name>/ 配下へ mount または route して参照します。
+  #
+  #   # external_ticket は顧客向けケース管理システムを指します。
+  #   # tools.overrides に明示設定がなければ、この mcp_server / mcp_tool から自動で logical tool binding を組み立てます。
+  #   external_ticket:
+  #     description: 顧客向けケース管理システム
+  #     mcp_server: support-ticket-mcp
+  #     mcp_tool: get_external_ticket
+  #
+  #   # internal_ticket は内部管理用チケットを指します。
+  #   # tools.overrides に明示設定がなければ、この mcp_server / mcp_tool から自動で logical tool binding を組み立てます。
+  #   internal_ticket:
+  #     description: 内部管理用チケットシステム
+  #     mcp_server: support-ticket-mcp
+  #     mcp_tool: get_internal_ticket
+
   # トレース基盤の設定です。
   # トレースを使わない場合は未指定で構いません。
   # tracing:

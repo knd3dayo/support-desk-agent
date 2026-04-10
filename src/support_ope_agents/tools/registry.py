@@ -20,6 +20,7 @@ from .builtin_tools import build_builtin_tools
 from .default_classify_ticket import build_default_classify_ticket_tool
 from .default_pii_mask import build_default_pii_mask_tool
 from .default_read_shared_memory import build_default_read_shared_memory_tool
+from .default_search_documents import build_default_search_documents_tool
 from .default_write_shared_memory import build_default_write_shared_memory_tool
 from .mcp_overrides import McpToolOverrideResolver, ToolConfigurationError
 
@@ -39,6 +40,13 @@ class ToolSpec:
 def _not_implemented_tool(name: str) -> ToolCallable:
     def _handler(*_: object, **__: object) -> str:
         return f"Tool '{name}' is not implemented yet."
+
+    return _handler
+
+
+def _unavailable_tool(message: str) -> ToolCallable:
+    def _handler(*_: object, **__: object) -> str:
+        return message
 
     return _handler
 
@@ -137,8 +145,27 @@ class ToolRegistry:
                 ToolSpec("write_working_memory", "Write agent working memory", _not_implemented_tool("write_working_memory")),
             ],
             KNOWLEDGE_RETRIEVER_AGENT: [
-                ToolSpec("search_kb", "Search knowledge base", _not_implemented_tool("search_kb")),
-                ToolSpec("search_ticket_history", "Search historical tickets", _not_implemented_tool("search_ticket_history")),
+                ToolSpec(
+                    "search_documents",
+                    "Search configured manuals and knowledge documents via DeepAgents backend",
+                    build_default_search_documents_tool(self._config),
+                    provider="builtin",
+                    target="configured-document-sources",
+                ),
+                ToolSpec(
+                    "external_ticket",
+                    "Fetch customer-facing external ticket information",
+                    _unavailable_tool(
+                        "external_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.external_ticket in config.yml."
+                    ),
+                ),
+                ToolSpec(
+                    "internal_ticket",
+                    "Fetch internal management ticket information",
+                    _unavailable_tool(
+                        "internal_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.internal_ticket in config.yml."
+                    ),
+                ),
                 ToolSpec("write_working_memory", "Write agent working memory", _not_implemented_tool("write_working_memory")),
             ],
             DRAFT_WRITER_AGENT: [
@@ -196,7 +223,26 @@ class ToolRegistry:
                         f"tools.overrides defines duplicate logical tool '{logical_tool_name}' for role '{role}'"
                     )
                 role_overrides[logical_tool_name] = binding
+        self._inject_knowledge_retrieval_overrides(normalized)
         return normalized
+
+    def _inject_knowledge_retrieval_overrides(self, normalized: dict[str, dict[str, Any]]) -> None:
+        role_overrides = normalized.setdefault(KNOWLEDGE_RETRIEVER_AGENT, {})
+        knowledge_retrieval = self._config.knowledge_retrieval
+        configured_ticket_tools = {
+            "external_ticket": knowledge_retrieval.external_ticket,
+            "internal_ticket": knowledge_retrieval.internal_ticket,
+        }
+
+        for logical_tool_name, ticket_settings in configured_ticket_tools.items():
+            if logical_tool_name in role_overrides:
+                continue
+            if not ticket_settings.mcp_server or not ticket_settings.mcp_tool:
+                continue
+            role_overrides[logical_tool_name] = McpToolBinding(
+                server=ticket_settings.mcp_server,
+                tool=ticket_settings.mcp_tool,
+            )
 
     def _validate_overrides(self) -> None:
         if not self._config.tools.has_overrides():

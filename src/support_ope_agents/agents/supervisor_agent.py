@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState, WorkflowKind
     from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
     from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
+    from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
     from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 
 
@@ -25,6 +26,7 @@ class SupervisorPhaseExecutor:
     read_shared_memory_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
     log_analyzer_executor: "LogAnalyzerPhaseExecutor | None" = None
+    knowledge_retriever_executor: "KnowledgeRetrieverPhaseExecutor | None" = None
     back_support_escalation_executor: "BackSupportEscalationPhaseExecutor | None" = None
     back_support_inquiry_writer_executor: "BackSupportInquiryWriterPhaseExecutor | None" = None
     escalation_settings: EscalationSettings = field(default_factory=EscalationSettings)
@@ -288,6 +290,9 @@ class SupervisorPhaseExecutor:
         planned_child_agents = self._planned_child_agents(effective_workflow_kind)
         log_analysis_summary = ""
         log_analysis_file = ""
+        knowledge_retrieval_summary = ""
+        knowledge_retrieval_results: list[dict[str, object]] = []
+        knowledge_retrieval_adopted_sources: list[str] = []
         if self.log_analyzer_executor is not None and "LogAnalyzerAgent" in planned_child_agents:
             log_analysis = self.log_analyzer_executor.execute(update)
             log_analysis_summary = str(log_analysis.get("summary") or "")
@@ -296,6 +301,20 @@ class SupervisorPhaseExecutor:
                 update["log_analysis_summary"] = log_analysis_summary
             if log_analysis_file:
                 update["log_analysis_file"] = log_analysis_file
+        if self.knowledge_retriever_executor is not None and "KnowledgeRetrieverAgent" in planned_child_agents:
+            knowledge_result = self.knowledge_retriever_executor.execute(update)
+            knowledge_retrieval_summary = str(knowledge_result.get("knowledge_retrieval_summary") or "")
+            raw_results = knowledge_result.get("knowledge_retrieval_results")
+            if isinstance(raw_results, list):
+                knowledge_retrieval_results = [item for item in raw_results if isinstance(item, dict)]
+            raw_adopted_sources = knowledge_result.get("knowledge_retrieval_adopted_sources")
+            if isinstance(raw_adopted_sources, list):
+                knowledge_retrieval_adopted_sources = [str(item) for item in raw_adopted_sources if str(item).strip()]
+            if knowledge_retrieval_summary:
+                update["knowledge_retrieval_summary"] = knowledge_retrieval_summary
+            if knowledge_retrieval_results:
+                update["knowledge_retrieval_results"] = knowledge_retrieval_results
+            update["knowledge_retrieval_adopted_sources"] = knowledge_retrieval_adopted_sources
 
         if update.get("execution_mode") == "action":
             default_summary = (
@@ -304,15 +323,22 @@ class SupervisorPhaseExecutor:
             )
             if log_analysis_summary:
                 default_summary += f" ログ解析結果: {log_analysis_summary}"
+            if knowledge_retrieval_summary:
+                default_summary += f" ナレッジ照会結果: {knowledge_retrieval_summary}"
             update["investigation_summary"] = str(update.get("investigation_summary") or default_summary)
         else:
             if not update.get("investigation_summary"):
                 if effective_workflow_kind == "specification_inquiry":
-                    update["investigation_summary"] = "仕様確認を優先し、KnowledgeRetrieverAgent 中心の調査計画を準備します。"
+                    base_summary = "仕様確認を優先し、KnowledgeRetrieverAgent 中心の調査計画を準備します。"
+                    if knowledge_retrieval_summary:
+                        base_summary += f" 参考: {knowledge_retrieval_summary}"
+                    update["investigation_summary"] = base_summary
                 elif effective_workflow_kind == "incident_investigation":
                     base_summary = "障害調査を優先し、LogAnalyzerAgent と KnowledgeRetrieverAgent の併用計画を準備します。"
                     if log_analysis_summary:
                         base_summary += f" 参考: {log_analysis_summary}"
+                    if knowledge_retrieval_summary:
+                        base_summary += f" ナレッジ候補: {knowledge_retrieval_summary}"
                     update["investigation_summary"] = base_summary
                 else:
                     update["investigation_summary"] = "仕様確認と障害調査の両面から、複合的な子エージェント起動計画を準備します。"
@@ -351,6 +377,8 @@ class SupervisorPhaseExecutor:
                     f"Execution mode: {str(update.get('execution_mode') or '')}",
                     f"Log analysis file: {log_analysis_file or 'n/a'}",
                     f"Log analysis summary: {log_analysis_summary or 'n/a'}",
+                    f"Knowledge retrieval summary: {knowledge_retrieval_summary or 'n/a'}",
+                    f"Adopted knowledge sources: {', '.join(knowledge_retrieval_adopted_sources) if knowledge_retrieval_adopted_sources else 'n/a'}",
                     f"Investigation summary: {str(update.get('investigation_summary') or '')}",
                     f"Escalation required: {'yes' if escalation_required else 'no'}",
                     f"Escalation reason: {escalation_reason or 'n/a'}",
@@ -364,6 +392,8 @@ class SupervisorPhaseExecutor:
                     f"Shared context loaded: {'yes' if memory_snapshot['context'].strip() else 'no'}",
                     f"Planned child agents: {', '.join(planned_child_agents)}",
                     f"Log analysis executed: {'yes' if log_analysis_summary else 'no'}",
+                    f"Knowledge retrieval executed: {'yes' if knowledge_retrieval_summary or knowledge_retrieval_results else 'no'}",
+                    f"Knowledge sources adopted: {', '.join(knowledge_retrieval_adopted_sources) if knowledge_retrieval_adopted_sources else 'none'}",
                     f"Escalation path selected: {'yes' if escalation_required else 'no'}",
                 ],
             }

@@ -69,6 +69,24 @@ class TracingSettings(BaseModel):
     project_name: str = "support-ope-agents"
 
 
+class KnowledgeDocumentSource(BaseModel):
+    name: str
+    description: str
+    path: Path
+
+
+class TicketSourceSettings(BaseModel):
+    description: str = ""
+    mcp_server: str | None = None
+    mcp_tool: str | None = None
+
+
+class KnowledgeRetrievalSettings(BaseModel):
+    document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
+    external_ticket: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
+    internal_ticket: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
+
+
 class McpToolBinding(BaseModel):
     type: Literal["mcp"] = "mcp"
     server: str
@@ -126,6 +144,7 @@ class AppConfig(BaseModel):
     config_paths: ConfigPathSettings
     data_paths: DataPathSettings
     workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
+    knowledge_retrieval: KnowledgeRetrievalSettings = Field(default_factory=KnowledgeRetrievalSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)
     tools: ToolSettings = Field(default_factory=ToolSettings)
     interfaces: InterfaceSettings = Field(default_factory=InterfaceSettings)

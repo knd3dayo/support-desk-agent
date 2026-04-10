@@ -9,11 +9,13 @@ from uuid import uuid4
 from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
 from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
 from support_ope_agents.agents.intake_agent import IntakePhaseExecutor
+from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
 from support_ope_agents.agents.roles import INTAKE_AGENT
+from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.agents.deep_agent_factory import DeepAgentFactory
@@ -65,6 +67,9 @@ class RuntimeService:
         self._context = context
         self._migrate_legacy_traces()
         intake_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INTAKE_AGENT)}
+        knowledge_retriever_tools = {
+            tool.name: tool.handler for tool in context.tool_registry.get_tools(KNOWLEDGE_RETRIEVER_AGENT)
+        }
         log_analyzer_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(LOG_ANALYZER_AGENT)}
         back_support_escalation_tools = {
             tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)
@@ -81,6 +86,11 @@ class RuntimeService:
         self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
             detect_log_format_tool=log_analyzer_tools["detect_log_format"],
         )
+        self._knowledge_retriever_executor = KnowledgeRetrieverPhaseExecutor(
+            search_documents_tool=knowledge_retriever_tools["search_documents"],
+            external_ticket_tool=knowledge_retriever_tools["external_ticket"],
+            internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
+        )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
             write_shared_memory_tool=back_support_escalation_tools["write_shared_memory"],
@@ -92,6 +102,7 @@ class RuntimeService:
             read_shared_memory_tool=supervisor_tools["read_shared_memory"],
             write_shared_memory_tool=supervisor_tools["write_shared_memory"],
             log_analyzer_executor=self._log_analyzer_executor,
+            knowledge_retriever_executor=self._knowledge_retriever_executor,
             back_support_escalation_executor=self._back_support_escalation_executor,
             back_support_inquiry_writer_executor=self._back_support_inquiry_writer_executor,
             escalation_settings=context.config.workflow.escalation,
