@@ -132,6 +132,24 @@ export default function App() {
     setStatusLine(`${target.case_id} を表示しています。`);
   }
 
+  function startNewCase() {
+    setSelectedCase(null);
+    startTransition(() => {
+      setMessages([]);
+      setWorkspaceView(null);
+      setSelectedEntry(null);
+      setPreview(null);
+      setPendingQuestion(null);
+      setDraftPrompt('');
+      setQueuedFiles([]);
+    });
+    if (inlinePreviewUrl) {
+      URL.revokeObjectURL(inlinePreviewUrl);
+      setInlinePreviewUrl(null);
+    }
+    setStatusLine('新しい会話を開始できます。問い合わせ内容を入力してください。');
+  }
+
   async function openDirectory(path: string) {
     if (!selectedCase) {
       return;
@@ -252,6 +270,9 @@ export default function App() {
   const currentPath = workspaceView?.current_path || '.';
   const breadcrumbs = currentPath === '.' ? ['.'] : currentPath.split('/');
   const parentPath = currentPath === '.' ? null : currentPath.includes('/') ? currentPath.slice(0, currentPath.lastIndexOf('/')) : '.';
+  const isAuthenticated = Boolean(authToken.trim());
+  const userLabel = uiConfig.auth_required ? (isAuthenticated ? '認証済み' : '未認証') : 'ゲスト';
+  const userMeta = uiConfig.auth_required ? (isAuthenticated ? 'サインイン済み' : 'サインインが必要です') : '認証不要';
   const shellClassName = [
     'shell',
     sidebarCollapsed ? 'shell-sidebar-collapsed' : '',
@@ -259,7 +280,38 @@ export default function App() {
   ].filter(Boolean).join(' ');
 
   return (
-    <div className={shellClassName}>
+    <div className="app-frame">
+      <header className="topbar panel-subtle">
+        <div className="topbar-brand">
+          <strong>{uiConfig.app_name}</strong>
+        </div>
+        <div className="topbar-actions">
+          <div className="status-pill topbar-status">{statusLine}</div>
+          {uiConfig.auth_required ? (
+            <label className="auth-box topbar-auth-box">
+              <span>Auth Token</span>
+              <input
+                type="password"
+                value={authToken}
+                onChange={(event) => setAuthToken(event.target.value)}
+                placeholder="この画面では必須です"
+              />
+              <button className="ghost-button" type="button" onClick={persistAuthToken}>
+                保存
+              </button>
+            </label>
+          ) : null}
+          <div className="user-chip panel-subtle" aria-label="ユーザー状態">
+            <span className={`user-chip-indicator ${isAuthenticated ? 'signed-in' : 'guest'}`} aria-hidden="true" />
+            <div className="user-chip-copy">
+              <strong>{userLabel}</strong>
+              <span>{userMeta}</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className={shellClassName}>
       <aside className="sidebar panel">
         <div className="panel-header sidebar-header">
           <div className="panel-title-block">
@@ -280,7 +332,6 @@ export default function App() {
               </button>
               <p className="eyebrow">Session Index</p>
             </div>
-            <h1>{uiConfig.app_name}</h1>
           </div>
         </div>
         <div id="session-index-content" className={`panel-content ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
@@ -291,7 +342,7 @@ export default function App() {
             </div>
           ) : null}
           <div className="sidebar-actions">
-            <button className="ghost-button" onClick={() => setSelectedCase(null)} type="button">
+            <button className="ghost-button" onClick={startNewCase} type="button">
               新規ケース
             </button>
           </div>
@@ -320,21 +371,6 @@ export default function App() {
             <p className="eyebrow">Active Conversation</p>
             <h2>{selectedCase?.case_title || selectedCase?.case_id || '新しい会話を開始'}</h2>
             {selectedCase?.case_title ? <div className="conversation-case-id">{selectedCase.case_id}</div> : null}
-          </div>
-          <div className="status-stack">
-            <label className="auth-box">
-              <span>Auth Token</span>
-              <input
-                type="password"
-                value={authToken}
-                onChange={(event) => setAuthToken(event.target.value)}
-                placeholder={uiConfig.auth_required ? 'この画面では必須です' : '未設定なら空欄のまま'}
-              />
-              <button className="ghost-button" type="button" onClick={persistAuthToken}>
-                保存
-              </button>
-            </label>
-            <div className="status-pill">{statusLine}</div>
           </div>
         </div>
 
@@ -473,12 +509,16 @@ export default function App() {
                       <span>{preview.mime_type || 'unknown'}</span>
                     </div>
                     <a
-                      className="ghost-button"
+                      className="ghost-button preview-action-button"
                       href={selectedCase ? rawFileUrl(selectedCase.case_id, selectedCase.workspace_path, preview.path) : '#'}
                       target="_blank"
                       rel="noreferrer"
+                      aria-label="別ウィンドウで表示"
+                      title="別ウィンドウで表示"
                     >
-                      別ウィンドウで表示
+                      <span className="external-link-icon" aria-hidden="true">
+                        <span />
+                      </span>
                     </a>
                   </div>
                   {preview.preview_available ? (
@@ -506,6 +546,7 @@ export default function App() {
           </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }
