@@ -113,6 +113,14 @@ class KnowledgeRetrievalSettings(BaseModel):
     internal_ticket: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
 
 
+class IntakePiiMaskSettings(BaseModel):
+    enabled: bool = False
+
+
+class IntakeSettings(BaseModel):
+    pii_mask: IntakePiiMaskSettings = Field(default_factory=IntakePiiMaskSettings)
+
+
 class McpToolBinding(BaseModel):
     type: Literal["mcp"] = "mcp"
     server: str
@@ -169,6 +177,7 @@ class AppConfig(BaseModel):
     llm: LlmSettings
     config_paths: ConfigPathSettings
     data_paths: DataPathSettings
+    intake: IntakeSettings = Field(default_factory=IntakeSettings)
     workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
     knowledge_retrieval: KnowledgeRetrievalSettings = Field(default_factory=KnowledgeRetrievalSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)

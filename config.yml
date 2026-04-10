@@ -30,6 +30,30 @@ support_ope_agents:
   #   # ケース用 workspace 配下に作る証跡ディレクトリ名です。
   #   evidence_subdir: .evidence
 
+  # IntakeAgent の前処理設定です。
+  # 通常は PII マスキング無効の既定値のままで構いません。
+  # intake:
+  #   pii_mask:
+  #     # true の場合のみ Intake で PII マスキングを実行します。
+  #     enabled: false
+
+  # 例: Intake で明示 ticket ID を使って一次情報を hydration する場合の設定です。
+  # knowledge_retrieval:
+  #   external_ticket:
+  #     description: 顧客向けケース管理システム
+  #     mcp_server: support-ticket-mcp
+  #     mcp_tool: get_external_ticket
+  #   internal_ticket:
+  #     description: 内部管理用チケットシステム
+  #     mcp_server: support-ticket-mcp
+  #     mcp_tool: get_internal_ticket
+  #
+  # 上記 MCP tool は ticket_id を受け取り、summary と attachments を含む JSON を返すことを推奨します。
+  # attachments の各要素は以下のいずれかを持てます。
+  #   - content_base64: バイナリ添付
+  #   - content: テキスト添付
+  #   - path: 既に取得済みファイルへのパス
+
   # ワークフロー実行時のコンテキスト圧縮や承認ノードの設定です。
   # 通常は既定値のままで構いません。
   # workflow:

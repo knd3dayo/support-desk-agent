@@ -98,6 +98,18 @@ class KnowledgeRetrieverPhaseExecutor:
             "evidence": [],
         }
 
+    @staticmethod
+    def _build_hydrated_ticket_result(source_name: str, summary: str, artifact_paths: list[str]) -> dict[str, object]:
+        return {
+            "source_name": source_name,
+            "source_description": "",
+            "source_type": "ticket_source",
+            "status": "hydrated",
+            "summary": summary,
+            "matched_paths": artifact_paths,
+            "evidence": [],
+        }
+
     def execute(self, state: Mapping[str, object]) -> dict[str, object]:
         raw_issue = str(state.get("raw_issue") or "")
         case_id = str(state.get("case_id") or "").strip()
@@ -106,10 +118,20 @@ class KnowledgeRetrieverPhaseExecutor:
         internal_ticket_id = str(state.get("internal_ticket_id") or "").strip()
         external_ticket_lookup_enabled = bool(state.get("external_ticket_lookup_enabled"))
         internal_ticket_lookup_enabled = bool(state.get("internal_ticket_lookup_enabled"))
+        ticket_context = cast(dict[str, str], state.get("intake_ticket_context_summary") or {})
+        ticket_artifacts = cast(dict[str, list[str]], state.get("intake_ticket_artifacts") or {})
         document_message, document_results = self._parse_document_result(
             self._invoke_tool(self.search_documents_tool, query=raw_issue)
         )
-        if external_ticket_lookup_enabled:
+        external_hydrated_summary = str(ticket_context.get("external_ticket") or "").strip()
+        internal_hydrated_summary = str(ticket_context.get("internal_ticket") or "").strip()
+        if external_hydrated_summary or ticket_artifacts.get("external_ticket"):
+            external_ticket_result = self._build_hydrated_ticket_result(
+                "external_ticket",
+                external_hydrated_summary or "IntakeAgent hydrated external ticket context.",
+                list(ticket_artifacts.get("external_ticket") or []),
+            )
+        elif external_ticket_lookup_enabled:
             external_ticket_result = self._build_ticket_result(
                 "external_ticket",
                 self._invoke_tool(self.external_ticket_tool, ticket_id=external_ticket_id),
@@ -117,7 +139,13 @@ class KnowledgeRetrieverPhaseExecutor:
         else:
             external_ticket_result = self._build_skipped_ticket_result("external_ticket", external_ticket_id)
 
-        if internal_ticket_lookup_enabled:
+        if internal_hydrated_summary or ticket_artifacts.get("internal_ticket"):
+            internal_ticket_result = self._build_hydrated_ticket_result(
+                "internal_ticket",
+                internal_hydrated_summary or "IntakeAgent hydrated internal ticket context.",
+                list(ticket_artifacts.get("internal_ticket") or []),
+            )
+        elif internal_ticket_lookup_enabled:
             internal_ticket_result = self._build_ticket_result(
                 "internal_ticket",
                 self._invoke_tool(self.internal_ticket_tool, ticket_id=internal_ticket_id),

@@ -181,6 +181,42 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertIn("Application層", summary)
         self.assertIn("AIガバナンス層", summary)
 
+    def test_prefers_intake_hydrated_ticket_context_over_refetch(self) -> None:
+        external_calls: list[str] = []
+        internal_calls: list[str] = []
+
+        executor = KnowledgeRetrieverPhaseExecutor(
+            search_documents_tool=lambda query: json.dumps({"message": "no docs", "results": []}, ensure_ascii=False),
+            external_ticket_tool=lambda **kwargs: external_calls.append(str(kwargs.get("ticket_id") or "")) or "external refetch",
+            internal_ticket_tool=lambda **kwargs: internal_calls.append(str(kwargs.get("ticket_id") or "")) or "internal refetch",
+        )
+
+        result = executor.execute(
+            {
+                "raw_issue": "ticket を確認したい",
+                "external_ticket_id": "EXT-001",
+                "internal_ticket_id": "INT-001",
+                "external_ticket_lookup_enabled": True,
+                "internal_ticket_lookup_enabled": True,
+                "intake_ticket_context_summary": {
+                    "external_ticket": "external summary",
+                    "internal_ticket": "internal summary",
+                },
+                "intake_ticket_artifacts": {
+                    "external_ticket": ["/tmp/external.json"],
+                    "internal_ticket": ["/tmp/internal.json"],
+                },
+            }
+        )
+
+        results = cast(list[dict[str, object]], result["knowledge_retrieval_results"])
+        external_result = next(item for item in results if item.get("source_name") == "external_ticket")
+        internal_result = next(item for item in results if item.get("source_name") == "internal_ticket")
+        self.assertEqual(external_result["status"], "hydrated")
+        self.assertEqual(internal_result["status"], "hydrated")
+        self.assertEqual(external_calls, [])
+        self.assertEqual(internal_calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()

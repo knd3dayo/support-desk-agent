@@ -25,18 +25,18 @@ def build_case_workflow(
 ):
     graph = StateGraph(CaseState)
     graph.add_node("receive_case", _receive_case)
-    graph.add_node("intake", _build_intake_node(intake_executor))
     graph.add_node("investigation", _build_investigation_node(supervisor_executor))
     graph.add_node("draft_review", _build_draft_review_node(supervisor_executor))
     graph.add_node("escalation_review", _build_escalation_review_node(supervisor_executor))
     graph.add_node("wait_for_customer_input", _wait_for_customer_input)
     graph.add_node("wait_for_approval", _wait_for_approval)
+    _add_intake_subgraph(graph, intake_executor)
     _add_ticket_update_subgraph(graph)
 
     graph.add_edge(START, "receive_case")
-    graph.add_edge("receive_case", "intake")
+    graph.add_edge("receive_case", "intake_prepare")
     graph.add_conditional_edges(
-        "intake",
+        "intake_finalize",
         _route_after_intake,
         {
             "investigation": "investigation",
@@ -49,7 +49,7 @@ def build_case_workflow(
         {
             "draft_review": "draft_review",
             "escalation_review": "escalation_review",
-            "intake": "intake",
+            "intake": "intake_prepare",
         },
     )
     graph.add_edge("escalation_review", "wait_for_approval")
@@ -74,6 +74,19 @@ def _add_ticket_update_subgraph(graph: StateGraph[CaseState]) -> None:
     graph.add_edge("ticket_update_prepare", "ticket_update_execute")
 
 
+def _add_intake_subgraph(graph: StateGraph[CaseState], intake_executor: IntakePhaseExecutor | None) -> None:
+    executor = intake_executor or _NoOpIntakeExecutor()
+    graph.add_node("intake_prepare", lambda state: cast(CaseState, executor.prepare_state(state)))
+    graph.add_node("intake_mask", lambda state: cast(CaseState, executor.apply_pii_mask(state)))
+    graph.add_node("intake_hydrate_tickets", lambda state: cast(CaseState, executor.hydrate_tickets(state)))
+    graph.add_node("intake_classify", lambda state: cast(CaseState, executor.classify_issue(state)))
+    graph.add_node("intake_finalize", lambda state: cast(CaseState, executor.finalize_state(state)))
+    graph.add_edge("intake_prepare", "intake_mask")
+    graph.add_edge("intake_mask", "intake_hydrate_tickets")
+    graph.add_edge("intake_hydrate_tickets", "intake_classify")
+    graph.add_edge("intake_classify", "intake_finalize")
+
+
 def _receive_case(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "RECEIVED"
@@ -87,17 +100,8 @@ def _receive_case(state: CaseState) -> CaseState:
     return cast(CaseState, update)
 
 
-def _build_intake_node(intake_executor: IntakePhaseExecutor | None):
-    executor = intake_executor or _NoOpIntakeExecutor()
-
-    def _intake(state: CaseState) -> CaseState:
-        return cast(CaseState, executor.execute(state))
-
-    return _intake
-
-
 class _NoOpIntakeExecutor:
-    def execute(self, state: CaseState) -> CaseState:
+    def prepare_state(self, state: CaseState) -> CaseState:
         update = dict(state)
         update["status"] = "TRIAGED"
         update["current_agent"] = INTAKE_AGENT
@@ -105,11 +109,34 @@ class _NoOpIntakeExecutor:
         update.setdefault("intake_missing_fields", [])
         update.setdefault("intake_followup_questions", {})
         update.setdefault("customer_followup_answers", {})
+        update.setdefault("intake_ticket_context_summary", {})
+        update.setdefault("intake_ticket_artifacts", {})
+        update.setdefault("masked_issue", str(update.get("raw_issue") or ""))
+        return cast(CaseState, update)
+
+    def apply_pii_mask(self, state: CaseState) -> CaseState:
+        return cast(CaseState, dict(state))
+
+    def hydrate_tickets(self, state: CaseState) -> CaseState:
+        return cast(CaseState, dict(state))
+
+    def classify_issue(self, state: CaseState) -> CaseState:
+        return cast(CaseState, dict(state))
+
+    def finalize_state(self, state: CaseState) -> CaseState:
+        update = dict(state)
         if update.get("execution_mode") == "plan":
             update["next_action"] = "ユーザーに計画を提示して承認を得る"
         else:
             update["next_action"] = "SuperVisorAgent が調査フェーズを開始する"
         return cast(CaseState, update)
+
+    def execute(self, state: CaseState) -> CaseState:
+        update = self.prepare_state(state)
+        update = self.apply_pii_mask(update)
+        update = self.hydrate_tickets(update)
+        update = self.classify_issue(update)
+        return self.finalize_state(update)
 
 
 def _build_investigation_node(supervisor_executor: SupervisorPhaseExecutor | None):

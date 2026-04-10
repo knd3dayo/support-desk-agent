@@ -120,6 +120,20 @@ class ToolRegistry:
                     target="configured-llm-pii-mask",
                 ),
                 ToolSpec(
+                    "external_ticket",
+                    "Fetch customer-facing external ticket information",
+                    _unavailable_tool(
+                        "external_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.external_ticket in config.yml."
+                    ),
+                ),
+                ToolSpec(
+                    "internal_ticket",
+                    "Fetch internal management ticket information",
+                    _unavailable_tool(
+                        "internal_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.internal_ticket in config.yml."
+                    ),
+                ),
+                ToolSpec(
                     "classify_ticket",
                     "Classify customer support ticket with the configured LLM in PoC",
                     build_default_classify_ticket_tool(self._config),
@@ -256,25 +270,26 @@ class ToolRegistry:
         if self._mcp_override_resolver is None:
             return
 
-        role_overrides = normalized.setdefault(KNOWLEDGE_RETRIEVER_AGENT, {})
         knowledge_retrieval = self._config.knowledge_retrieval
         configured_ticket_tools = {
             "external_ticket": knowledge_retrieval.external_ticket,
             "internal_ticket": knowledge_retrieval.internal_ticket,
         }
 
-        for logical_tool_name, ticket_settings in configured_ticket_tools.items():
-            if logical_tool_name in role_overrides:
-                continue
-            if not ticket_settings.mcp_server or not ticket_settings.mcp_tool:
-                continue
-            role_overrides[logical_tool_name] = McpToolBinding(
-                server=ticket_settings.mcp_server,
-                tool=ticket_settings.mcp_tool,
-            )
+        for role in (KNOWLEDGE_RETRIEVER_AGENT, INTAKE_AGENT):
+            role_overrides = normalized.setdefault(role, {})
+            for logical_tool_name, ticket_settings in configured_ticket_tools.items():
+                if logical_tool_name in role_overrides:
+                    continue
+                if not ticket_settings.mcp_server or not ticket_settings.mcp_tool:
+                    continue
+                role_overrides[logical_tool_name] = McpToolBinding(
+                    server=ticket_settings.mcp_server,
+                    tool=ticket_settings.mcp_tool,
+                )
 
     def _validate_overrides(self) -> None:
-        if not self._config.tools.has_overrides():
+        if not self._normalized_overrides:
             return
 
         for normalized_role, overrides in self._normalized_overrides.items():

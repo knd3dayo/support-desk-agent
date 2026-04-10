@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import tempfile
 import unittest
@@ -33,6 +34,7 @@ from support_ope_agents.workflow.state import CaseState
 class _FakeToolRegistry:
     def __init__(self, config: AppConfig):
         self._config = config
+        self.pii_mask_calls = 0
         self.external_ticket_calls: list[str] = []
         self.internal_ticket_calls: list[str] = []
         self._read_shared_memory = build_default_read_shared_memory_tool(config)
@@ -46,6 +48,8 @@ class _FakeToolRegistry:
         if role == INTAKE_AGENT:
             return [
                 ToolSpec("pii_mask", "Mask secrets", self._pii_mask, provider="builtin", target="test-pii-mask"),
+                ToolSpec("external_ticket", "External ticket", self._external_ticket, provider="builtin", target="test-external-ticket"),
+                ToolSpec("internal_ticket", "Internal ticket", self._internal_ticket, provider="builtin", target="test-internal-ticket"),
                 ToolSpec(
                     "classify_ticket",
                     "Classify ticket",
@@ -150,9 +154,9 @@ class _FakeToolRegistry:
             ]
         return []
 
-    @staticmethod
-    def _pii_mask(text: str, _: str) -> str:
-        return text
+    def _pii_mask(self, text: str, _: str) -> str:
+        self.pii_mask_calls += 1
+        return f"[MASKED]{text}"
 
     @staticmethod
     def _classify_ticket(text: str, _: str) -> str:
@@ -184,14 +188,44 @@ class _FakeToolRegistry:
         ticket_id = str(kwargs.get("ticket_id") or "")
         if ticket_id:
             self.external_ticket_calls.append(ticket_id)
-            return f"external ticket fetched: {ticket_id}"
+            return json.dumps(
+                {
+                    "ticket_id": ticket_id,
+                    "summary": f"external ticket fetched: {ticket_id}",
+                    "attachments": [
+                        {
+                            "filename": "external-context.txt",
+                            "content": f"External ticket context for {ticket_id}",
+                        },
+                        {
+                            "filename": "external-log.log",
+                            "content_base64": base64.b64encode(
+                                b"2026-04-10 10:15 ERROR external ticket attached log\n"
+                            ).decode("ascii"),
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+            )
         return "external_ticket tool is not configured."
 
     def _internal_ticket(self, *_: object, **kwargs: object) -> str:
         ticket_id = str(kwargs.get("ticket_id") or "")
         if ticket_id:
             self.internal_ticket_calls.append(ticket_id)
-            return f"internal ticket fetched: {ticket_id}"
+            return json.dumps(
+                {
+                    "ticket_id": ticket_id,
+                    "summary": f"internal ticket fetched: {ticket_id}",
+                    "attachments": [
+                        {
+                            "filename": "internal-context.txt",
+                            "content": f"Internal ticket context for {ticket_id}",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            )
         return "internal_ticket tool is not configured."
 
 
@@ -268,6 +302,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(str(state.get("internal_ticket_id") or ""), str(result.get("internal_ticket_id") or ""))
         self.assertTrue(str(state.get("external_ticket_id") or "").startswith("EXT-TRACE-"))
         self.assertTrue(str(state.get("internal_ticket_id") or "").startswith("INT-TRACE-"))
+        registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
+        self.assertEqual(registry.pii_mask_calls, 0)
 
     def test_resume_customer_input_stores_answer_and_reaches_waiting_approval(self) -> None:
         initial = self.service.action(
@@ -346,9 +382,23 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(str(state.get("internal_ticket_id") or ""), "INT-456")
         self.assertTrue(bool(state.get("external_ticket_lookup_enabled")))
         self.assertTrue(bool(state.get("internal_ticket_lookup_enabled")))
+        ticket_context = cast(dict[str, str], state.get("intake_ticket_context_summary") or {})
+        ticket_artifacts = cast(dict[str, list[str]], state.get("intake_ticket_artifacts") or {})
+        self.assertIn("external_ticket", ticket_context)
+        self.assertIn("internal_ticket", ticket_context)
+        self.assertTrue(ticket_artifacts.get("external_ticket"))
+        self.assertTrue(ticket_artifacts.get("internal_ticket"))
+        for path in ticket_artifacts["external_ticket"] + ticket_artifacts["internal_ticket"]:
+            self.assertTrue(Path(path).exists())
         registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
         self.assertEqual(registry.external_ticket_calls, ["EXT-123"])
         self.assertEqual(registry.internal_ticket_calls, ["INT-456"])
+
+        results = cast(list[dict[str, object]], state.get("knowledge_retrieval_results") or [])
+        external_result = next(item for item in results if str(item.get("source_name") or "") == "external_ticket")
+        internal_result = next(item for item in results if str(item.get("source_name") or "") == "internal_ticket")
+        self.assertEqual(str(external_result.get("status") or ""), "hydrated")
+        self.assertEqual(str(internal_result.get("status") or ""), "hydrated")
 
     def test_action_skips_ticket_lookup_for_auto_generated_ticket_ids(self) -> None:
         result = self.service.action(
@@ -372,6 +422,48 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
         self.assertEqual(registry.external_ticket_calls, [])
         self.assertEqual(registry.internal_ticket_calls, [])
+
+    def test_action_applies_pii_mask_only_when_enabled(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "config_paths": {},
+                "data_paths": {},
+                "intake": {"pii_mask": {"enabled": True}},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+        service = self._build_service(config)
+
+        result = service.action(
+            prompt="password=secret の問い合わせです。仕様を確認したいです。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-009",
+        )
+
+        state = cast(CaseState, result["state"])
+        self.assertTrue(str(state.get("masked_issue") or "").startswith("[MASKED]"))
+        registry = cast(_FakeToolRegistry, service.context.tool_registry)
+        self.assertEqual(registry.pii_mask_calls, 1)
+
+    def test_action_prioritizes_intake_hydrated_log_attachment(self) -> None:
+        evidence_dir = self.workspace_path / ".evidence"
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        lower_priority_log = evidence_dir / "application.log"
+        lower_priority_log.write_text("2026-04-10 10:15 ERROR workspace log\n", encoding="utf-8")
+
+        result = self.service.action(
+            prompt="2026-04-10 10:15 に障害が発生し、external ticket も確認してください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-010",
+            external_ticket_id="ext-789",
+        )
+
+        state = cast(CaseState, result["state"])
+        selected_file = str(state.get("log_analysis_file") or "")
+        self.assertIn(".artifacts/intake/external_attachments/external-log.log", selected_file)
+        self.assertNotEqual(selected_file, str(lower_priority_log.resolve()))
 
 
 if __name__ == "__main__":

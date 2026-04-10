@@ -21,6 +21,8 @@ class LogAnalyzerPhaseExecutor:
     detect_log_format_tool: Callable[..., Any]
     write_working_memory_tool: Callable[..., Any] | None = None
 
+    _LOG_PRIORITY = {".log": 0, ".out": 1, ".txt": 2}
+
     def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
         result = tool(*args)
         if inspect.isawaitable(result):
@@ -36,16 +38,41 @@ class LogAnalyzerPhaseExecutor:
         return str(result)
 
     @staticmethod
-    def _find_log_candidates(workspace_path: str) -> list[Path]:
+    def _expand_artifact_path(path_text: str) -> list[Path]:
+        path = Path(path_text).expanduser().resolve()
+        if path.is_file():
+            return [path]
+        if path.is_dir():
+            return [child.resolve() for child in path.rglob("*") if child.is_file()]
+        return []
+
+    @classmethod
+    def _find_log_candidates(cls, workspace_path: str, prioritized_paths: list[str] | None = None) -> list[Path]:
         root = Path(workspace_path).expanduser().resolve()
-        candidates: set[Path] = set()
+        preferred: list[Path] = []
+        if prioritized_paths:
+            for path_text in prioritized_paths:
+                for path in cls._expand_artifact_path(path_text):
+                    if path.suffix.lower() in {".log", ".txt", ".out"}:
+                        preferred.append(path)
+            preferred.sort(key=lambda path: (cls._LOG_PRIORITY.get(path.suffix.lower(), 99), str(path)))
+
+        candidates: set[Path] = set(preferred)
         for subdir_name in (".evidence", ".artifacts", "evidence", "artifacts"):
             target_dir = root / subdir_name
             if not target_dir.exists():
                 continue
             for pattern in ("*.log", "*.txt", "*.out"):
                 candidates.update(path.resolve() for path in target_dir.rglob(pattern) if path.is_file())
-        return sorted(candidates)
+
+        ordered: list[Path] = []
+        seen: set[Path] = set()
+        for path in preferred + sorted(candidates):
+            if path in seen:
+                continue
+            ordered.append(path)
+            seen.add(path)
+        return ordered
 
     @staticmethod
     def _build_search_terms(state: "CaseState") -> list[str]:
@@ -65,7 +92,14 @@ class LogAnalyzerPhaseExecutor:
         if not workspace_path:
             return {"summary": "workspace_path がないためログ解析をスキップしました。", "file": ""}
 
-        candidates = self._find_log_candidates(workspace_path)
+        prioritized_paths: list[str] = []
+        ticket_artifacts = state.get("intake_ticket_artifacts")
+        if isinstance(ticket_artifacts, dict):
+            for paths in ticket_artifacts.values():
+                if isinstance(paths, list):
+                    prioritized_paths.extend(str(item) for item in paths if str(item).strip())
+
+        candidates = self._find_log_candidates(workspace_path, prioritized_paths=prioritized_paths)
         if not candidates:
             return {"summary": "解析対象のログファイルが見つからなかったためログ解析をスキップしました。", "file": ""}
 

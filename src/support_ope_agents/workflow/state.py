@@ -44,6 +44,8 @@ class CaseState(TypedDict, total=False):
     intake_missing_fields: list[str]
     intake_followup_questions: dict[str, str]
     customer_followup_answers: dict[str, dict[str, str]]
+    intake_ticket_context_summary: dict[str, str]
+    intake_ticket_artifacts: dict[str, list[str]]
     external_ticket_id: str
     internal_ticket_id: str
     external_ticket_lookup_enabled: bool

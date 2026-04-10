@@ -49,7 +49,11 @@ def build_runtime_context(config_path: str) -> RuntimeContext:
     config = load_config(config_path)
     memory_store = CaseMemoryStore(config)
     instruction_loader = InstructionLoader(config, memory_store)
-    mcp_override_resolver = McpToolOverrideResolver.from_config(config) if config.tools.has_overrides() else None
+    mcp_override_resolver = (
+        McpToolOverrideResolver.from_config(config)
+        if (config.tools.has_overrides() or config.tools.mcp_manifest_path is not None)
+        else None
+    )
     tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
     agent_factory = DeepAgentFactory(config, instruction_loader, tool_registry, memory_store)
     return RuntimeContext(
@@ -79,7 +83,10 @@ class RuntimeService:
         }
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
         self._intake_executor = IntakePhaseExecutor(
+            config=context.config,
             pii_mask_tool=intake_tools["pii_mask"],
+            external_ticket_tool=intake_tools["external_ticket"],
+            internal_ticket_tool=intake_tools["internal_ticket"],
             classify_ticket_tool=intake_tools["classify_ticket"],
             write_shared_memory_tool=intake_tools["write_shared_memory"],
         )
@@ -397,6 +404,8 @@ class RuntimeService:
                 "question": str(previous_questions.get(record_key) or ""),
                 "answer": normalized_additional_input,
             }
+            if record_key == "intake_incident_timeframe":
+                resumed_state["intake_incident_timeframe"] = normalized_additional_input
         resumed_state["customer_followup_answers"] = answer_records
         resumed_state["next_action"] = "追加情報を反映して Intake を再実行する"
 

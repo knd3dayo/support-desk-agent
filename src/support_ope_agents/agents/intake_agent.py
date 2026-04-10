@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import inspect
 import json
 import re
 from collections.abc import Coroutine
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
@@ -18,12 +21,18 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class IntakePhaseExecutor:
+    config: AppConfig
     pii_mask_tool: Callable[..., Any]
+    external_ticket_tool: Callable[..., Any]
+    internal_ticket_tool: Callable[..., Any]
     classify_ticket_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
 
-    def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
-        result = tool(*args)
+    def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
+        try:
+            result = tool(*args, **kwargs)
+        except TypeError:
+            result = tool(*args)
         if inspect.isawaitable(result):
             try:
                 resolved = asyncio.run(cast(Coroutine[Any, Any, Any], result))
@@ -79,36 +88,175 @@ class IntakePhaseExecutor:
                 questions[field_name] = "障害が最初に発生した日時、または少なくとも発生した時間帯を教えてください。"
         return questions
 
-    def execute(self, state: CaseState) -> CaseState:
+    @staticmethod
+    def _ticket_lookup_requested(update: dict[str, object], ticket_kind: str) -> bool:
+        return bool(update.get(f"{ticket_kind}_ticket_lookup_enabled"))
+
+    @staticmethod
+    def _build_ticket_summary(parsed: dict[str, object], raw_result: str) -> str:
+        for key in ("summary", "message", "title", "subject", "description"):
+            value = str(parsed.get(key) or "").strip()
+            if value:
+                return value
+        payload = {key: value for key, value in parsed.items() if key != "attachments"}
+        if payload:
+            return json.dumps(payload, ensure_ascii=False)
+        return raw_result
+
+    @staticmethod
+    def _attachment_filename(item: dict[str, object], fallback_prefix: str, index: int) -> str:
+        candidate = str(item.get("filename") or item.get("file_name") or item.get("name") or "").strip()
+        if candidate:
+            return candidate
+        extension = str(item.get("extension") or ".txt").strip()
+        if extension and not extension.startswith("."):
+            extension = f".{extension}"
+        return f"{fallback_prefix}-{index}{extension or '.txt'}"
+
+    def _materialize_ticket_attachment(self, attachment_dir: Path, ticket_kind: str, index: int, item: object) -> str | None:
+        if isinstance(item, str):
+            path = attachment_dir / f"{ticket_kind}-attachment-{index}.txt"
+            path.write_text(item, encoding="utf-8")
+            return str(path)
+        if not isinstance(item, dict):
+            return None
+
+        filename = self._attachment_filename(item, f"{ticket_kind}-attachment", index)
+        path = attachment_dir / filename
+        base64_data = str(item.get("content_base64") or item.get("base64") or "").strip()
+        if base64_data:
+            path.write_bytes(base64.b64decode(base64_data))
+            return str(path)
+
+        text_content = item.get("content")
+        if isinstance(text_content, str):
+            path.write_text(text_content, encoding="utf-8")
+            return str(path)
+
+        source_path = str(item.get("path") or "").strip()
+        if source_path:
+            return source_path
+
+        path.write_text(json.dumps(item, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return str(path)
+
+    def _hydrate_ticket_context(
+        self,
+        *,
+        ticket_kind: str,
+        ticket_id: str,
+        tool: Callable[..., Any],
+        workspace_path: str,
+    ) -> tuple[str, list[str]]:
+        intake_dir = (Path(workspace_path).expanduser().resolve() / self.config.data_paths.artifacts_subdir / "intake")
+        intake_dir.mkdir(parents=True, exist_ok=True)
+
+        raw_result = self._invoke_tool(tool, ticket_id=ticket_id)
+        try:
+            parsed = json.loads(raw_result)
+        except json.JSONDecodeError:
+            parsed = None
+
+        artifact_paths: list[str] = []
+        if isinstance(parsed, dict):
+            response_path = intake_dir / f"{ticket_kind}_ticket.json"
+            response_path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            artifact_paths.append(str(response_path))
+            attachments = parsed.get("attachments")
+            if isinstance(attachments, list) and attachments:
+                attachment_dir = intake_dir / f"{ticket_kind}_attachments"
+                attachment_dir.mkdir(parents=True, exist_ok=True)
+                for index, item in enumerate(attachments, start=1):
+                    materialized = self._materialize_ticket_attachment(attachment_dir, ticket_kind, index, item)
+                    if materialized:
+                        artifact_paths.append(materialized)
+            return self._build_ticket_summary(parsed, raw_result), artifact_paths
+
+        response_path = intake_dir / f"{ticket_kind}_ticket.txt"
+        response_path.write_text(raw_result, encoding="utf-8")
+        artifact_paths.append(str(response_path))
+        return raw_result, artifact_paths
+
+    def prepare_state(self, state: CaseState) -> CaseState:
         update = dict(state)
+        raw_issue = str(update.get("raw_issue") or "").strip()
         update["status"] = "TRIAGED"
         update["current_agent"] = INTAKE_AGENT
+        update.setdefault("intake_ticket_context_summary", {})
+        update.setdefault("intake_ticket_artifacts", {})
+        update.setdefault("customer_followup_answers", {})
+        update["masked_issue"] = raw_issue
+        return cast("CaseState", update)
 
+    def apply_pii_mask(self, state: CaseState) -> CaseState:
+        update = dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
-        masked_issue = raw_issue
-        classification = {
-            "category": "ambiguous_case",
-            "urgency": "medium",
-            "investigation_focus": "問い合わせ内容の事実関係を確認する",
-            "reason": "",
-        }
-        incident_timeframe = ""
-        if raw_issue:
-            masked_issue = self._invoke_tool(self.pii_mask_tool, raw_issue, "Mask API keys, tokens, and secrets for intake processing.")
-            classification = self._parse_classification(
-                self._invoke_tool(
-                    self.classify_ticket_tool,
-                    masked_issue,
-                    "Classify the intake issue for customer support workflow routing and investigation planning.",
-                )
+        if raw_issue and self.config.intake.pii_mask.enabled:
+            update["masked_issue"] = self._invoke_tool(
+                self.pii_mask_tool,
+                raw_issue,
+                "Mask API keys, tokens, and secrets for intake processing.",
             )
-            update["masked_issue"] = masked_issue
-            update["intake_category"] = classification["category"]
-            update["intake_urgency"] = classification["urgency"]
-            update["intake_investigation_focus"] = classification["investigation_focus"]
-            update["intake_classification_reason"] = classification.get("reason", "")
-            incident_timeframe = self._extract_incident_timeframe(masked_issue)
-            update["intake_incident_timeframe"] = incident_timeframe
+        return cast("CaseState", update)
+
+    def hydrate_tickets(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        raw_issue = str(update.get("raw_issue") or "").strip()
+        workspace_path = str(update.get("workspace_path") or "").strip()
+        if not raw_issue or not workspace_path:
+            return cast("CaseState", update)
+
+        ticket_summaries = cast(dict[str, str], update.get("intake_ticket_context_summary") or {})
+        ticket_artifacts = cast(dict[str, list[str]], update.get("intake_ticket_artifacts") or {})
+        for ticket_kind, tool in (("external", self.external_ticket_tool), ("internal", self.internal_ticket_tool)):
+            ticket_id = str(update.get(f"{ticket_kind}_ticket_id") or "").strip()
+            if not ticket_id or not self._ticket_lookup_requested(update, ticket_kind):
+                continue
+            summary, artifact_paths = self._hydrate_ticket_context(
+                ticket_kind=ticket_kind,
+                ticket_id=ticket_id,
+                tool=tool,
+                workspace_path=workspace_path,
+            )
+            ticket_summaries[f"{ticket_kind}_ticket"] = summary
+            ticket_artifacts[f"{ticket_kind}_ticket"] = artifact_paths
+
+        update["intake_ticket_context_summary"] = ticket_summaries
+        update["intake_ticket_artifacts"] = ticket_artifacts
+        return cast("CaseState", update)
+
+    def classify_issue(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        raw_issue = str(update.get("raw_issue") or "").strip()
+        masked_issue = str(update.get("masked_issue") or raw_issue)
+        if not raw_issue:
+            return cast("CaseState", update)
+
+        classification = self._parse_classification(
+            self._invoke_tool(
+                self.classify_ticket_tool,
+                masked_issue,
+                "Classify the intake issue for customer support workflow routing and investigation planning.",
+            )
+        )
+        update["intake_category"] = classification["category"]
+        update["intake_urgency"] = classification["urgency"]
+        update["intake_investigation_focus"] = classification["investigation_focus"]
+        update["intake_classification_reason"] = classification.get("reason", "")
+        update["intake_incident_timeframe"] = self._extract_incident_timeframe(masked_issue)
+        return cast("CaseState", update)
+
+    def finalize_state(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        raw_issue = str(update.get("raw_issue") or "").strip()
+        masked_issue = str(update.get("masked_issue") or raw_issue)
+        classification = {
+            "category": str(update.get("intake_category") or "ambiguous_case"),
+            "urgency": str(update.get("intake_urgency") or "medium"),
+            "investigation_focus": str(update.get("intake_investigation_focus") or "問い合わせ内容の事実関係を確認する"),
+            "reason": str(update.get("intake_classification_reason") or ""),
+        }
+        incident_timeframe = str(update.get("intake_incident_timeframe") or "")
 
         missing_fields = cast(list[str], update.get("intake_missing_fields") or [])
         followup_questions: dict[str, str] = {}
@@ -116,7 +264,6 @@ class IntakePhaseExecutor:
             followup_questions = self._build_followup_questions(missing_fields)
             update["status"] = "WAITING_CUSTOMER_INPUT"
             update["intake_followup_questions"] = followup_questions
-            update.setdefault("customer_followup_answers", {})
             update["next_action"] = "不足情報をユーザーへ確認し、追加入力後に Intake を再実行する"
         else:
             update["intake_followup_questions"] = {}
@@ -149,6 +296,16 @@ class IntakePhaseExecutor:
                     context_payload["sections"][0]["bullets"].append(f"Incident timeframe: {incident_timeframe}")
                 if classification.get("reason"):
                     context_payload["sections"][0]["bullets"].append(f"Reason: {classification['reason']}")
+                ticket_summaries = cast(dict[str, str], update.get("intake_ticket_context_summary") or {})
+                ticket_artifacts = cast(dict[str, list[str]], update.get("intake_ticket_artifacts") or {})
+                if ticket_summaries:
+                    context_payload["sections"].append(
+                        {
+                            "title": "Ticket Context",
+                            "bullets": [f"{name}: {summary}" for name, summary in ticket_summaries.items()]
+                            + [f"{name} artifacts: {', '.join(paths)}" for name, paths in ticket_artifacts.items() if paths],
+                        }
+                    )
                 structured_answers = cast(dict[str, dict[str, str]], update.get("customer_followup_answers") or {})
                 if structured_answers:
                     answer_bullets: list[str] = []
@@ -160,12 +317,7 @@ class IntakePhaseExecutor:
                         elif answer:
                             answer_bullets.append(f"{field_name}: A: {answer}")
                     if answer_bullets:
-                        context_payload["sections"].append(
-                            {
-                                "title": "Customer Follow-up Answers",
-                                "bullets": answer_bullets,
-                            }
-                        )
+                        context_payload["sections"].append({"title": "Customer Follow-up Answers", "bullets": answer_bullets})
                 if followup_questions:
                     context_payload["sections"].append(
                         {
@@ -192,18 +344,14 @@ class IntakePhaseExecutor:
                 progress_payload["bullets"].append(
                     f"Follow-up answers received: {len(cast(dict[str, dict[str, str]], update.get('customer_followup_answers') or {}))}"
                 )
+            if update.get("intake_ticket_artifacts"):
+                progress_payload["bullets"].append("Ticket hydration: completed")
             if update.get("execution_mode") == "plan":
                 if followup_questions:
                     progress_payload["bullets"].append("Planning note: plan モードだが、不足情報の確認が先に必要")
                 else:
                     progress_payload["bullets"].append("Planning note: plan モードのため、次はユーザー承認待ちの案内を行う")
-            self._invoke_tool(
-                self.write_shared_memory_tool,
-                case_id,
-                workspace_path,
-                context_payload,
-                progress_payload,
-            )
+            self._invoke_tool(self.write_shared_memory_tool, case_id, workspace_path, context_payload, progress_payload)
 
         if followup_questions:
             return cast("CaseState", update)
@@ -215,9 +363,18 @@ class IntakePhaseExecutor:
 
         if update.get("execution_mode") == "plan":
             update["next_action"] = "ユーザーに計画を提示して承認を得る"
+        elif update.get("customer_followup_answers"):
+            update["next_action"] = "追加情報を踏まえて SuperVisorAgent が再評価する"
         else:
             update["next_action"] = "SuperVisorAgent が調査フェーズを開始する"
         return cast("CaseState", update)
+
+    def execute(self, state: CaseState) -> CaseState:
+        update = self.prepare_state(state)
+        update = self.apply_pii_mask(update)
+        update = self.hydrate_tickets(update)
+        update = self.classify_issue(update)
+        return self.finalize_state(update)
 
 
 def build_intake_agent_definition() -> AgentDefinition:
