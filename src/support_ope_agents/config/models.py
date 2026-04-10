@@ -22,12 +22,45 @@ class DataPathSettings(BaseModel):
     evidence_subdir: str = ".evidence"
 
 
+class EscalationSettings(BaseModel):
+    uncertainty_markers: list[str] = Field(
+        default_factory=lambda: [
+            "未解決",
+            "不明",
+            "特定でき",
+            "確証",
+            "追加ログ",
+            "need more logs",
+            "unable to conclude",
+            "insufficient evidence",
+        ]
+    )
+    missing_log_markers: list[str] = Field(default_factory=lambda: ["ログファイルが見つからなかった"])
+    default_missing_artifacts_by_workflow: dict[str, list[str]] = Field(
+        default_factory=lambda: {
+            "incident_investigation": [
+                "発生時刻前後のアプリケーションログ",
+                "再現手順または実施操作",
+            ],
+            "specification_inquiry": [
+                "関連仕様書または設定値",
+                "期待動作と実際の動作差分",
+            ],
+            "ambiguous_case": [
+                "発生条件を示す追加ログ",
+                "期待動作と実際の動作差分",
+            ],
+        }
+    )
+
+
 class WorkflowSettings(BaseModel):
     max_context_chars: int = 12000
     compress_threshold_chars: int = 9000
     approval_node: str = "wait_for_approval"
     auto_compress: bool = True
     max_summary_chars: int = 4000
+    escalation: EscalationSettings = Field(default_factory=EscalationSettings)
 
 
 class TracingSettings(BaseModel):

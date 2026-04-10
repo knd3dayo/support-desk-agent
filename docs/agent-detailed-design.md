@@ -11,6 +11,8 @@
 - KnowledgeRetrieverAgent: [docs/agents/knowledge-retriever-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/knowledge-retriever-agent.md)
 - DraftWriterAgent: [docs/agents/draft-writer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/draft-writer-agent.md)
 - ComplianceReviewerAgent: [docs/agents/compliance-reviewer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/compliance-reviewer-agent.md)
+- BackSupportEscalationAgent: [docs/agents/back-support-escalation-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/back-support-escalation-agent.md)
+- BackSupportInquiryWriterAgent: [docs/agents/back-support-inquiry-writer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/back-support-inquiry-writer-agent.md)
 - ApprovalAgent: [docs/agents/approval-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/approval-agent.md)
 - TicketUpdateAgent: [docs/agents/ticket-update-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/ticket-update-agent.md)
 
@@ -23,4 +25,5 @@
 ## 3. 補足
 
 - 親設計書は [docs/customer-support-deepagents-design.md](/home/user/source/repos/support-ope-agents/docs/customer-support-deepagents-design.md)
+- tool 設計書 index は [docs/tools/README.md](/home/user/source/repos/support-ope-agents/docs/tools/README.md)
 - このファイルは参照入口として残し、既存のリンク先パスを維持する

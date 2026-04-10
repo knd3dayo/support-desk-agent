@@ -31,7 +31,10 @@ CaseState へ反映する主な出力:
 
 ## 5. 使用ツール
 
-- write_draft
+DraftWriterAgent の使用ツール詳細は次を参照する。
+
+- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- DraftWriterAgent 用ツール: [docs/tools/draft-writer-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/draft-writer-tools.md)
 
 ## 6. 処理内容
 

@@ -34,12 +34,10 @@ CaseState へ反映しうる主な出力:
 
 ## 5. 使用ツール
 
-LogAnalyzerAgent は論理ツールとして次を利用する。
+LogAnalyzerAgent の使用ツール詳細は次を参照する。
 
-- detect_log_format
-- read_log_file
-- run_python_analysis
-- write_working_memory
+- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- LogAnalyzerAgent 用ツール: [docs/tools/log-analyzer-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/log-analyzer-tools.md)
 
 ## 6. 処理内容
 

@@ -10,6 +10,7 @@ from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
     INTAKE_AGENT,
+    BACK_SUPPORT_INQUIRY_WRITER_AGENT,
     SUPERVISOR_AGENT,
     TICKET_UPDATE_AGENT,
 )
@@ -27,6 +28,7 @@ def build_case_workflow(
     graph.add_node("intake", _build_intake_node(intake_executor))
     graph.add_node("investigation", _build_investigation_node(supervisor_executor))
     graph.add_node("draft_review", _build_draft_review_node(supervisor_executor))
+    graph.add_node("escalation_review", _build_escalation_review_node(supervisor_executor))
     graph.add_node("wait_for_customer_input", _wait_for_customer_input)
     graph.add_node("wait_for_approval", _wait_for_approval)
     _add_ticket_update_subgraph(graph)
@@ -46,9 +48,11 @@ def build_case_workflow(
         _route_after_investigation,
         {
             "draft_review": "draft_review",
+            "escalation_review": "escalation_review",
             "intake": "intake",
         },
     )
+    graph.add_edge("escalation_review", "wait_for_approval")
     graph.add_edge("draft_review", "wait_for_approval")
     graph.add_conditional_edges(
         "wait_for_approval",
@@ -126,6 +130,15 @@ def _build_draft_review_node(supervisor_executor: SupervisorPhaseExecutor | None
     return _draft_review
 
 
+def _build_escalation_review_node(supervisor_executor: SupervisorPhaseExecutor | None):
+    executor = supervisor_executor or _NoOpSupervisorExecutor()
+
+    def _escalation_review(state: CaseState) -> CaseState:
+        return cast(CaseState, executor.execute_escalation_review(state))
+
+    return _escalation_review
+
+
 class _NoOpSupervisorExecutor:
     def execute_investigation(self, state: CaseState) -> CaseState:
         update = dict(state)
@@ -144,6 +157,20 @@ class _NoOpSupervisorExecutor:
             update["draft_response"] = "plan モードでは SuperVisorAgent がドラフト作成とレビュー方針のみを返却し、action モードで実際の生成へ進みます。"
         else:
             update.setdefault("draft_response", "action モードで SuperVisorAgent 配下のドラフト作成とレビューを開始する準備が整っています。")
+        return cast(CaseState, update)
+
+    def execute_escalation_review(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        update["status"] = "DRAFT_READY"
+        update["current_agent"] = BACK_SUPPORT_INQUIRY_WRITER_AGENT
+        update.setdefault("escalation_required", True)
+        update.setdefault("escalation_reason", "調査結果だけでは確実な回答が困難")
+        update.setdefault("escalation_summary", "バックサポート向けエスカレーション要約を準備しました。")
+        update.setdefault(
+            "escalation_draft",
+            "追加ログと再現条件を確認するため、バックサポート向け問い合わせ文案を準備します。",
+        )
+        update["draft_response"] = str(update.get("escalation_draft") or "")
         return cast(CaseState, update)
 
 
@@ -174,6 +201,8 @@ def _wait_for_approval(state: CaseState) -> CaseState:
     update.setdefault("approval_decision", "pending")
     if update.get("execution_mode") == "plan":
         update["next_action"] = "この計画で action を実行するか確認してください。"
+    elif update.get("escalation_required"):
+        update["next_action"] = "エスカレーション問い合わせ文案を確認し、送付可否を承認してください。"
     else:
         update["next_action"] = "回答ドラフトを確認し、チケット更新を承認してください。"
     return cast(CaseState, update)
@@ -225,4 +254,6 @@ def _route_after_intake(state: CaseState) -> str:
 def _route_after_investigation(state: CaseState) -> str:
     if state.get("intake_rework_required"):
         return "intake"
+    if state.get("escalation_required"):
+        return "escalation_review"
     return "draft_review"

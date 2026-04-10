@@ -10,6 +10,7 @@
 - 親設計書: 全体構成、フェーズ分割、共通方針を定義する
 - 本書: agent 個別設計で共通に使う観点と shared memory 設計を定義する
 - agent 個別仕様: [docs/agents/supervisor-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/supervisor-agent.md)、[docs/agents/intake-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/intake-agent.md) を参照する
+- tool 個別仕様: [docs/tools/README.md](/home/user/source/repos/support-ope-agents/docs/tools/README.md) を参照する
 
 各 agent 文書では次の観点をそろえる。
 
@@ -17,7 +18,7 @@
 - 呼び出し元 / 呼び出し先
 - 入力
 - 出力
-- 使用ツール
+- 使用ツールへの参照
 - 共有メモリ更新
 - plan / action 差分
 - 実装方針

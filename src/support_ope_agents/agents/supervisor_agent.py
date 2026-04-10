@@ -5,15 +5,18 @@ import inspect
 import json
 import re
 from collections.abc import Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
-from support_ope_agents.agents.roles import SUPERVISOR_AGENT
+from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.config.models import EscalationSettings
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState, WorkflowKind
+    from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
+    from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
     from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 
 
@@ -22,6 +25,9 @@ class SupervisorPhaseExecutor:
     read_shared_memory_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
     log_analyzer_executor: "LogAnalyzerPhaseExecutor | None" = None
+    back_support_escalation_executor: "BackSupportEscalationPhaseExecutor | None" = None
+    back_support_inquiry_writer_executor: "BackSupportInquiryWriterPhaseExecutor | None" = None
+    escalation_settings: EscalationSettings = field(default_factory=EscalationSettings)
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
         result = tool(*args)
@@ -134,6 +140,94 @@ class SupervisorPhaseExecutor:
         }
         return missing_fields, "、".join(reasons[field_name] for field_name in missing_fields)
 
+    def _collect_escalation_missing_artifacts(
+        self,
+        effective_workflow_kind: str,
+        log_analysis_summary: str,
+        memory_snapshot: dict[str, str],
+    ) -> list[str]:
+        missing_artifacts: list[str] = []
+        combined = "\n".join(memory_snapshot.values()).lower()
+        missing_artifacts.extend(self.escalation_settings.default_missing_artifacts_by_workflow.get(effective_workflow_kind, []))
+        if any(marker in log_analysis_summary for marker in self.escalation_settings.missing_log_markers):
+            missing_artifacts.append("解析対象ログファイル")
+        if "stacktrace" in combined or "exception" in combined:
+            missing_artifacts.append("例外発生時の完全なスタックトレース")
+
+        deduplicated: list[str] = []
+        for artifact in missing_artifacts:
+            if artifact not in deduplicated:
+                deduplicated.append(artifact)
+        return deduplicated
+
+    def _decide_escalation(
+        self,
+        state: "CaseState",
+        *,
+        effective_workflow_kind: str,
+        investigation_summary: str,
+        log_analysis_summary: str,
+        memory_snapshot: dict[str, str],
+    ) -> tuple[bool, str, list[str]]:
+        if bool(state.get("escalation_required")):
+            reason = str(state.get("escalation_reason") or "調査結果だけでは確実な回答が困難")
+            missing_artifacts = list(state.get("escalation_missing_artifacts") or [])
+            return True, reason, missing_artifacts
+
+        combined_text = "\n".join(
+            part for part in [investigation_summary, log_analysis_summary, *memory_snapshot.values()] if part
+        ).lower()
+        has_uncertainty = any(marker.lower() in combined_text for marker in self.escalation_settings.uncertainty_markers)
+        missing_logs = any(marker in log_analysis_summary for marker in self.escalation_settings.missing_log_markers)
+
+        if not has_uncertainty and not (effective_workflow_kind == "incident_investigation" and missing_logs):
+            return False, "", []
+
+        reason_parts: list[str] = []
+        if has_uncertainty:
+            reason_parts.append("調査結果から原因や仕様差分を確定できない")
+        if missing_logs:
+            reason_parts.append("必要なログが不足している")
+        reason = "、".join(reason_parts) or "調査結果だけでは確実な回答が困難"
+        missing_artifacts = self._collect_escalation_missing_artifacts(
+            effective_workflow_kind,
+            log_analysis_summary,
+            memory_snapshot,
+        )
+        return True, reason, missing_artifacts
+
+    @staticmethod
+    def _build_escalation_summary(
+        *,
+        reason: str,
+        investigation_summary: str,
+        missing_artifacts: list[str],
+    ) -> str:
+        summary = f"エスカレーション理由: {reason}"
+        if investigation_summary:
+            summary += f" 調査要約: {investigation_summary}"
+        if missing_artifacts:
+            summary += f" 追加で必要な資料: {', '.join(missing_artifacts)}"
+        return summary
+
+    @staticmethod
+    def _build_escalation_draft(
+        *,
+        reason: str,
+        missing_artifacts: list[str],
+        execution_mode: str,
+    ) -> str:
+        requested_items = "、".join(missing_artifacts) if missing_artifacts else "追加ログおよび再現情報"
+        if execution_mode == "plan":
+            return (
+                "plan モードでは通常回答の代わりにエスカレーション案を返します。"
+                f" 理由: {reason}。依頼予定項目: {requested_items}。"
+            )
+        return (
+            "現時点では確実な回答に必要な情報が不足しているため、バックサポートへエスカレーションします。"
+            f" 調査継続のため、{requested_items} の提供をご確認ください。"
+        )
+
     def execute_investigation(self, state: CaseState) -> CaseState:
         update = cast("CaseState", dict(state))
         update["status"] = "INVESTIGATING"
@@ -223,6 +317,28 @@ class SupervisorPhaseExecutor:
                 else:
                     update["investigation_summary"] = "仕様確認と障害調査の両面から、複合的な子エージェント起動計画を準備します。"
 
+        investigation_summary = str(update.get("investigation_summary") or "")
+        escalation_required, escalation_reason, escalation_missing_artifacts = self._decide_escalation(
+            update,
+            effective_workflow_kind=effective_workflow_kind,
+            investigation_summary=investigation_summary,
+            log_analysis_summary=log_analysis_summary,
+            memory_snapshot=memory_snapshot,
+        )
+        update["escalation_required"] = escalation_required
+        update["escalation_reason"] = escalation_reason
+        update["escalation_missing_artifacts"] = escalation_missing_artifacts
+        if escalation_required:
+            update["escalation_summary"] = self._build_escalation_summary(
+                reason=escalation_reason,
+                investigation_summary=investigation_summary,
+                missing_artifacts=escalation_missing_artifacts,
+            )
+            update["next_action"] = "BackSupportEscalationAgent がエスカレーション材料を整理する"
+        else:
+            update["escalation_summary"] = ""
+            update["next_action"] = "SuperVisorAgent がドラフト作成フェーズを開始する"
+
         if case_id and workspace_path:
             context_payload: SharedMemoryDocumentPayload = {
                 "title": "Supervisor Investigation",
@@ -236,6 +352,8 @@ class SupervisorPhaseExecutor:
                     f"Log analysis file: {log_analysis_file or 'n/a'}",
                     f"Log analysis summary: {log_analysis_summary or 'n/a'}",
                     f"Investigation summary: {str(update.get('investigation_summary') or '')}",
+                    f"Escalation required: {'yes' if escalation_required else 'no'}",
+                    f"Escalation reason: {escalation_reason or 'n/a'}",
                 ],
             }
             progress_payload: SharedMemoryDocumentPayload = {
@@ -246,6 +364,7 @@ class SupervisorPhaseExecutor:
                     f"Shared context loaded: {'yes' if memory_snapshot['context'].strip() else 'no'}",
                     f"Planned child agents: {', '.join(planned_child_agents)}",
                     f"Log analysis executed: {'yes' if log_analysis_summary else 'no'}",
+                    f"Escalation path selected: {'yes' if escalation_required else 'no'}",
                 ],
             }
             self._invoke_tool(
@@ -257,6 +376,40 @@ class SupervisorPhaseExecutor:
                 None,
                 "append",
             )
+        return cast("CaseState", update)
+
+    def execute_escalation_review(self, state: CaseState) -> CaseState:
+        update = cast("CaseState", dict(state))
+        update["status"] = "DRAFT_READY"
+        update["current_agent"] = BACK_SUPPORT_INQUIRY_WRITER_AGENT
+
+        if not bool(update.get("escalation_required")):
+            update["escalation_required"] = True
+            update["escalation_reason"] = str(update.get("escalation_reason") or "調査結果だけでは確実な回答が困難")
+
+        if self.back_support_escalation_executor is not None:
+            update.update(cast("CaseState", self.back_support_escalation_executor.execute(update)))
+        else:
+            missing_artifacts = list(update.get("escalation_missing_artifacts") or [])
+            escalation_reason = str(update.get("escalation_reason") or "調査結果だけでは確実な回答が困難")
+            investigation_summary = str(update.get("investigation_summary") or "")
+            update["escalation_summary"] = self._build_escalation_summary(
+                reason=escalation_reason,
+                investigation_summary=investigation_summary,
+                missing_artifacts=missing_artifacts,
+            )
+
+        if self.back_support_inquiry_writer_executor is not None:
+            update.update(cast("CaseState", self.back_support_inquiry_writer_executor.execute(update)))
+        else:
+            update["escalation_draft"] = self._build_escalation_draft(
+                reason=str(update.get("escalation_reason") or "調査結果だけでは確実な回答が困難"),
+                missing_artifacts=list(update.get("escalation_missing_artifacts") or []),
+                execution_mode=str(update.get("execution_mode") or ""),
+            )
+            update["draft_response"] = update["escalation_draft"]
+
+        update["next_action"] = "エスカレーション問い合わせ文案を承認フェーズへ回付する"
         return cast("CaseState", update)
 
     def execute_draft_review(self, state: CaseState) -> CaseState:

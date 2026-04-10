@@ -66,13 +66,10 @@ CaseState へ反映する主な出力:
 
 ## 5. 使用ツール
 
-IntakeAgent は論理ツールとして次を利用する。
+IntakeAgent の使用ツール詳細は次を参照する。
 
-- pii_mask: API キー、アクセストークン、Bearer token、secret、password などの秘匿値をマスキングする。実運用ではローカル LLM へ差し替える前提とし、PoC 段階では [src/support_ope_agents/config/models.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/config/models.py) で定義される LLM 設定を使用する既定実装を ToolRegistry に登録する。
-- classify_ticket: 問い合わせカテゴリ、緊急度、初期調査観点を分類する。カテゴリ値は workflow_kind と同じ語彙体系である specification_inquiry / incident_investigation / ambiguous_case を使う。PoC 段階では [src/support_ope_agents/config/models.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/config/models.py) で定義される LLM 設定を使用する既定実装を ToolRegistry に登録する。
-- write_shared_memory: shared/context.md、shared/progress.md、shared/summary.md への書き込みを担う。既定実装では [src/support_ope_agents/memory/file_store.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/memory/file_store.py) を利用してケース workspace 上の共有メモリパスを解決し、replace または append で書き込む。引数は文字列だけでなく構造化 payload も受け付け、Markdown へ整形して保存する。
-
-これらは ToolRegistry 上の論理ツール名であり、実装は builtin / MCP override により差し替え可能とする。
+- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- IntakeAgent 用ツール: [docs/tools/intake-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/intake-tools.md)
 
 ## 6. 処理内容
 

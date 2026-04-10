@@ -49,6 +49,11 @@ class CaseState(TypedDict, total=False):
     investigation_summary: str
     log_analysis_summary: str
     log_analysis_file: str
+    escalation_required: bool
+    escalation_reason: str
+    escalation_summary: str
+    escalation_missing_artifacts: list[str]
+    escalation_draft: str
     compressed_summary: str
     draft_response: str
     ticket_update_payload: str

@@ -6,9 +6,13 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
+from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
 from support_ope_agents.agents.intake_agent import IntakePhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
+from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
 from support_ope_agents.agents.roles import INTAKE_AGENT
 from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
@@ -62,6 +66,12 @@ class RuntimeService:
         self._migrate_legacy_traces()
         intake_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INTAKE_AGENT)}
         log_analyzer_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(LOG_ANALYZER_AGENT)}
+        back_support_escalation_tools = {
+            tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)
+        }
+        back_support_inquiry_writer_tools = {
+            tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_INQUIRY_WRITER_AGENT)
+        }
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
         self._intake_executor = IntakePhaseExecutor(
             pii_mask_tool=intake_tools["pii_mask"],
@@ -71,10 +81,20 @@ class RuntimeService:
         self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
             detect_log_format_tool=log_analyzer_tools["detect_log_format"],
         )
+        self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
+            read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
+            write_shared_memory_tool=back_support_escalation_tools["write_shared_memory"],
+        )
+        self._back_support_inquiry_writer_executor = BackSupportInquiryWriterPhaseExecutor(
+            write_shared_memory_tool=back_support_inquiry_writer_tools["write_shared_memory"],
+        )
         self._supervisor_executor = SupervisorPhaseExecutor(
             read_shared_memory_tool=supervisor_tools["read_shared_memory"],
             write_shared_memory_tool=supervisor_tools["write_shared_memory"],
             log_analyzer_executor=self._log_analyzer_executor,
+            back_support_escalation_executor=self._back_support_escalation_executor,
+            back_support_inquiry_writer_executor=self._back_support_inquiry_writer_executor,
+            escalation_settings=context.config.workflow.escalation,
         )
 
     @property

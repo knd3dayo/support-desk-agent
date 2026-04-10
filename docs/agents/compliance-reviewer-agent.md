@@ -28,8 +28,10 @@ CaseState へ直接固定反映する項目はまだ限定的だが、Supervisor
 
 ## 5. 使用ツール
 
-- check_policy
-- request_revision
+ComplianceReviewerAgent の使用ツール詳細は次を参照する。
+
+- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- ComplianceReviewerAgent 用ツール: [docs/tools/compliance-reviewer-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/compliance-reviewer-tools.md)
 
 ## 6. 処理内容
 

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 from support_ope_agents.agents.roles import (
+    BACK_SUPPORT_ESCALATION_AGENT,
+    BACK_SUPPORT_INQUIRY_WRITER_AGENT,
     COMPLIANCE_REVIEWER_AGENT,
     DEFAULT_AGENT_ROLES,
     DRAFT_WRITER_AGENT,
@@ -89,6 +91,8 @@ class ToolRegistry:
                 ToolSpec("spawn_knowledge_retriever_agent", "Delegate to knowledge retriever agent", _not_implemented_tool("spawn_knowledge_retriever_agent")),
                 ToolSpec("spawn_draft_writer_agent", "Delegate draft creation", _not_implemented_tool("spawn_draft_writer_agent")),
                 ToolSpec("spawn_compliance_reviewer_agent", "Delegate compliance review", _not_implemented_tool("spawn_compliance_reviewer_agent")),
+                ToolSpec("spawn_back_support_escalation_agent", "Delegate escalation material preparation", _not_implemented_tool("spawn_back_support_escalation_agent")),
+                ToolSpec("spawn_back_support_inquiry_writer_agent", "Delegate escalation inquiry drafting", _not_implemented_tool("spawn_back_support_inquiry_writer_agent")),
                 ToolSpec(
                     "write_shared_memory",
                     "Write shared context/progress/summary files for a case workspace",
@@ -143,6 +147,33 @@ class ToolRegistry:
             COMPLIANCE_REVIEWER_AGENT: [
                 ToolSpec("check_policy", "Check compliance policy", _not_implemented_tool("check_policy")),
                 ToolSpec("request_revision", "Request draft revision", _not_implemented_tool("request_revision")),
+            ],
+            BACK_SUPPORT_ESCALATION_AGENT: [
+                ToolSpec(
+                    "read_shared_memory",
+                    "Read shared case memory files",
+                    build_default_read_shared_memory_tool(self._config),
+                    provider="builtin",
+                    target="default-case-memory-reader",
+                ),
+                ToolSpec("scan_workspace_artifacts", "Scan workspace artifacts", _not_implemented_tool("scan_workspace_artifacts")),
+                ToolSpec(
+                    "write_shared_memory",
+                    "Write shared context/progress/summary files for a case workspace",
+                    build_default_write_shared_memory_tool(self._config),
+                    provider="builtin",
+                    target="default-case-memory-writer",
+                ),
+            ],
+            BACK_SUPPORT_INQUIRY_WRITER_AGENT: [
+                ToolSpec("write_draft", "Write escalation inquiry draft", _not_implemented_tool("write_draft")),
+                ToolSpec(
+                    "write_shared_memory",
+                    "Write shared context/progress/summary files for a case workspace",
+                    build_default_write_shared_memory_tool(self._config),
+                    provider="builtin",
+                    target="default-case-memory-writer",
+                ),
             ],
         }
 

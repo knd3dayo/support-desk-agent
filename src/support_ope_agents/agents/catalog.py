@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
+from support_ope_agents.agents.back_support_escalation_agent import build_back_support_escalation_agent_definition
+from support_ope_agents.agents.back_support_inquiry_writer_agent import build_back_support_inquiry_writer_agent_definition
 from support_ope_agents.agents.compliance_reviewer_agent import build_compliance_reviewer_agent_definition
 from support_ope_agents.agents.draft_writer_agent import build_draft_writer_agent_definition
 from support_ope_agents.agents.intake_agent import build_intake_agent_definition
@@ -17,4 +19,6 @@ def build_default_agent_definitions() -> list[AgentDefinition]:
         build_knowledge_retriever_agent_definition(),
         build_draft_writer_agent_definition(),
         build_compliance_reviewer_agent_definition(),
+        build_back_support_escalation_agent_definition(),
+        build_back_support_inquiry_writer_agent_definition(),
     ]

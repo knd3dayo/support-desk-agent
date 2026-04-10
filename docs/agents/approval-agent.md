@@ -35,7 +35,10 @@ CaseState へ反映する主な出力:
 
 ## 5. 使用ツール
 
-- record_approval_decision
+ApprovalAgent の使用ツール詳細は次を参照する。
+
+- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- ApprovalAgent 用ツール: [docs/tools/approval-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/approval-tools.md)
 
 ## 6. 処理内容
 

@@ -47,6 +47,35 @@ support_ope_agents:
   #
   #   # 圧縮サマリの最大文字数です。
   #   max_summary_chars: 4000
+  #
+  #   # エスカレーション判定と不足資料補完の設定です。
+  #   escalation:
+  #     # 未解決や確証不足とみなす語句です。
+  #     uncertainty_markers:
+  #       - 未解決
+  #       - 不明
+  #       - 特定でき
+  #       - 確証
+  #       - 追加ログ
+  #       - need more logs
+  #       - unable to conclude
+  #       - insufficient evidence
+  #
+  #     # ログ不足とみなす語句です。
+  #     missing_log_markers:
+  #       - ログファイルが見つからなかった
+  #
+  #     # workflow_kind ごとの既定依頼資料です。
+  #     default_missing_artifacts_by_workflow:
+  #       incident_investigation:
+  #         - 発生時刻前後のアプリケーションログ
+  #         - 再現手順または実施操作
+  #       specification_inquiry:
+  #         - 関連仕様書または設定値
+  #         - 期待動作と実際の動作差分
+  #       ambiguous_case:
+  #         - 発生条件を示す追加ログ
+  #         - 期待動作と実際の動作差分
 
   # トレース基盤の設定です。
   # トレースを使わない場合は未指定で構いません。
@@ -137,11 +166,6 @@ support_ope_agents:
   #     enabled: true
   #     auto_compress: true
   #
-  #   # 解決方針作成 Agent の設定です。
-  #   ResolutionAgent:
-  #     enabled: true
-  #     auto_compress: true
-  #
   #   # ドラフト作成 Agent の設定です。
   #   DraftWriterAgent:
   #     enabled: true
@@ -149,5 +173,15 @@ support_ope_agents:
   #
   #   # コンプライアンス確認 Agent の設定です。
   #   ComplianceReviewerAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # バックサポート向けエスカレーション整理 Agent の設定です。
+  #   BackSupportEscalationAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # バックサポート問い合わせ文案作成 Agent の設定です。
+  #   BackSupportInquiryWriterAgent:
   #     enabled: true
   #     auto_compress: true
