@@ -8,20 +8,24 @@ from support_ope_agents.tools.doc_generator import export_tool_docs
 
 
 class ToolDocsGeneratorTests(unittest.TestCase):
-    def test_export_tool_docs_writes_role_markdown_drafts(self) -> None:
+    def test_export_tool_docs_writes_per_tool_markdown_drafts_and_removes_stale_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
+            stale = Path(tmpdir) / "super-visor-tools.generated.md"
+            stale.write_text("stale", encoding="utf-8")
+
             generated = export_tool_docs(
                 "/home/user/source/repos/support-ope-agents/config.yml",
                 tmpdir,
             )
 
             self.assertTrue(generated)
-            supervisor_doc = Path(tmpdir) / "super-visor-tools.generated.md"
-            self.assertTrue(supervisor_doc.exists())
-            content = supervisor_doc.read_text(encoding="utf-8")
-            self.assertIn("# SuperVisorAgent ツール下書き", content)
-            self.assertIn("read_shared_memory", content)
-            self.assertIn("write_shared_memory", content)
+            self.assertFalse(stale.exists())
+            read_shared_memory_doc = Path(tmpdir) / "read_shared_memory.generated.md"
+            self.assertTrue(read_shared_memory_doc.exists())
+            content = read_shared_memory_doc.read_text(encoding="utf-8")
+            self.assertIn("# read_shared_memory ツール下書き", content)
+            self.assertIn("SuperVisorAgent", content)
+            self.assertIn("BackSupportEscalationAgent", content)
             self.assertIn("## 手編集メモ", content)
 
 

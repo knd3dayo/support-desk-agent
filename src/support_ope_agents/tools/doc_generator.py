@@ -1,24 +1,10 @@
 from __future__ import annotations
 
-from collections import Counter
+from collections import defaultdict
 from pathlib import Path
 
 from support_ope_agents.config import load_config
 from support_ope_agents.tools.registry import ToolRegistry, ToolSpec
-
-
-def _role_slug(role: str) -> str:
-    chunks: list[str] = []
-    current = ""
-    for char in role.replace("Agent", ""):
-        if char.isupper() and current:
-            chunks.append(current.lower())
-            current = char
-        else:
-            current += char
-    if current:
-        chunks.append(current.lower())
-    return "-".join(chunks) or role.lower()
 
 
 def _implementation_status(tool: ToolSpec) -> str:
@@ -31,39 +17,35 @@ def _implementation_status(tool: ToolSpec) -> str:
     return "planned"
 
 
-def _render_tool_line(tool: ToolSpec) -> str:
-    target = tool.target or "n/a"
-    return (
-        f"- {tool.name}: {tool.description} "
-        f"(provider={tool.provider}, target={target}, status={_implementation_status(tool)}, override=allowed)"
-    )
+def _tool_doc_filename(tool_name: str) -> str:
+    return f"{tool_name}.generated.md"
 
 
-def build_tool_docs_markdown(registry: ToolRegistry, role: str) -> str:
-    role_tools = registry.get_tools(role)
-    tool_counts = Counter(tool.name for listed_role in registry.list_roles() for tool in registry.get_tools(listed_role))
-    common_tools = [tool for tool in role_tools if tool_counts[tool.name] >= 2]
-    role_specific_tools = [tool for tool in role_tools if tool_counts[tool.name] < 2]
+def _collect_tools_by_name(registry: ToolRegistry) -> dict[str, list[tuple[str, ToolSpec]]]:
+    tools_by_name: dict[str, list[tuple[str, ToolSpec]]] = defaultdict(list)
+    for role in registry.list_roles():
+        for tool in registry.get_tools(role):
+            tools_by_name[tool.name].append((role, tool))
+    return dict(sorted(tools_by_name.items()))
 
-    lines = [f"# {role} ツール下書き", "", "このファイルは ToolRegistry から半自動生成した下書きです。", ""]
-    lines.append("## 共通ツール")
-    if common_tools:
-        lines.extend(_render_tool_line(tool) for tool in common_tools)
-    else:
-        lines.append("- なし")
 
-    lines.extend(["", "## role 固有ツール"])
-    if role_specific_tools:
-        lines.extend(_render_tool_line(tool) for tool in role_specific_tools)
-    else:
-        lines.append("- なし")
+def build_tool_docs_markdown(tool_name: str, role_bindings: list[tuple[str, ToolSpec]]) -> str:
+    canonical_tool = role_bindings[0][1]
+    lines = [f"# {tool_name} ツール下書き", "", "このファイルは ToolRegistry から半自動生成した下書きです。", ""]
+    lines.extend(["## 概要", f"- description: {canonical_tool.description}"])
+    lines.extend(["", "## 利用エージェント"])
+    for role, tool in role_bindings:
+        target = tool.target or "n/a"
+        lines.append(
+            f"- {role}: provider={tool.provider}, target={target}, status={_implementation_status(tool)}, override=allowed"
+        )
 
     lines.extend(
         [
             "",
             "## 手編集メモ",
             "- ここに入出力例、運用上の注意、MCP 接続前提などを追記する。",
-            "- 既存の docs/tools/*.md を置き換えるのではなく、レビュー用の下書きとして使う。",
+            "- docs/tools/specs/*.md の更新時に差分確認用の下書きとして使う。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -75,9 +57,13 @@ def export_tool_docs(config_path: str, output_dir: str | Path) -> list[Path]:
     target_dir = Path(output_dir).expanduser().resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    tool_bindings = _collect_tools_by_name(registry)
     generated: list[Path] = []
-    for role in registry.list_roles():
-        output_path = target_dir / f"{_role_slug(role)}-tools.generated.md"
-        output_path.write_text(build_tool_docs_markdown(registry, role), encoding="utf-8")
+    for stale_path in target_dir.glob("*.generated.md"):
+        stale_path.unlink()
+
+    for tool_name, role_bindings in tool_bindings.items():
+        output_path = target_dir / _tool_doc_filename(tool_name)
+        output_path.write_text(build_tool_docs_markdown(tool_name, role_bindings), encoding="utf-8")
         generated.append(output_path)
     return generated

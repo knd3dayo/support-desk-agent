@@ -132,13 +132,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_tool_docs = subparsers.add_parser(
         "export-tool-docs",
-        help="Export semi-automatic tool docs drafts from ToolRegistry",
+        help="Export semi-automatic per-tool docs drafts from ToolRegistry",
         parents=[common],
     )
     export_tool_docs.add_argument(
         "--output-dir",
         default="docs/tools/generated",
-        help="Directory where generated markdown drafts are written",
+        help="Directory where generated per-tool markdown drafts are written",
     )
     export_tool_docs.set_defaults(func=_cmd_export_tool_docs)
 
