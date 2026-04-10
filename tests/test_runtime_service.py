@@ -553,6 +553,22 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         self.assertEqual(case_index["CASE-TEST-TITLE"]["case_title"], "API 連携後に circular import で収集失敗する件")
 
+    def test_list_cases_backfills_missing_case_title_from_first_user_message(self) -> None:
+        workspace = self.workspace_path / "CASE-LEGACY"
+        self.service.initialize_case("CASE-LEGACY", str(workspace))
+        self.service.context.memory_store.append_chat_history(
+            "CASE-LEGACY",
+            str(workspace),
+            {"role": "user", "content": "# 古いケースの問い合わせタイトル\n\n詳細本文"},
+        )
+
+        cases = self.service.list_cases(str(self.workspace_path))
+        case_index = {item["case_id"]: item for item in cases}
+
+        self.assertEqual(case_index["CASE-LEGACY"]["case_title"], "古いケースの問い合わせタイトル")
+        metadata = self.service.context.memory_store.read_case_metadata(str(workspace))
+        self.assertEqual(str(metadata.get("case_title") or ""), "古いケースの問い合わせタイトル")
+
     def test_workspace_roundtrip_and_archive(self) -> None:
         self.service.initialize_case("CASE-TEST-015", str(self.workspace_path))
 

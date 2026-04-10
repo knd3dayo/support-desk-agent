@@ -235,10 +235,13 @@ class RuntimeService:
             case_id = marker or child.name
             metadata = self._context.memory_store.read_case_metadata(child)
             history = self._context.memory_store.read_chat_history(case_id, str(child))
+            case_title = str(metadata.get("case_title") or "").strip()
+            if not case_title:
+                case_title = self._backfill_case_title(case_id=case_id, workspace_path=str(child), history=history)
             cases.append(
                 {
                     "case_id": case_id,
-                    "case_title": str(metadata.get("case_title") or case_id),
+                    "case_title": case_title,
                     "workspace_path": str(child),
                     "updated_at": datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat(),
                     "message_count": len(history),
@@ -265,6 +268,20 @@ class RuntimeService:
     def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: dict[str, object], prompt: str) -> str:
         case_title = str(state.get("case_title") or "").strip() or derive_case_title(prompt, fallback=case_id)
         return self._persist_case_title(case_id=case_id, workspace_path=workspace_path, case_title=case_title)
+
+    def _backfill_case_title(self, *, case_id: str, workspace_path: str, history: list[dict[str, object]]) -> str:
+        for message in history:
+            if str(message.get("role") or "") != "user":
+                continue
+            content = str(message.get("content") or "").strip()
+            if not content:
+                continue
+            return self._persist_case_title(
+                case_id=case_id,
+                workspace_path=workspace_path,
+                case_title=derive_case_title(content, fallback=case_id),
+            )
+        return self._persist_case_title(case_id=case_id, workspace_path=workspace_path, case_title=case_id)
 
     def get_chat_history(self, *, case_id: str, workspace_path: str) -> list[dict[str, object]]:
         return self._context.memory_store.read_chat_history(case_id, workspace_path)

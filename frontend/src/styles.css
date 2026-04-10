@@ -39,15 +39,15 @@ input {
 }
 
 .shell.shell-sidebar-collapsed {
-  grid-template-columns: 96px minmax(420px, 1.35fr) minmax(320px, 1fr);
+  grid-template-columns: 64px minmax(420px, 1.35fr) minmax(320px, 1fr);
 }
 
 .shell.shell-workspace-collapsed {
-  grid-template-columns: minmax(240px, 280px) minmax(420px, 1.35fr) 96px;
+  grid-template-columns: minmax(240px, 280px) minmax(420px, 1.35fr) 64px;
 }
 
 .shell.shell-sidebar-collapsed.shell-workspace-collapsed {
-  grid-template-columns: 96px minmax(420px, 1fr) 96px;
+  grid-template-columns: 64px minmax(420px, 1fr) 64px;
 }
 
 .panel,
@@ -361,14 +361,26 @@ input {
 }
 
 .shell-sidebar-collapsed .sidebar .panel-title-block,
-.shell-workspace-collapsed .workspace .panel-title-block,
 .shell-workspace-collapsed .workspace .panel-action-secondary {
+  display: none;
+}
+
+.shell-workspace-collapsed .workspace .panel-title-block,
+.shell-sidebar-collapsed .sidebar .panel-title-block {
+  display: block;
+}
+
+.shell-sidebar-collapsed .sidebar .panel-title-block > h1,
+.shell-workspace-collapsed .workspace .panel-title-block > h2,
+.shell-sidebar-collapsed .sidebar .panel-label-row .eyebrow,
+.shell-workspace-collapsed .workspace .panel-label-row .eyebrow {
   display: none;
 }
 
 .shell-sidebar-collapsed .sidebar,
 .shell-workspace-collapsed .workspace {
   align-items: center;
+  padding: 12px 8px;
 }
 
 .shell-sidebar-collapsed .sidebar .with-border,
@@ -381,12 +393,19 @@ input {
 }
 
 .shell-workspace-collapsed .workspace .panel-header {
-  justify-content: space-between;
+  justify-content: center;
 }
 
 .shell-sidebar-collapsed .sidebar .panel-label-row,
 .shell-workspace-collapsed .workspace .panel-label-row {
   justify-content: center;
+}
+
+.conversation-case-id {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: rgba(16, 33, 47, 0.58);
+  overflow-wrap: anywhere;
 }
 
 .messages {
@@ -505,7 +524,9 @@ input {
 
 .tree-node {
   display: grid;
-  gap: 4px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
   text-align: left;
   padding: 12px 14px;
   font-size: 0.86rem;
@@ -514,6 +535,98 @@ input {
 
 .tree-node.active {
   outline: 2px solid rgba(16, 50, 77, 0.2);
+}
+
+.tree-entry-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tree-entry-copy strong {
+  overflow-wrap: anywhere;
+}
+
+.tree-entry-kind {
+  font-size: 0.72rem;
+  color: rgba(16, 33, 47, 0.56);
+}
+
+.tree-node.active .tree-entry-kind {
+  color: rgba(16, 33, 47, 0.72);
+}
+
+.tree-entry-icon {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.tree-entry-icon.directory {
+  width: 18px;
+  height: 12px;
+  border-radius: 3px;
+  background: #d8b56d;
+  box-shadow: inset 0 -1px 0 rgba(16, 33, 47, 0.12);
+}
+
+.tree-entry-icon.directory::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: -3px;
+  width: 8px;
+  height: 4px;
+  border-radius: 3px 3px 0 0;
+  background: #ebca87;
+}
+
+.tree-entry-icon.file {
+  width: 14px;
+  height: 18px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #ffffff, #edf2f6);
+  border: 1px solid rgba(16, 33, 47, 0.18);
+}
+
+.tree-entry-icon.file::before {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -1px;
+  width: 6px;
+  height: 6px;
+  background: linear-gradient(135deg, rgba(16, 33, 47, 0.08) 0%, rgba(16, 33, 47, 0.08) 50%, #ffffff 50%, #ffffff 100%);
+  border-top-right-radius: 3px;
+}
+
+.tree-entry-icon.parent {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 33, 47, 0.18);
+}
+
+.tree-entry-icon.parent::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  width: 8px;
+  height: 2px;
+  background: currentColor;
+}
+
+.tree-entry-icon.parent::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 5px;
+  width: 6px;
+  height: 6px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
 }
 
 .preview-pane {
@@ -579,6 +692,14 @@ input {
   color: rgba(16, 33, 47, 0.72);
 }
 
+.empty-preview {
+  color: rgba(70, 78, 88, 0.78);
+}
+
+.empty-preview h3 {
+  color: rgba(56, 64, 74, 0.88);
+}
+
 .compact {
   padding: 18px;
 }
@@ -593,7 +714,7 @@ input {
   }
 
   .shell.shell-sidebar-collapsed {
-    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-columns: 64px minmax(0, 1fr);
   }
 
   .shell.shell-workspace-collapsed,

@@ -251,6 +251,7 @@ export default function App() {
 
   const currentPath = workspaceView?.current_path || '.';
   const breadcrumbs = currentPath === '.' ? ['.'] : currentPath.split('/');
+  const parentPath = currentPath === '.' ? null : currentPath.includes('/') ? currentPath.slice(0, currentPath.lastIndexOf('/')) : '.';
   const shellClassName = [
     'shell',
     sidebarCollapsed ? 'shell-sidebar-collapsed' : '',
@@ -317,7 +318,8 @@ export default function App() {
         <div className="panel-header with-border">
           <div>
             <p className="eyebrow">Active Conversation</p>
-            <h2>{selectedCase?.case_id || '新しい会話を開始'}</h2>
+            <h2>{selectedCase?.case_title || selectedCase?.case_id || '新しい会話を開始'}</h2>
+            {selectedCase?.case_title ? <div className="conversation-case-id">{selectedCase.case_id}</div> : null}
           </div>
           <div className="status-stack">
             <label className="auth-box">
@@ -432,6 +434,20 @@ export default function App() {
 
           <div className="workspace-grid">
             <div className="tree-view">
+              {parentPath !== null ? (
+                <button
+                  key="__parent__"
+                  type="button"
+                  className="tree-node tree-node-parent"
+                  onClick={() => void openDirectory(parentPath)}
+                >
+                  <span className="tree-entry-icon parent" aria-hidden="true" />
+                  <div className="tree-entry-copy">
+                    <strong>..</strong>
+                    <span className="tree-entry-kind">親ディレクトリ</span>
+                  </div>
+                </button>
+              ) : null}
               {(workspaceView?.entries || []).map((entry) => (
                 <button
                   key={entry.path}
@@ -439,8 +455,11 @@ export default function App() {
                   className={`tree-node ${selectedEntry?.path === entry.path ? 'active' : ''}`}
                   onClick={() => void openEntry(entry)}
                 >
-                  <span>{entry.kind === 'directory' ? 'dir' : 'file'}</span>
-                  <strong>{entry.name}</strong>
+                  <span className={`tree-entry-icon ${entry.kind === 'directory' ? 'directory' : 'file'}`} aria-hidden="true" />
+                  <div className="tree-entry-copy">
+                    <strong>{entry.name}</strong>
+                    <span className="tree-entry-kind">{entry.kind === 'directory' ? 'フォルダ' : 'ファイル'}</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -478,8 +497,8 @@ export default function App() {
                   )}
                 </>
               ) : (
-                <div className="empty-state compact">
-                  <h3>プレビュー待機中</h3>
+                <div className="empty-state empty-preview compact">
+                  <h3>プレビュー</h3>
                   <p>右側のツリーからファイルを選択すると内容を表示します。</p>
                 </div>
               )}
