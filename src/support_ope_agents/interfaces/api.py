@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from support_ope_agents.runtime import RuntimeService, build_runtime_context
 
-from .schemas import ActionRequest, DescribeAgentsRequest, InitCaseRequest, InitCaseResponse, PlanRequest, RuntimeEnvelope
+from .schemas import ActionRequest, DescribeAgentsRequest, InitCaseRequest, InitCaseResponse, PlanRequest, ResumeCustomerInputRequest, RuntimeEnvelope
 
 
 def create_app(config_path: str = "config.yml") -> FastAPI:
@@ -38,6 +38,17 @@ def create_app(config_path: str = "config.yml") -> FastAPI:
             workspace_path=request.workspace_path,
             trace_id=request.trace_id,
             execution_plan=request.execution_plan,
+        )
+        return RuntimeEnvelope.model_validate(result)
+
+    @app.post("/resume-customer-input", response_model=RuntimeEnvelope)
+    def resume_customer_input(request: ResumeCustomerInputRequest) -> RuntimeEnvelope:
+        result = service.resume_customer_input(
+            case_id=request.case_id,
+            trace_id=request.trace_id,
+            workspace_path=request.workspace_path,
+            additional_input=request.additional_input,
+            answer_key=request.answer_key,
         )
         return RuntimeEnvelope.model_validate(result)
 

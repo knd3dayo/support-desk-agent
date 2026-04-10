@@ -5,6 +5,18 @@
 本設計書は、カスタマーサポート業務シナリオを support-ope-agents 上で実装するための初期設計を定義する。
 対象業務は、問い合わせ受付、ログ解析、ナレッジ探索、回答ドラフト生成、人間承認、チケット更新である。
 
+agent 個別の詳細仕様は次を参照する。
+
+- 共通事項: [docs/agents/common.md](/home/user/source/repos/support-ope-agents/docs/agents/common.md)
+- SuperVisorAgent: [docs/agents/supervisor-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/supervisor-agent.md)
+- IntakeAgent: [docs/agents/intake-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/intake-agent.md)
+- LogAnalyzerAgent: [docs/agents/log-analyzer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/log-analyzer-agent.md)
+- KnowledgeRetrieverAgent: [docs/agents/knowledge-retriever-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/knowledge-retriever-agent.md)
+- DraftWriterAgent: [docs/agents/draft-writer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/draft-writer-agent.md)
+- ComplianceReviewerAgent: [docs/agents/compliance-reviewer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/compliance-reviewer-agent.md)
+- ApprovalAgent: [docs/agents/approval-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/approval-agent.md)
+- TicketUpdateAgent: [docs/agents/ticket-update-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/ticket-update-agent.md)
+
 本アプリの実装コンセプトは次の通りとする。
 
 - 業務プロセスは LangGraph のワークフローで表現する
@@ -129,28 +141,33 @@ IntakeAgent、ApprovalAgent、TicketUpdateAgent は LangGraph 上の疑似エー
 - LogAnalyzerAgent を DeepAgent として実装する
 - ログ、エビデンス、ワークスペース情報から異常兆候と再現条件を抽出する
 - 自身のワーキングメモリに試行錯誤を保持し、確度の高い事実のみ共有メモリへ反映する
+- 詳細設計は [docs/agents/log-analyzer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/log-analyzer-agent.md) を参照する
 
 #### KnowledgeRetrieverAgent
 
 - KnowledgeRetrieverAgent を DeepAgent として実装する
 - 既知エラー、過去チケット、ナレッジベースから関連情報を探索する
 - 自身のワーキングメモリに検索履歴を保持し、根拠付き候補のみ共有メモリへ反映する
+- 詳細設計は [docs/agents/knowledge-retriever-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/knowledge-retriever-agent.md) を参照する
 
 #### DraftWriterAgent
 
 - DraftWriterAgent を DeepAgent として実装する
 - 顧客向け回答ドラフトを作成し、技術的事実と顧客向け表現の橋渡しを行う
+- 詳細設計は [docs/agents/draft-writer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/draft-writer-agent.md) を参照する
 
 #### ComplianceReviewerAgent
 
 - ComplianceReviewerAgent を DeepAgent として実装する
 - 回答ドラフトが事実、ポリシー、表現上の制約に反していないかを検査する
+- 詳細設計は [docs/agents/compliance-reviewer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/compliance-reviewer-agent.md) を参照する
 
 #### ApprovalAgent
 
 - LangGraph の承認フェーズとして実装し、疑似的なエージェントとして扱う
 - WAITING_APPROVAL で interrupt し、人間の承認、差戻し、追加調査要求に応じて resume する
 - 承認判断は workflow state に記録し、後続の SuperVisorAgent 管理フェーズまたは TicketUpdateAgent subgraph へ接続する
+- 詳細設計は [docs/agents/approval-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/approval-agent.md) を参照する
 
 #### TicketUpdateAgent
 
@@ -158,6 +175,7 @@ IntakeAgent、ApprovalAgent、TicketUpdateAgent は LangGraph 上の疑似エー
 - 承認後に更新内容の確定と外部チケット更新を段階的に実行する
 - subgraph 内では更新ペイロードの準備と Zendesk / Redmine 反映を分離する
 - 更新の前には必ずHITLを発生させる。
+- 詳細設計は [docs/agents/ticket-update-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/ticket-update-agent.md) を参照する
 
 ### 3.2 エージェント間の情報共有
 

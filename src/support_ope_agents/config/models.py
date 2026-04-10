@@ -13,7 +13,7 @@ class LlmSettings(BaseModel):
 
 
 class ConfigPathSettings(BaseModel):
-    instructions_path: Path
+    instructions_path: Path | None = None
 
 
 class DataPathSettings(BaseModel):

@@ -6,6 +6,7 @@ from typing import Any, cast
 from langgraph.graph import END, START, StateGraph
 
 from support_ope_agents.agents.intake_agent import IntakePhaseExecutor
+from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
     INTAKE_AGENT,
@@ -15,19 +16,39 @@ from support_ope_agents.agents.roles import (
 from support_ope_agents.workflow.state import CaseState
 
 
-def build_case_workflow(*, checkpointer: Any | None = None, intake_executor: IntakePhaseExecutor | None = None):
+def build_case_workflow(
+    *,
+    checkpointer: Any | None = None,
+    intake_executor: IntakePhaseExecutor | None = None,
+    supervisor_executor: SupervisorPhaseExecutor | None = None,
+):
     graph = StateGraph(CaseState)
     graph.add_node("receive_case", _receive_case)
     graph.add_node("intake", _build_intake_node(intake_executor))
-    graph.add_node("investigation", _investigation)
-    graph.add_node("draft_review", _draft_review)
+    graph.add_node("investigation", _build_investigation_node(supervisor_executor))
+    graph.add_node("draft_review", _build_draft_review_node(supervisor_executor))
+    graph.add_node("wait_for_customer_input", _wait_for_customer_input)
     graph.add_node("wait_for_approval", _wait_for_approval)
     _add_ticket_update_subgraph(graph)
 
     graph.add_edge(START, "receive_case")
     graph.add_edge("receive_case", "intake")
-    graph.add_edge("intake", "investigation")
-    graph.add_edge("investigation", "draft_review")
+    graph.add_conditional_edges(
+        "intake",
+        _route_after_intake,
+        {
+            "investigation": "investigation",
+            "wait_for_customer_input": "wait_for_customer_input",
+        },
+    )
+    graph.add_conditional_edges(
+        "investigation",
+        _route_after_investigation,
+        {
+            "draft_review": "draft_review",
+            "intake": "intake",
+        },
+    )
     graph.add_edge("draft_review", "wait_for_approval")
     graph.add_conditional_edges(
         "wait_for_approval",
@@ -76,10 +97,53 @@ class _NoOpIntakeExecutor:
         update = dict(state)
         update["status"] = "TRIAGED"
         update["current_agent"] = INTAKE_AGENT
+        update.setdefault("intake_rework_required", False)
+        update.setdefault("intake_missing_fields", [])
+        update.setdefault("intake_followup_questions", {})
+        update.setdefault("customer_followup_answers", {})
         if update.get("execution_mode") == "plan":
             update["next_action"] = "ユーザーに計画を提示して承認を得る"
         else:
             update["next_action"] = "SuperVisorAgent が調査フェーズを開始する"
+        return cast(CaseState, update)
+
+
+def _build_investigation_node(supervisor_executor: SupervisorPhaseExecutor | None):
+    executor = supervisor_executor or _NoOpSupervisorExecutor()
+
+    def _investigation(state: CaseState) -> CaseState:
+        return cast(CaseState, executor.execute_investigation(state))
+
+    return _investigation
+
+
+def _build_draft_review_node(supervisor_executor: SupervisorPhaseExecutor | None):
+    executor = supervisor_executor or _NoOpSupervisorExecutor()
+
+    def _draft_review(state: CaseState) -> CaseState:
+        return cast(CaseState, executor.execute_draft_review(state))
+
+    return _draft_review
+
+
+class _NoOpSupervisorExecutor:
+    def execute_investigation(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        update["status"] = "INVESTIGATING"
+        update["current_agent"] = SUPERVISOR_AGENT
+        update.setdefault("intake_rework_required", False)
+        if update.get("execution_mode") == "action":
+            update["investigation_summary"] = str(update.get("investigation_summary") or "SuperVisorAgent 配下でログ解析とナレッジ探索を開始する準備が整っています。")
+        return cast(CaseState, update)
+
+    def execute_draft_review(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        update["status"] = "DRAFT_READY"
+        update["current_agent"] = SUPERVISOR_AGENT
+        if update.get("execution_mode") == "plan":
+            update["draft_response"] = "plan モードでは SuperVisorAgent がドラフト作成とレビュー方針のみを返却し、action モードで実際の生成へ進みます。"
+        else:
+            update.setdefault("draft_response", "action モードで SuperVisorAgent 配下のドラフト作成とレビューを開始する準備が整っています。")
         return cast(CaseState, update)
 
 
@@ -115,6 +179,15 @@ def _wait_for_approval(state: CaseState) -> CaseState:
     return cast(CaseState, update)
 
 
+def _wait_for_customer_input(state: CaseState) -> CaseState:
+    update = dict(state)
+    update["status"] = "WAITING_CUSTOMER_INPUT"
+    update["current_agent"] = INTAKE_AGENT
+    if not update.get("next_action"):
+        update["next_action"] = "IntakeAgent の質問に回答し、追加情報を提供してください。"
+    return cast(CaseState, update)
+
+
 def _ticket_update_prepare(state: CaseState) -> CaseState:
     update = dict(state)
     update["current_agent"] = TICKET_UPDATE_AGENT
@@ -141,3 +214,15 @@ def _route_after_approval(state: CaseState) -> str:
     if decision == "reinvestigate":
         return "investigation"
     return "__end__"
+
+
+def _route_after_intake(state: CaseState) -> str:
+    if state.get("status") == "WAITING_CUSTOMER_INPUT":
+        return "wait_for_customer_input"
+    return "investigation"
+
+
+def _route_after_investigation(state: CaseState) -> str:
+    if state.get("intake_rework_required"):
+        return "intake"
+    return "draft_review"

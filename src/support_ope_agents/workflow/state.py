@@ -9,6 +9,7 @@ CaseStatus = Literal[
     "INVESTIGATING",
     "DRAFT_READY",
     "WAITING_APPROVAL",
+    "WAITING_CUSTOMER_INPUT",
     "CLOSED",
 ]
 
@@ -33,9 +34,21 @@ class CaseState(TypedDict, total=False):
     status: CaseStatus
     raw_issue: str
     masked_issue: str
+    intake_category: WorkflowKind
+    intake_urgency: str
+    intake_investigation_focus: str
+    intake_classification_reason: str
+    intake_incident_timeframe: str
+    intake_rework_required: bool
+    intake_rework_reason: str
+    intake_missing_fields: list[str]
+    intake_followup_questions: dict[str, str]
+    customer_followup_answers: dict[str, dict[str, str]]
     plan_summary: str
     plan_steps: list[str]
     investigation_summary: str
+    log_analysis_summary: str
+    log_analysis_file: str
     compressed_summary: str
     draft_response: str
     ticket_update_payload: str

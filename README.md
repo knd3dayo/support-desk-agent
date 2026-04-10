@@ -19,7 +19,8 @@ Deep Agents と LangGraph を組み合わせて、カスタマーサポート業
 - [.env.example](.env.example): 秘匿設定テンプレート
 - [src/support_ope_agents](src/support_ope_agents): アプリ本体
 - [src/support_ope_agents/interfaces](src/support_ope_agents/interfaces): API/MCP インターフェース層
-- [.instructions](.instructions): 共通指示と役割別指示の既定ディレクトリ
+- [src/support_ope_agents/instructions/defaults](src/support_ope_agents/instructions/defaults): 共通指示と役割別指示の内蔵デフォルト
+- [.instructions](.instructions): 必要に応じて既定指示を上書きするための任意 override ディレクトリ
 
 ## 起動
 
@@ -64,6 +65,8 @@ uvicorn support_ope_agents.interfaces.api:create_app --factory --host 127.0.0.1 
 MCP は最小アダプタとして `plan` と `action` ツールを公開し、どちらも `trace_id` を正式な継続キーとして扱います。
 
 共通の built-in ツールとして、画像/PDF/Office の解析、Office→PDF 変換、PDF→画像変換、テキスト抽出、Zip 操作を各エージェントへ配布します。役割別ツールはその上に追加され、最終的に [config.yml](config.yml) の `tools.overrides` で `builtin` / `mcp` / `disabled` に差し替えできます。`tools.mcp_manifest_path` で単一の `mcp.json` を指定し、設定した server 名や tool 名が参照先に存在しない場合は、CLI / API / MCP いずれの起動経路でも fail fast で起動エラーになります。
+
+instruction は src 内にデフォルトを同梱しているため、最初に動かすだけであれば .instructions の準備は不要です。必要になった時だけ [config.yml](config.yml) の `config_paths.instructions_path` で外部ディレクトリを指定し、共通指示や役割別指示を override できます。
 
 ```yaml
 support_ope_agents:

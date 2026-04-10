@@ -52,6 +52,19 @@ def _cmd_action(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_resume_customer_input(args: argparse.Namespace) -> int:
+    service = _build_service(args.config)
+    result = service.resume_customer_input(
+        case_id=args.case_id,
+        trace_id=args.trace_id,
+        workspace_path=args.workspace_path,
+        additional_input=args.additional_input,
+        answer_key=args.answer_key,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="support-ope-agents CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -82,6 +95,18 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument("--trace-id", default=None, help="Trace identifier from plan mode")
     action.add_argument("--execution-plan", default=None, help="Optional execution plan text")
     action.set_defaults(func=_cmd_action)
+
+    resume_customer_input = subparsers.add_parser(
+        "resume-customer-input",
+        help="Resume a paused trace with additional customer input",
+        parents=[common],
+    )
+    resume_customer_input.add_argument("additional_input", help="Additional customer response to a follow-up question")
+    resume_customer_input.add_argument("--case-id", required=True, help="Case identifier to resume")
+    resume_customer_input.add_argument("--trace-id", required=True, help="Trace identifier to resume")
+    resume_customer_input.add_argument("--workspace-path", required=True, help="Workspace path for the case")
+    resume_customer_input.add_argument("--answer-key", default=None, help="Field key of the follow-up question being answered")
+    resume_customer_input.set_defaults(func=_cmd_resume_customer_input)
 
     return parser
 

@@ -42,7 +42,8 @@ def load_config(config_path: str | Path) -> AppConfig:
     base_dir = path.parent
 
     config_paths = resolved.get("config_paths", {})
-    config_paths["instructions_path"] = _resolve_path(base_dir, config_paths.get("instructions_path", "./.instructions"))
+    if config_paths.get("instructions_path"):
+        config_paths["instructions_path"] = _resolve_path(base_dir, config_paths["instructions_path"])
     resolved["config_paths"] = config_paths
 
     resolved["data_paths"] = resolved.get("data_paths", {})

@@ -3,9 +3,15 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from support_ope_agents.agents.intake_agent import IntakePhaseExecutor
+from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
+from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.roles import INTAKE_AGENT
+from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT
+from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.agents.deep_agent_factory import DeepAgentFactory
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
@@ -54,7 +60,22 @@ class RuntimeService:
     def __init__(self, context: RuntimeContext):
         self._context = context
         self._migrate_legacy_traces()
-        self._intake_executor = IntakePhaseExecutor(context.memory_store)
+        intake_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INTAKE_AGENT)}
+        log_analyzer_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(LOG_ANALYZER_AGENT)}
+        supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
+        self._intake_executor = IntakePhaseExecutor(
+            pii_mask_tool=intake_tools["pii_mask"],
+            classify_ticket_tool=intake_tools["classify_ticket"],
+            write_shared_memory_tool=intake_tools["write_shared_memory"],
+        )
+        self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
+            detect_log_format_tool=log_analyzer_tools["detect_log_format"],
+        )
+        self._supervisor_executor = SupervisorPhaseExecutor(
+            read_shared_memory_tool=supervisor_tools["read_shared_memory"],
+            write_shared_memory_tool=supervisor_tools["write_shared_memory"],
+            log_analyzer_executor=self._log_analyzer_executor,
+        )
 
     @property
     def context(self) -> RuntimeContext:
@@ -73,11 +94,17 @@ class RuntimeService:
             workspace_path=workspace_path,
         )
 
+    @staticmethod
+    def _coerce_workflow_kind(value: object) -> WorkflowKind:
+        normalized = str(value or "").strip()
+        if normalized in WORKFLOW_LABELS:
+            return cast(WorkflowKind, normalized)
+        return "ambiguous_case"
+
     def initialize_case(self, case_id: str, workspace_path: str) -> Path:
         case_paths = self._context.memory_store.initialize_case(case_id, workspace_path=workspace_path)
         for definition in self._context.agent_factory.build_default_definitions():
             self._context.memory_store.ensure_agent_working_memory(case_id, definition.role, workspace_path=workspace_path)
-            self._context.instruction_loader.ensure_instruction_file(case_id, definition.role)
         return case_paths.root
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:
@@ -119,7 +146,10 @@ class RuntimeService:
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
         }
-        result = build_case_workflow(intake_executor=self._intake_executor).invoke(state)
+        result = cast(
+            CaseState,
+            build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).invoke(state),
+        )
         self._save_state(selected_case_id, trace_id, result)
         return {
             "case_id": selected_case_id,
@@ -130,7 +160,8 @@ class RuntimeService:
             "workflow_label": WORKFLOW_LABELS[workflow_kind],
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
-            "requires_approval": True,
+            "requires_approval": result.get("status") == "WAITING_APPROVAL",
+            "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
             "state": result,
         }
 
@@ -153,7 +184,7 @@ class RuntimeService:
             plan_steps = build_plan_steps(workflow_kind)
             plan_summary = execution_plan or summarize_plan(workflow_kind)
         else:
-            workflow_kind = str(saved_state.get("workflow_kind") or route_workflow(prompt))
+            workflow_kind = self._coerce_workflow_kind(saved_state.get("workflow_kind") or route_workflow(prompt))
             plan_steps = list(saved_state.get("plan_steps") or build_plan_steps(workflow_kind))
             plan_summary = str(saved_state.get("plan_summary") or execution_plan or summarize_plan(workflow_kind))
 
@@ -171,7 +202,10 @@ class RuntimeService:
             "plan_steps": plan_steps,
             "approval_decision": "pending",
         }
-        result = build_case_workflow(intake_executor=self._intake_executor).invoke(state)
+        result = cast(
+            CaseState,
+            build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).invoke(state),
+        )
         self._save_state(selected_case_id, current_trace_id, result)
         return {
             "case_id": selected_case_id,
@@ -181,11 +215,84 @@ class RuntimeService:
             "workflow_kind": workflow_kind,
             "workflow_label": WORKFLOW_LABELS[workflow_kind],
             "execution_mode": "action",
+            "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
+            "state": result,
+        }
+
+    def resume_customer_input(
+        self,
+        *,
+        case_id: str,
+        trace_id: str,
+        workspace_path: str,
+        additional_input: str,
+        answer_key: str | None = None,
+    ) -> dict[str, object]:
+        saved_state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
+        if not saved_state:
+            raise ValueError("指定された trace_id の保存 state が見つかりません")
+
+        if str(saved_state.get("status") or "") != "WAITING_CUSTOMER_INPUT":
+            raise ValueError("指定された trace は顧客入力待ち状態ではありません")
+
+        self.initialize_case(case_id, workspace_path=workspace_path)
+
+        previous_issue = str(saved_state.get("raw_issue") or "").strip()
+        merged_prompt = previous_issue
+        normalized_additional_input = additional_input.strip()
+        if normalized_additional_input:
+            merged_prompt = f"{previous_issue}\n\n[Additional customer input]\n{normalized_additional_input}" if previous_issue else normalized_additional_input
+
+        resumed_state = self._normalize_state_ids(saved_state, trace_id=trace_id)
+        resumed_state["case_id"] = case_id
+        resumed_state["workspace_path"] = workspace_path
+        resumed_state["raw_issue"] = merged_prompt
+        resumed_state["intake_rework_required"] = False
+        resumed_state["intake_rework_reason"] = ""
+        resumed_state["intake_missing_fields"] = []
+        previous_questions = dict(saved_state.get("intake_followup_questions") or {})
+        resolved_answer_key = answer_key
+        if resolved_answer_key is None and len(previous_questions) == 1:
+            resolved_answer_key = next(iter(previous_questions))
+        if resolved_answer_key is None and len(previous_questions) > 1:
+            raise ValueError("複数の追加入力項目があるため answer_key を指定してください")
+
+        resumed_state["intake_followup_questions"] = {}
+        answer_records = dict(saved_state.get("customer_followup_answers") or {})
+        if normalized_additional_input:
+            record_key = resolved_answer_key or "general"
+            answer_records[record_key] = {
+                "question": str(previous_questions.get(record_key) or ""),
+                "answer": normalized_additional_input,
+            }
+        resumed_state["customer_followup_answers"] = answer_records
+        resumed_state["next_action"] = "追加情報を反映して Intake を再実行する"
+
+        result = cast(
+            CaseState,
+            build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).invoke(resumed_state),
+        )
+        self._save_state(case_id, trace_id, result)
+
+        workflow_kind = self._coerce_workflow_kind(result.get("workflow_kind") or saved_state.get("workflow_kind"))
+
+        return {
+            "case_id": case_id,
+            "trace_id": trace_id,
+            "thread_id": trace_id,
+            "workflow_run_id": trace_id,
+            "workflow_kind": workflow_kind,
+            "workflow_label": WORKFLOW_LABELS[workflow_kind],
+            "execution_mode": str(result.get("execution_mode") or saved_state.get("execution_mode") or ""),
+            "plan_summary": str(result.get("plan_summary") or saved_state.get("plan_summary") or ""),
+            "plan_steps": list(result.get("plan_steps") or saved_state.get("plan_steps") or []),
+            "requires_approval": result.get("status") == "WAITING_APPROVAL",
+            "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
             "state": result,
         }
 
     def print_workflow_nodes(self) -> list[str]:
-        graph = build_case_workflow(intake_executor=self._intake_executor).get_graph()
+        graph = build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).get_graph()
         return sorted(node.id for node in graph.nodes.values())
 
     def state_file_path(self, case_id: str, trace_id: str, workspace_path: str) -> Path:
@@ -220,11 +327,11 @@ class RuntimeService:
     def _migrate_legacy_traces(self) -> None:
         return
 
-    def _normalize_state_ids(self, state: dict[str, object], *, trace_id: str | None = None) -> CaseState:
+    def _normalize_state_ids(self, state: dict[str, object] | CaseState, *, trace_id: str | None = None) -> CaseState:
         normalized_trace_id = self._normalize_trace_id(
             str(trace_id or state.get("trace_id") or state.get("session_id") or self._new_trace_id())
         )
-        normalized_state: CaseState = dict(state)
+        normalized_state = cast(CaseState, dict(state))
         normalized_state.pop("session_id", None)
         normalized_state["trace_id"] = normalized_trace_id
         normalized_state["thread_id"] = normalized_trace_id

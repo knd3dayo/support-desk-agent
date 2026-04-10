@@ -15,6 +15,10 @@ from support_ope_agents.agents.roles import (
 from support_ope_agents.config.models import AppConfig, BuiltinToolBinding, DisabledToolBinding, McpToolBinding
 
 from .builtin_tools import build_builtin_tools
+from .default_classify_ticket import build_default_classify_ticket_tool
+from .default_pii_mask import build_default_pii_mask_tool
+from .default_read_shared_memory import build_default_read_shared_memory_tool
+from .default_write_shared_memory import build_default_write_shared_memory_tool
 from .mcp_overrides import McpToolOverrideResolver, ToolConfigurationError
 
 
@@ -73,20 +77,58 @@ class ToolRegistry:
                 ToolSpec("inspect_workflow_state", "Inspect case workflow state", _not_implemented_tool("inspect_workflow_state")),
                 ToolSpec("evaluate_agent_result", "Evaluate a child agent result", _not_implemented_tool("evaluate_agent_result")),
                 ToolSpec("route_phase_agent", "Select next phase agent", _not_implemented_tool("route_phase_agent")),
-                ToolSpec("read_shared_memory", "Read shared case memory", _not_implemented_tool("read_shared_memory")),
+                ToolSpec(
+                    "read_shared_memory",
+                    "Read shared case memory files",
+                    build_default_read_shared_memory_tool(self._config),
+                    provider="builtin",
+                    target="default-case-memory-reader",
+                ),
                 ToolSpec("scan_workspace_artifacts", "Scan workspace artifacts", _not_implemented_tool("scan_workspace_artifacts")),
                 ToolSpec("spawn_log_analyzer_agent", "Delegate to log analyzer agent", _not_implemented_tool("spawn_log_analyzer_agent")),
                 ToolSpec("spawn_knowledge_retriever_agent", "Delegate to knowledge retriever agent", _not_implemented_tool("spawn_knowledge_retriever_agent")),
                 ToolSpec("spawn_draft_writer_agent", "Delegate draft creation", _not_implemented_tool("spawn_draft_writer_agent")),
                 ToolSpec("spawn_compliance_reviewer_agent", "Delegate compliance review", _not_implemented_tool("spawn_compliance_reviewer_agent")),
+                ToolSpec(
+                    "write_shared_memory",
+                    "Write shared context/progress/summary files for a case workspace",
+                    build_default_write_shared_memory_tool(self._config),
+                    provider="builtin",
+                    target="default-case-memory-writer",
+                ),
             ],
             INTAKE_AGENT: [
-                ToolSpec("pii_mask", "Mask PII from issue text or logs", _not_implemented_tool("pii_mask")),
-                ToolSpec("classify_ticket", "Classify customer support ticket", _not_implemented_tool("classify_ticket")),
-                ToolSpec("write_shared_memory", "Update shared memory files", _not_implemented_tool("write_shared_memory")),
+                ToolSpec(
+                    "pii_mask",
+                    "Mask API keys and similar secrets from issue text or logs",
+                    build_default_pii_mask_tool(self._config),
+                    provider="builtin",
+                    target="configured-llm-pii-mask",
+                ),
+                ToolSpec(
+                    "classify_ticket",
+                    "Classify customer support ticket with the configured LLM in PoC",
+                    build_default_classify_ticket_tool(self._config),
+                    provider="builtin",
+                    target="configured-llm-classify-ticket",
+                ),
+                ToolSpec(
+                    "write_shared_memory",
+                    "Write shared context/progress/summary files for a case workspace",
+                    build_default_write_shared_memory_tool(self._config),
+                    provider="builtin",
+                    target="default-case-memory-writer",
+                ),
             ],
             LOG_ANALYZER_AGENT: [
                 ToolSpec("read_log_file", "Read attached log file", _not_implemented_tool("read_log_file")),
+                ToolSpec(
+                    "detect_log_format",
+                    "Detect log format and generate regex-based search results",
+                    self._builtin_tools["detect_log_format_and_search"].handler,
+                    provider="builtin",
+                    target="detect_log_format_and_search",
+                ),
                 ToolSpec("run_python_analysis", "Run code-based log analysis", _not_implemented_tool("run_python_analysis")),
                 ToolSpec("write_working_memory", "Write agent working memory", _not_implemented_tool("write_working_memory")),
             ],

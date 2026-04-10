@@ -3,13 +3,14 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import re
 import shutil
 import subprocess
 import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 from urllib.parse import urlparse
 
 import fitz
@@ -87,7 +88,7 @@ def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
         return None
     if not config.llm.api_key:
         return None
-    return ChatOpenAI(model=config.llm.model, api_key=config.llm.api_key, temperature=0)
+    return ChatOpenAI(model=config.llm.model, api_key=cast(Any, config.llm.api_key), temperature=0)
 
 
 def _truncate_text(text: str, limit: int) -> str:
@@ -97,13 +98,13 @@ def _truncate_text(text: str, limit: int) -> str:
 
 
 def _extract_docx_text(path: Path) -> str:
-    document = DocxDocument(path)
+    document = DocxDocument(str(path))
     lines = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
     return "\n".join(lines)
 
 
 def _extract_pptx_text(path: Path) -> str:
-    presentation = Presentation(path)
+    presentation = Presentation(str(path))
     lines: list[str] = []
     for slide_index, slide in enumerate(presentation.slides, start=1):
         for shape in slide.shapes:
@@ -250,7 +251,7 @@ async def _analyze_images(config: AppConfig, paths: list[Path], prompt: str, det
                 },
             }
         )
-    response = await model.ainvoke([HumanMessage(content=content)])
+    response = await model.ainvoke([HumanMessage(content=cast(Any, content))])
     return _stringify_response_content(response.content)
 
 
@@ -286,6 +287,66 @@ def _collect_text_documents(config: AppConfig, paths: list[Path]) -> list[dict[s
             }
         )
     return documents
+
+
+def _detect_log_format_from_lines(lines: list[str]) -> dict[str, Any]:
+    joined = "\n".join(lines)
+    format_scores = {
+        "syslog": sum(1 for line in lines if re.match(r"^[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+", line)),
+        "log4j": sum(1 for line in lines if re.match(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[,.]\d{3,6})?\s+(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\b", line)),
+        "iso8601": sum(1 for line in lines if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", line)),
+        "java_stacktrace": sum(1 for line in lines if re.match(r"^\s+at\s+[\w.$_]+\([^\n]+:\d+\)$", line)),
+    }
+    primary_format = max(format_scores, key=lambda item: format_scores[item]) if any(format_scores.values()) else "unknown"
+    has_java_stacktrace = bool(re.search(r"^\s+at\s+[\w.$_]+\([^\n]+:\d+\)$", joined, flags=re.MULTILINE))
+
+    timestamp_regex = r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[,.]\d{3,6})?"
+    if primary_format == "syslog":
+        timestamp_regex = r"[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}"
+    elif primary_format == "iso8601":
+        timestamp_regex = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"
+
+    return {
+        "primary_format": primary_format,
+        "format_scores": format_scores,
+        "has_java_stacktrace": has_java_stacktrace,
+        "generated_patterns": {
+            "timestamp": timestamp_regex,
+            "severity": r"\b(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\b",
+            "java_exception": r"\b[\w.$]+(?:Exception|Error)\b",
+            "java_stack_frame": r"^\s+at\s+[\w.$_]+\([^\n]+:\d+\)$",
+        },
+    }
+
+
+def _search_log_with_patterns(
+    text: str,
+    *,
+    generated_patterns: dict[str, str],
+    search_terms: list[str] | None,
+    match_limit: int,
+) -> dict[str, list[dict[str, Any]]]:
+    results: dict[str, list[dict[str, Any]]] = {}
+    lines = text.splitlines()
+    named_patterns = {
+        "severity": generated_patterns["severity"],
+        "java_exception": generated_patterns["java_exception"],
+    }
+    if search_terms:
+        named_patterns["search_terms"] = "|".join(re.escape(term) for term in search_terms if term)
+
+    for name, pattern in named_patterns.items():
+        if not pattern:
+            continue
+        compiled = re.compile(pattern)
+        matches: list[dict[str, Any]] = []
+        for line_number, line in enumerate(lines, start=1):
+            if compiled.search(line):
+                matches.append({"line_number": line_number, "line": line})
+                if len(matches) >= match_limit:
+                    break
+        results[name] = matches
+    return results
 
 
 def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
@@ -452,12 +513,14 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
         for path in paths:
             image_dir = (output_root / f"{path.stem}_pages") if output_root is not None else (path.parent / f"{path.stem}_pages")
             with fitz.open(path) as document:
-                image_paths = [str(image_dir / f"{path.stem}_page_{page.number + 1:04d}.png") for page in document]
+                page_total = len(document)
+                image_paths = [str(image_dir / f"{path.stem}_page_{index:04d}.png") for index in range(1, page_total + 1)]
                 if not dry_run:
                     image_dir.mkdir(parents=True, exist_ok=True)
-                    for page in document:
+                    for index in range(1, page_total + 1):
+                        page = document.load_page(index - 1)
                         pixmap = page.get_pixmap(matrix=matrix)
-                        pixmap.save(str(image_dir / f"{path.stem}_page_{page.number + 1:04d}.png"))
+                        pixmap.save(str(image_dir / f"{path.stem}_page_{index:04d}.png"))
             results.append(
                 {
                     "source_path": str(path),
@@ -466,6 +529,36 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
                 }
             )
         return results
+
+    async def detect_log_format_and_search(
+        file_path: str,
+        search_terms: list[str] | None = None,
+        sample_line_limit: int = 100,
+        match_limit: int = 50,
+    ) -> str:
+        path = _ensure_existing_paths([file_path])[0]
+        text = _extract_text_from_path(path)
+        lines = text.splitlines()
+        sample_lines = lines[:sample_line_limit]
+        detection = _detect_log_format_from_lines(sample_lines)
+        search_results = _search_log_with_patterns(
+            text,
+            generated_patterns=detection["generated_patterns"],
+            search_terms=search_terms,
+            match_limit=match_limit,
+        )
+        result = {
+            "file_path": str(path),
+            "sample_line_limit": sample_line_limit,
+            "sample_preview": sample_lines[:10],
+            "detected_format": detection["primary_format"],
+            "format_scores": detection["format_scores"],
+            "has_java_stacktrace": detection["has_java_stacktrace"],
+            "generated_patterns": detection["generated_patterns"],
+            "search_terms": search_terms or [],
+            "search_results": search_results,
+        }
+        return json.dumps(result, ensure_ascii=False)
 
     return {
         "analyze_image_files": BuiltinTool("analyze_image_files", "Analyze local image files", analyze_image_files),
@@ -493,4 +586,9 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
         "list_zip_contents": BuiltinTool("list_zip_contents", "List ZIP archive contents", list_zip_contents),
         "extract_zip": BuiltinTool("extract_zip", "Extract ZIP archive", extract_zip),
         "create_zip": BuiltinTool("create_zip", "Create ZIP archive", create_zip),
+        "detect_log_format_and_search": BuiltinTool(
+            "detect_log_format_and_search",
+            "Detect log format from the first lines, generate regex patterns, and search the log",
+            detect_log_format_and_search,
+        ),
     }
