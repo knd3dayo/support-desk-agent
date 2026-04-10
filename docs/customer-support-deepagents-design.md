@@ -8,7 +8,10 @@
 本アプリの実装コンセプトは次の通りとする。
 
 - 業務プロセスは LangGraph のワークフローで表現する
-- スーパーバイザーおよびサブエージェントは各々 DeepAgent で実装する
+- スーパーバイザーおよび調査・解決系サブエージェントは DeepAgent で実装する
+- 定型的な前処理フェーズは LangGraph のノードまたは subgraph として実装する
+- 定型的で手順が明確な処理は LangGraph Subgraph として実装し、ワークフロー上では疑似的なエージェントとして扱う
+- 探索的で試行錯誤や文脈圧縮が必要な処理は DeepAgent として実装する
 - エージェント間の情報共有と進捗共有は共通メモリファイルで行う
 - 各エージェントはコンテキスト管理機能を持ち、閾値超過時には圧縮処理を実施する
 - 各エージェントは役割に応じたツールを持つ
@@ -42,11 +45,13 @@
 ### 2.1 責務分離
 
 - LangGraph: ケース全体の状態遷移、分岐、HITL 停止点を管理する
+- LangGraph Subgraph: Intake のような定型前処理を責務単位で分離する
+- Pseudo Agent: LangGraph Subgraph をエージェント相当の実行単位として扱い、Supervisor からは他の担当と同列に評価・接続できるようにする
 - DeepAgent Supervisor: 担当フェーズの計画立案、サブエージェント起動、結果統合を行う
 - DeepAgent Specialist: ログ解析、ナレッジ探索、ドラフト作成、コンプライアンスレビューなどの専門作業を行う
 - 共通メモリ: ケース単位の shared memory と圧縮済み summary を保持する
 - Tool Registry: エージェントごとのツールセットを構築する
-- Instruction Loader: 共通指示、役割別指示、ケース固有上書きを合成する
+- Instruction Loader: 共通指示と役割別指示を合成する
 
 ### 2.2 ケース状態
 
@@ -61,14 +66,14 @@
 
 主要識別子は次の通りとする。
 
-- case_id: 外部問い合わせの識別子。ユーザー入力から CaseIdResolverAgent または CaseIdResolverTool が抽出し、見当たらない場合は UUID ベースで自動採番する
+- case_id: 外部問い合わせの識別子。ユーザー入力や workspace 情報から CaseIdResolverService が解決し、見当たらない場合は UUID ベースで自動採番する
 - trace_id: トレース基盤横断の相関 ID。workflow_run_id および thread_id は内部実装上この値へ集約し、同一値を使う
 - thread_id: LangGraph の再開対象スレッド ID。PoC では trace_id と同一値を使う
 - workflow_run_id: 実行インスタンス ID。PoC では trace_id と同一値を使う
 
 CLI、API、MCP の継続系インターフェースは trace_id を唯一の継続識別子として扱う。内部実装上 thread_id や workflow_run_id が必要な場合も、外部には trace_id のみを公開する。
 
-## 3. DeepAgent 構成
+## 3. エージェント / ワークフロー構成
 
 ### 3.1 フェーズ別構成
 
@@ -76,13 +81,15 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 - サポート業務プロセスの統括者
 - 各エージェント、ツールに指示を出し、その結果を評価、統合し、ユーザーへの回答を行う。
 - サブエージェント、ノードの結果の評価、サブエージェントに追加の指示や質問などを行う。
+- IntakeAgent subgraph の出力を受け取り、以降の調査フローを選択する。
 - 調査フェーズでは LogAnalyzerAgent と KnowledgeRetrieverAgent を直接起動し、結果を統合する。
 
 #### IntakeAgent
 
-- LangGraph ノードとして実装する
-- Intake Agent は DeepAgent とし、PII マスキング、カテゴリ判定、初期メモ作成を行う
-- 必要に応じて分類系 Specialist を task ツールで起動できる
+- LangGraph の subgraph として実装する
+- 問い合わせ受付時の定型前処理を担当し、PII マスキング、カテゴリ判定、初期メモ作成を行う
+- subgraph 内では入力正規化、PII マスキング、分類、共有メモリ初期化を段階的に実行する
+- 処理結果は SuperVisorAgent へ渡し、以降の調査系 DeepAgent の起動判断に利用する
 
 #### LogAnalyzerAgent
 
@@ -114,38 +121,43 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 
 #### ApprovalAgent
 
-- LangGraph ノードとして WAITING_APPROVAL で interrupt する
-- 人間の承認、差戻し、追加調査要求に応じて resume する
+- LangGraph の承認フェーズとして実装し、疑似的なエージェントとして扱う
+- WAITING_APPROVAL で interrupt し、人間の承認、差戻し、追加調査要求に応じて resume する
+- 承認判断は workflow state に記録し、後続の ResolutionAgent または TicketUpdateAgent subgraph へ接続する
 
 #### TicketUpdateAgent
 
-- LangGraph ノードとして実装する
-- 承認後に Zendesk / Redmine への更新を行う
+- LangGraph の subgraph として実装し、疑似的なエージェントとして扱う
+- 承認後に更新内容の確定と外部チケット更新を段階的に実行する
+- subgraph 内では更新ペイロードの準備と Zendesk / Redmine 反映を分離する
 - 更新の前には必ずHITLを発生させる。
 
-### 3.2 DeepAgent 間の情報共有
+### 3.2 エージェント間の情報共有
 
-共通メモリはケース単位ディレクトリに次のように保持する。
+共通メモリはケース workspace 配下に次のように保持する。
 
-- shared/context.md: 現在の共通知識、調査方針、重要事実
-- shared/progress.md: 進捗、未完了タスク、ブロッカー
-- shared/summary.md: 圧縮済みサマリ
+- .memory/shared/context.md: 現在の共通知識、調査方針、重要事実
+- .memory/shared/progress.md: 進捗、未完了タスク、ブロッカー
+- .memory/shared/summary.md: 圧縮済みサマリ
 - traces/<trace_id>.json: plan/action 継続用の状態保存
-- agents/<agent_name>/working.md: 各エージェントの作業ログ
+- .memory/agents/<agent_name>/working.md: DeepAgent として実装した担当の作業ログ
+
+役割別指示ファイルはケース workspace 配下ではなく、アプリ共通の指示ディレクトリに配置する。
+
 - .instructions/<agent_name>.md: 既定の役割別指示
 
-共有対象は事実、進捗、次アクションに限定する。試行錯誤の生ログは agent 別 working.md に残し、必要に応じて summary.md に圧縮転記する。
+共有対象は事実、進捗、次アクションに限定する。試行錯誤の生ログは DeepAgent として実装した担当の working.md に残し、必要に応じて summary.md に圧縮転記する。
 
 ## 4. コンテキスト管理
 
-各 DeepAgent は次のルールでコンテキスト圧縮を行う。
+DeepAgent として実装した担当は次のルールでコンテキスト圧縮を行う。
 
 - 読み込んだ shared/context.md と working.md の合計文字数を監視する
 - 閾値超過時は、古い作業履歴を summary.md に圧縮する
 - 圧縮後は working.md から詳細ログを削除せず、要約参照を追記する
-- Supervisor は Specialist の最終成果のみ shared/context.md に反映する
+- Supervisor は調査・解決系 DeepAgent の最終成果のみ shared/context.md に反映する
 
-この設計により、親エージェントへ不要な試行錯誤を持ち込まず、Deep Agents の context isolation を維持する。
+この設計により、親エージェントや疑似的なエージェントへ不要な試行錯誤を持ち込まず、DeepAgent 側の context isolation を維持する。
 
 ## 5. 指示ファイル設計
 
@@ -156,11 +168,13 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 
 読み込み時は共通指示と役割別指示を結合して適用する。
 
-## 6. ツール設計
+## 6. 共通コンポーネント / ツール設計
 
-ツールは役割別に構成し、Registry から解決する。
+識別子解決のような共通コンポーネントと、役割別ツールを次のように構成する。
 
-- CaseIdResolverTool: ユーザー入力から case_id を解決し、未指定時は UUID ベースで自動生成する
+役割別ツールは Registry から解決する。
+
+- CaseIdResolverService: ユーザー入力や workspace 情報から case_id を解決し、未指定時は UUID ベースで自動生成する
 - SuperVisorAgent: inspect_workflow_state, evaluate_agent_result, route_phase_agent, read_shared_memory, scan_workspace_artifacts, spawn_log_analyzer_agent, spawn_knowledge_retriever_agent
 - IntakeAgent: pii_mask, classify_ticket, write_shared_memory
 - LogAnalyzerAgent: read_log_file, run_python_analysis, write_working_memory
@@ -168,7 +182,8 @@ CLI、API、MCP の継続系インターフェースは trace_id を唯一の継
 - ResolutionAgent: read_shared_memory, spawn_draft_writer_agent, spawn_compliance_reviewer_agent
 - DraftWriterAgent: write_draft
 - ComplianceReviewerAgent: check_policy, request_revision
-- ticket_update: zendesk_reply, redmine_update
+- Approval phase: record_approval_decision
+- TicketUpdateAgent subgraph: prepare_ticket_update, zendesk_reply, redmine_update
 
 初期実装では外部システム接続をスタブ化し、後続で MCP ツールまたは API アダプタに置き換える。
 
@@ -192,9 +207,9 @@ resume 時は次の入力を受け付ける。
 
 - approve: TicketUpdateWF へ進む
 - reject: ResolutionWF へ戻す
-- reinvestigate: InvestigationWF へ戻す
+- reinvestigate: INVESTIGATING フェーズへ戻す
 
-再開時の人間指示は、ケース固有 override ファイルに追記してからワークフローを再開する。
+再開時の人間指示は workflow state と共有メモリへ反映してからワークフローを再開する。
 
 ## 9. 設定方針
 

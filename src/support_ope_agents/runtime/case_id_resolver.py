@@ -8,7 +8,7 @@ from uuid import uuid4
 CASE_ID_FILENAME = ".support-ope-case-id"
 
 
-class CaseIdResolverTool:
+class CaseIdResolverService:
     def __init__(self):
         self._patterns = (
             re.compile(r"\b(CASE[-_][A-Za-z0-9-]+)\b", re.IGNORECASE),

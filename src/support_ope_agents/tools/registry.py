@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 from support_ope_agents.agents.roles import (
-    APPROVAL_AGENT,
     COMPLIANCE_REVIEWER_AGENT,
     DEFAULT_AGENT_ROLES,
     DRAFT_WRITER_AGENT,
@@ -13,7 +12,6 @@ from support_ope_agents.agents.roles import (
     LOG_ANALYZER_AGENT,
     RESOLUTION_AGENT,
     SUPERVISOR_AGENT,
-    TICKET_UPDATE_AGENT,
 )
 from support_ope_agents.config.models import AppConfig, BuiltinToolBinding, DisabledToolBinding, McpToolBinding
 
@@ -107,16 +105,6 @@ class ToolRegistry:
             COMPLIANCE_REVIEWER_AGENT: [
                 ToolSpec("check_policy", "Check compliance policy", _not_implemented_tool("check_policy")),
                 ToolSpec("request_revision", "Request draft revision", _not_implemented_tool("request_revision")),
-            ],
-            APPROVAL_AGENT: [
-                ToolSpec("read_shared_memory", "Read shared case memory", _not_implemented_tool("read_shared_memory")),
-                ToolSpec("record_approval_decision", "Record approval decision", _not_implemented_tool("record_approval_decision")),
-                ToolSpec("write_override_instruction", "Write human override instruction", _not_implemented_tool("write_override_instruction")),
-            ],
-            TICKET_UPDATE_AGENT: [
-                ToolSpec("zendesk_reply", "Reply to Zendesk ticket", _not_implemented_tool("zendesk_reply")),
-                ToolSpec("redmine_update", "Update Redmine ticket", _not_implemented_tool("redmine_update")),
-                ToolSpec("prepare_ticket_update", "Prepare external ticket update payload", _not_implemented_tool("prepare_ticket_update")),
             ],
         }
 

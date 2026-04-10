@@ -38,6 +38,8 @@ class CaseState(TypedDict, total=False):
     investigation_summary: str
     compressed_summary: str
     draft_response: str
+    ticket_update_payload: str
+    ticket_update_result: str
     approval_decision: str
     approval_history: list[dict[str, str]]
     agent_errors: list[dict[str, str]]

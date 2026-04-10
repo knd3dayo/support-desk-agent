@@ -151,13 +151,3 @@ support_ope_agents:
   #   ComplianceReviewerAgent:
   #     enabled: true
   #     auto_compress: true
-  #
-  #   # 承認 Agent の設定です。
-  #   ApprovalAgent:
-  #     enabled: true
-  #     auto_compress: false
-  #
-  #   # 外部チケット更新 Agent の設定です。
-  #   TicketUpdateAgent:
-  #     enabled: true
-  #     auto_compress: false

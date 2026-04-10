@@ -22,7 +22,7 @@ def build_case_workflow(*, checkpointer: Any | None = None):
     graph.add_node("investigation", _investigation)
     graph.add_node("resolution", _resolution)
     graph.add_node("wait_for_approval", _wait_for_approval)
-    graph.add_node("ticket_update", _ticket_update)
+    _add_ticket_update_subgraph(graph)
 
     graph.add_edge(START, "receive_case")
     graph.add_edge("receive_case", "intake")
@@ -33,14 +33,20 @@ def build_case_workflow(*, checkpointer: Any | None = None):
         "wait_for_approval",
         _route_after_approval,
         {
-            "ticket_update": "ticket_update",
+            "ticket_update_prepare": "ticket_update_prepare",
             "resolution": "resolution",
             "investigation": "investigation",
             "__end__": END,
         },
     )
-    graph.add_edge("ticket_update", END)
+    graph.add_edge("ticket_update_execute", END)
     return graph.compile(checkpointer=checkpointer) if checkpointer is not None else graph.compile()
+
+
+def _add_ticket_update_subgraph(graph: StateGraph[CaseState]) -> None:
+    graph.add_node("ticket_update_prepare", _ticket_update_prepare)
+    graph.add_node("ticket_update_execute", _ticket_update_execute)
+    graph.add_edge("ticket_update_prepare", "ticket_update_execute")
 
 
 def _receive_case(state: CaseState) -> CaseState:
@@ -97,18 +103,27 @@ def _wait_for_approval(state: CaseState) -> CaseState:
     return cast(CaseState, update)
 
 
-def _ticket_update(state: CaseState) -> CaseState:
+def _ticket_update_prepare(state: CaseState) -> CaseState:
+    update = dict(state)
+    update["current_agent"] = TICKET_UPDATE_AGENT
+    update["ticket_update_payload"] = "Zendesk / Redmine に反映する更新内容を準備しました。"
+    update["next_action"] = "外部チケット更新内容を確定して更新を実行する"
+    return cast(CaseState, update)
+
+
+def _ticket_update_execute(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "CLOSED"
     update["current_agent"] = TICKET_UPDATE_AGENT
-    update["next_action"] = "Zendesk と Redmine の更新を実行する"
+    update["ticket_update_result"] = "Zendesk と Redmine の更新処理を完了しました。"
+    update["next_action"] = "外部チケット更新を完了しました"
     return cast(CaseState, update)
 
 
 def _route_after_approval(state: CaseState) -> str:
     decision = str(state.get("approval_decision", "pending")).lower()
     if decision in {"approved", "approve"}:
-        return "ticket_update"
+        return "ticket_update_prepare"
     if decision in {"rejected", "reject"}:
         return "resolution"
     if decision == "reinvestigate":

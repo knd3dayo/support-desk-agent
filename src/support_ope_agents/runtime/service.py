@@ -9,7 +9,7 @@ from support_ope_agents.agents.deep_agent_factory import DeepAgentFactory
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
-from support_ope_agents.runtime.case_id_resolver import CaseIdResolverTool
+from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
 from support_ope_agents.workflow import (
@@ -29,7 +29,7 @@ class RuntimeContext:
     instruction_loader: InstructionLoader
     tool_registry: ToolRegistry
     agent_factory: DeepAgentFactory
-    case_id_resolver: CaseIdResolverTool
+    case_id_resolver_service: CaseIdResolverService
 
 
 def build_runtime_context(config_path: str) -> RuntimeContext:
@@ -45,7 +45,7 @@ def build_runtime_context(config_path: str) -> RuntimeContext:
         instruction_loader=instruction_loader,
         tool_registry=tool_registry,
         agent_factory=agent_factory,
-        case_id_resolver=CaseIdResolverTool(),
+        case_id_resolver_service=CaseIdResolverService(),
     )
 
 
@@ -65,7 +65,7 @@ class RuntimeService:
         case_id: str | None = None,
         workspace_path: str | None = None,
     ) -> str:
-        return self._context.case_id_resolver.resolve(
+        return self._context.case_id_resolver_service.resolve(
             prompt or "",
             explicit_case_id=case_id,
             workspace_path=workspace_path,
