@@ -12,6 +12,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import (
     BACK_SUPPORT_ESCALATION_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
+    DRAFT_WRITER_AGENT,
     INTAKE_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,
     LOG_ANALYZER_AGENT,
@@ -43,6 +44,7 @@ class _FakeToolRegistry:
         self._write_log_working_memory = build_default_write_working_memory_tool(config, LOG_ANALYZER_AGENT)
         self._write_knowledge_working_memory = build_default_write_working_memory_tool(config, KNOWLEDGE_RETRIEVER_AGENT)
         self._write_back_support_draft = build_default_write_draft_tool(config, "back_support_inquiry_draft")
+        self._write_customer_draft = build_default_write_draft_tool(config, "customer_response_draft")
 
     def get_tools(self, role: str) -> list[ToolSpec]:
         if role == INTAKE_AGENT:
@@ -133,6 +135,16 @@ class _FakeToolRegistry:
                     self._write_shared_memory,
                     provider="builtin",
                     target="default-case-memory-writer",
+                )
+            ]
+        if role == DRAFT_WRITER_AGENT:
+            return [
+                ToolSpec(
+                    "write_draft",
+                    "Write customer draft",
+                    self._write_customer_draft,
+                    provider="builtin",
+                    target="default-draft-writer",
                 )
             ]
         if role == SUPERVISOR_AGENT:
@@ -237,6 +249,7 @@ class _FakeAgentFactory:
             AgentDefinition(INTAKE_AGENT, ""),
             AgentDefinition(LOG_ANALYZER_AGENT, ""),
             AgentDefinition(KNOWLEDGE_RETRIEVER_AGENT, ""),
+            AgentDefinition(DRAFT_WRITER_AGENT, ""),
             AgentDefinition(BACK_SUPPORT_ESCALATION_AGENT, ""),
             AgentDefinition(BACK_SUPPORT_INQUIRY_WRITER_AGENT, ""),
         ]

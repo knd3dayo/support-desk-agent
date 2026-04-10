@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState, WorkflowKind
     from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
     from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
+    from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
+    from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
     from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
     from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 
@@ -25,11 +27,14 @@ if TYPE_CHECKING:
 class SupervisorPhaseExecutor:
     read_shared_memory_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
+    draft_writer_executor: "DraftWriterPhaseExecutor | None" = None
     log_analyzer_executor: "LogAnalyzerPhaseExecutor | None" = None
     knowledge_retriever_executor: "KnowledgeRetrieverPhaseExecutor | None" = None
+    compliance_reviewer_executor: "ComplianceReviewerPhaseExecutor | None" = None
     back_support_escalation_executor: "BackSupportEscalationPhaseExecutor | None" = None
     back_support_inquiry_writer_executor: "BackSupportInquiryWriterPhaseExecutor | None" = None
     escalation_settings: EscalationSettings = field(default_factory=EscalationSettings)
+    compliance_max_review_loops: int = 3
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
         result = tool(*args)
@@ -501,10 +506,56 @@ class SupervisorPhaseExecutor:
                 f"レビューでは「{review_focus}」を重視して action モードへ進みます。"
             )
         else:
-            update.setdefault(
-                "draft_response",
-                f"action モードで SuperVisorAgent 配下のドラフト作成とレビューを開始します。レビュー重点: {review_focus}",
-            )
+            max_review_loops = max(1, int(self.compliance_max_review_loops))
+            update["draft_review_max_loops"] = max_review_loops
+            update["draft_review_iterations"] = 0
+            if self.draft_writer_executor is not None:
+                for attempt in range(1, max_review_loops + 1):
+                    update["draft_review_iterations"] = attempt
+                    draft_result = self.draft_writer_executor.execute(cast(dict[str, object], update))
+                    update["draft_response"] = str(draft_result.get("draft_response") or update.get("draft_response") or "")
+
+                    if self.compliance_reviewer_executor is None:
+                        update["compliance_review_passed"] = True
+                        update["next_action"] = "ApprovalAgent へドラフトを回付する"
+                        break
+
+                    compliance_review = self.compliance_reviewer_executor.execute(cast(dict[str, object], update))
+                    update["compliance_review_summary"] = str(compliance_review.get("compliance_review_summary") or "")
+                    update["compliance_review_results"] = cast(list[dict[str, object]], compliance_review.get("compliance_review_results") or [])
+                    update["compliance_review_adopted_sources"] = cast(list[str], compliance_review.get("compliance_review_adopted_sources") or [])
+                    update["compliance_review_issues"] = cast(list[str], compliance_review.get("compliance_review_issues") or [])
+                    update["compliance_notice_present"] = bool(compliance_review.get("compliance_notice_present"))
+                    update["compliance_notice_matched_phrase"] = str(compliance_review.get("compliance_notice_matched_phrase") or "")
+                    update["compliance_revision_request"] = str(compliance_review.get("compliance_revision_request") or "")
+                    update["compliance_review_passed"] = bool(compliance_review.get("compliance_review_passed"))
+                    if bool(update.get("compliance_review_passed")):
+                        update["next_action"] = "ApprovalAgent へドラフトを回付する"
+                        break
+                if not bool(update.get("compliance_review_passed")):
+                    update["next_action"] = "最大レビュー回数に達しました。差戻し論点を確認して人手でドラフト修正要否を判断してください。"
+            else:
+                update.setdefault(
+                    "draft_response",
+                    f"action モードで SuperVisorAgent 配下のドラフト作成とレビューを開始します。レビュー重点: {review_focus}",
+                )
+
+        update["review_focus"] = review_focus
+
+        if update.get("execution_mode") == "plan" and self.compliance_reviewer_executor is not None:
+            compliance_review = self.compliance_reviewer_executor.execute(cast(dict[str, object], update))
+            update["compliance_review_summary"] = str(compliance_review.get("compliance_review_summary") or "")
+            update["compliance_review_results"] = cast(list[dict[str, object]], compliance_review.get("compliance_review_results") or [])
+            update["compliance_review_adopted_sources"] = cast(list[str], compliance_review.get("compliance_review_adopted_sources") or [])
+            update["compliance_review_issues"] = cast(list[str], compliance_review.get("compliance_review_issues") or [])
+            update["compliance_notice_present"] = bool(compliance_review.get("compliance_notice_present"))
+            update["compliance_notice_matched_phrase"] = str(compliance_review.get("compliance_notice_matched_phrase") or "")
+            update["compliance_revision_request"] = str(compliance_review.get("compliance_revision_request") or "")
+            update["compliance_review_passed"] = bool(compliance_review.get("compliance_review_passed"))
+            if not bool(update.get("compliance_review_passed")):
+                update["next_action"] = "DraftWriterAgent が修正観点を反映してドラフトを更新する"
+            else:
+                update["next_action"] = "ApprovalAgent へドラフトを回付する"
 
         if case_id and workspace_path:
             context_payload: SharedMemoryDocumentPayload = {
@@ -515,7 +566,11 @@ class SupervisorPhaseExecutor:
                     f"Intake urgency: {intake_urgency}",
                     f"Effective workflow kind: {effective_workflow_kind}",
                     f"Review focus: {review_focus}",
+                    f"Draft review loops: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or self.compliance_max_review_loops)}",
                     f"Draft response readiness: {str(update.get('draft_response') or '')}",
+                    f"Compliance review summary: {str(update.get('compliance_review_summary') or 'n/a')}",
+                    f"Compliance notice present: {'yes' if bool(update.get('compliance_notice_present')) else 'no'}",
+                    f"Compliance adopted sources: {', '.join(cast(list[str], update.get('compliance_review_adopted_sources') or [])) or 'n/a'}",
                     "Managed child agents: DraftWriterAgent, ComplianceReviewerAgent",
                 ],
             }
@@ -525,7 +580,9 @@ class SupervisorPhaseExecutor:
                 "bullets": [
                     "Current phase: DRAFT_READY",
                     "Review loop owner: SuperVisorAgent",
-                    "Next transition: wait_for_approval",
+                    f"Review loop count: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or self.compliance_max_review_loops)}",
+                    f"Compliance review passed: {'yes' if bool(update.get('compliance_review_passed')) else 'no'}",
+                    f"Next transition: {str(update.get('next_action') or 'wait_for_approval')}",
                 ],
             }
             self._invoke_tool(

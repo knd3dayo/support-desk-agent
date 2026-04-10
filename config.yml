@@ -156,6 +156,14 @@ support_ope_agents:
   #       enabled: true
   #       provider: builtin
   #
+  #     # ComplianceReviewerAgent でポリシー確認を有効化する場合です。
+  #     check_policy:
+  #       enabled: true
+  #       provider: builtin
+  #     request_revision:
+  #       enabled: true
+  #       provider: builtin
+  #
   #     # 承認後の更新処理を個別に切り替える場合です。
   #     prepare_ticket_update:
   #       enabled: true
@@ -234,11 +242,44 @@ support_ope_agents:
   #   DraftWriterAgent:
   #     enabled: true
   #     auto_compress: true
+  #     # ComplianceReviewerAgent の差戻し観点を反映しながら再生成されます。
   #
   #   # コンプライアンス確認 Agent の設定です。
   #   ComplianceReviewerAgent:
   #     enabled: true
   #     auto_compress: true
+  #     # DraftWriterAgent への差戻しを最大何回まで自動で回すかです。
+  #     # 既定値は 3 です。
+  #     max_review_loops: 3
+  #     # ポリシー確認時に除外する既定 glob パターンです。
+  #     ignore_patterns:
+  #       - .*
+  #       - '**/.*'
+  #       - node_modules/**
+  #       - '**/node_modules/**'
+  #
+  #     # 追加の除外パターンを書いたテキストファイルです。
+  #     ignore_patterns_file: ./.support-ope-policy-ignore
+  #
+  #     # ComplianceReviewerAgent が参照する社内規定・法令・ガイドラインです。
+  #     document_sources:
+  #       - name: internal_policy
+  #         description: 社内回答ポリシー
+  #         path: ./docsources/internal_policy
+  #       - name: government_guidelines
+  #         description: 政府ガイドライン
+  #         path: ./docsources/government_guidelines
+  #       - name: laws
+  #         description: 関連法令集
+  #         path: ./docsources/laws
+  #     # DeepAgents backend では各 source を /policy/<name>/ 配下へ mount または route して参照します。
+  #     notice:
+  #       # true の場合、ドラフトに注意文を必須とします。
+  #       required: true
+  #       # いずれか 1 つ以上を含めば通過と判定します。
+  #       required_phrases:
+  #         - 生成AIは誤った回答をすることがあります
+  #         - 生成AIは誤った回答を含む可能性があります
   #
   #   # バックサポート向けエスカレーション整理 Agent の設定です。
   #   BackSupportEscalationAgent:

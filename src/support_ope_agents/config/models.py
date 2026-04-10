@@ -104,10 +104,25 @@ class KnowledgeDocumentSource(StrictConfigModel):
     path: Path
 
 
-class KnowledgeRetrievalSettings(StrictConfigModel):
+class DocumentSourceSettings(StrictConfigModel):
     document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
     ignore_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DOCUMENT_IGNORE_PATTERNS.copy())
     ignore_patterns_file: Path | None = None
+
+
+class ComplianceNoticeSettings(StrictConfigModel):
+    required: bool = True
+    required_phrases: list[str] = Field(
+        default_factory=lambda: [
+            "生成AIは誤った回答をすることがあります",
+            "生成AIは誤った回答を含む可能性があります",
+            "AI generated responses may contain mistakes",
+        ]
+    )
+
+
+class KnowledgeRetrievalSettings(DocumentSourceSettings):
+    pass
 
 
 class IntakePiiMaskSettings(StrictConfigModel):
@@ -138,19 +153,29 @@ class KnowledgeRetrieverAgentSettings(AgentSettings):
     ignore_patterns_file: Path | None = None
 
 
+class ComplianceReviewerAgentSettings(AgentSettings):
+    document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
+    ignore_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DOCUMENT_IGNORE_PATTERNS.copy())
+    ignore_patterns_file: Path | None = None
+    notice: ComplianceNoticeSettings = Field(default_factory=ComplianceNoticeSettings)
+    max_review_loops: int = 3
+
+
 class AgentCatalogSettings(StrictConfigModel):
     SuperVisorAgent: AgentSettings = Field(default_factory=AgentSettings)
     IntakeAgent: IntakeAgentSettings = Field(default_factory=IntakeAgentSettings)
     LogAnalyzerAgent: AgentSettings = Field(default_factory=AgentSettings)
     KnowledgeRetrieverAgent: KnowledgeRetrieverAgentSettings = Field(default_factory=KnowledgeRetrieverAgentSettings)
     DraftWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
-    ComplianceReviewerAgent: AgentSettings = Field(default_factory=AgentSettings)
+    ComplianceReviewerAgent: ComplianceReviewerAgentSettings = Field(default_factory=ComplianceReviewerAgentSettings)
     BackSupportEscalationAgent: AgentSettings = Field(default_factory=AgentSettings)
     BackSupportInquiryWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
     ApprovalAgent: AgentSettings = Field(default_factory=AgentSettings)
     TicketUpdateAgent: AgentSettings = Field(default_factory=AgentSettings)
 
-    def get(self, role: str) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | None:
+    def get(
+        self, role: str
+    ) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | None:
         return getattr(self, role, None)
 
 

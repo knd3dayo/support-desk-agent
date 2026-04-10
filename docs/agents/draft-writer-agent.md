@@ -17,6 +17,8 @@ DraftWriterAgent は調査結果を顧客向け回答ドラフトへ変換する
 - shared/context.md の確定事実
 - intake_category、intake_urgency
 - 顧客への説明制約、必要なら追加レビュー観点
+- compliance_revision_request
+- [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の agents.ComplianceReviewerAgent.notice.required / required_phrases
 
 ## 4. 出力
 
@@ -44,6 +46,8 @@ DraftWriterAgent が参照する使用ツール詳細は次を参照する。
    事実を過不足なく含みつつ、断定過剰や説明不足を避けた文面を作る。
 3. 差戻し対応
    ComplianceReviewerAgent や Supervisor の指摘を受けて修正する。
+4. 再生成ループ対応
+   ComplianceReviewerAgent から差戻しが返った場合、SuperVisorAgent 管理下で同じドラフトを max_review_loops の範囲で再生成する。
 
 ## 7. 共有メモリ更新
 
@@ -59,6 +63,7 @@ DraftWriterAgent が参照する使用ツール詳細は次を参照する。
 
 - DraftWriterAgent は最終回答生成に近い責務を持つため、Supervisor の review_focus を強く反映する
 - コンプライアンス差戻し前提で、単発生成ではなく再生成しやすい入力構造を保つ
+- notice.required が true の場合は required_phrases のいずれかを含むドラフトを優先生成する
 
 ## 10. 未決事項
 

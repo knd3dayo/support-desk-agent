@@ -15,4 +15,9 @@
 
 ## 4. 実装状況
 
-- 未実装
+- 既定 builtin 実装あり
+
+## 5. 既定 builtin の挙動
+
+- check_policy の issues を入力に取り、DraftWriterAgent へ返す revision_points を JSON で整形する
+- issues が空の場合は no_revision、1 件以上ある場合は revision_required を返す

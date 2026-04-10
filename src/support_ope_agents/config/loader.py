@@ -58,6 +58,16 @@ def load_config(config_path: str | Path) -> AppConfig:
     if ignore_patterns_file:
         knowledge_retriever["ignore_patterns_file"] = _resolve_path(base_dir, ignore_patterns_file)
     agents["KnowledgeRetrieverAgent"] = knowledge_retriever
+
+    compliance_reviewer = agents.get("ComplianceReviewerAgent", {})
+    compliance_document_sources = compliance_reviewer.get("document_sources", [])
+    for source in compliance_document_sources:
+        if isinstance(source, dict) and source.get("path"):
+            source["path"] = _resolve_path(base_dir, source["path"])
+    compliance_ignore_patterns_file = compliance_reviewer.get("ignore_patterns_file")
+    if compliance_ignore_patterns_file:
+        compliance_reviewer["ignore_patterns_file"] = _resolve_path(base_dir, compliance_ignore_patterns_file)
+    agents["ComplianceReviewerAgent"] = compliance_reviewer
     resolved["agents"] = agents
 
     tools = resolved.get("tools", {})

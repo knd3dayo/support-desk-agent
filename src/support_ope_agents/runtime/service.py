@@ -8,12 +8,16 @@ from uuid import uuid4
 
 from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
 from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
+from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
+from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
 from support_ope_agents.agents.intake_agent import IntakePhaseExecutor
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
+from support_ope_agents.agents.roles import COMPLIANCE_REVIEWER_AGENT
+from support_ope_agents.agents.roles import DRAFT_WRITER_AGENT
 from support_ope_agents.agents.roles import INTAKE_AGENT
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT
@@ -24,6 +28,8 @@ from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.tools import ToolRegistry
+from support_ope_agents.tools.default_check_policy import build_default_check_policy_tool
+from support_ope_agents.tools.default_request_revision import build_default_request_revision_tool
 from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
@@ -81,6 +87,10 @@ class RuntimeService:
         back_support_inquiry_writer_tools = {
             tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_INQUIRY_WRITER_AGENT)
         }
+        draft_writer_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(DRAFT_WRITER_AGENT)}
+        compliance_reviewer_tools = {
+            tool.name: tool.handler for tool in context.tool_registry.get_tools(COMPLIANCE_REVIEWER_AGENT)
+        }
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
         self._intake_executor = IntakePhaseExecutor(
             config=context.config,
@@ -108,14 +118,25 @@ class RuntimeService:
             write_shared_memory_tool=back_support_inquiry_writer_tools["write_shared_memory"],
             write_draft_tool=back_support_inquiry_writer_tools["write_draft"],
         )
+        self._draft_writer_executor = DraftWriterPhaseExecutor(
+            config=context.config,
+            write_draft_tool=draft_writer_tools.get("write_draft") or back_support_inquiry_writer_tools["write_draft"],
+        )
+        self._compliance_reviewer_executor = ComplianceReviewerPhaseExecutor(
+            check_policy_tool=compliance_reviewer_tools.get("check_policy") or build_default_check_policy_tool(context.config),
+            request_revision_tool=compliance_reviewer_tools.get("request_revision") or build_default_request_revision_tool(),
+        )
         self._supervisor_executor = SupervisorPhaseExecutor(
             read_shared_memory_tool=supervisor_tools["read_shared_memory"],
             write_shared_memory_tool=supervisor_tools["write_shared_memory"],
+            draft_writer_executor=self._draft_writer_executor,
             log_analyzer_executor=self._log_analyzer_executor,
             knowledge_retriever_executor=self._knowledge_retriever_executor,
+            compliance_reviewer_executor=self._compliance_reviewer_executor,
             back_support_escalation_executor=self._back_support_escalation_executor,
             back_support_inquiry_writer_executor=self._back_support_inquiry_writer_executor,
             escalation_settings=context.config.workflow.escalation,
+            compliance_max_review_loops=context.config.agents.ComplianceReviewerAgent.max_review_loops,
         )
 
     @property

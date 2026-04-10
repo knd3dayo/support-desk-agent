@@ -5,7 +5,7 @@ from typing import Any
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.catalog import build_default_agent_definitions
-from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
+from support_ope_agents.agents.roles import COMPLIANCE_REVIEWER_AGENT, KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
@@ -94,15 +94,21 @@ class DeepAgentFactory:
             return payload
 
     def _build_backend_for_role(self, role: str) -> Any | None:
-        if role != KNOWLEDGE_RETRIEVER_AGENT:
+        if role not in {KNOWLEDGE_RETRIEVER_AGENT, COMPLIANCE_REVIEWER_AGENT}:
             return None
         if CompositeBackend is None or FilesystemBackend is None or StateBackend is None:
             return None
 
         routes: dict[str, Any] = {}
-        for source in self._config.agents.KnowledgeRetrieverAgent.document_sources:
+        route_base = "knowledge" if role == KNOWLEDGE_RETRIEVER_AGENT else "policy"
+        settings = (
+            self._config.agents.KnowledgeRetrieverAgent
+            if role == KNOWLEDGE_RETRIEVER_AGENT
+            else self._config.agents.ComplianceReviewerAgent
+        )
+        for source in settings.document_sources:
             source_path = Path(source.path).expanduser().resolve()
-            route_prefix = f"/knowledge/{source.name}/"
+            route_prefix = f"/{route_base}/{source.name}/"
             routes[route_prefix] = FilesystemBackend(root_dir=str(source_path), virtual_mode=True)
 
         if not routes:
@@ -114,16 +120,21 @@ class DeepAgentFactory:
         )
 
     def _describe_backend_for_role(self, role: str) -> dict[str, Any] | None:
-        if role != KNOWLEDGE_RETRIEVER_AGENT:
+        if role not in {KNOWLEDGE_RETRIEVER_AGENT, COMPLIANCE_REVIEWER_AGENT}:
             return None
-        document_sources = self._config.agents.KnowledgeRetrieverAgent.document_sources
+        route_base = "knowledge" if role == KNOWLEDGE_RETRIEVER_AGENT else "policy"
+        document_sources = (
+            self._config.agents.KnowledgeRetrieverAgent.document_sources
+            if role == KNOWLEDGE_RETRIEVER_AGENT
+            else self._config.agents.ComplianceReviewerAgent.document_sources
+        )
         if not document_sources:
             return None
         return {
             "type": "CompositeBackend",
             "default": "StateBackend",
             "routes": {
-                f"/knowledge/{source.name}/": str(Path(source.path).expanduser().resolve())
+                f"/{route_base}/{source.name}/": str(Path(source.path).expanduser().resolve())
                 for source in document_sources
             },
         }

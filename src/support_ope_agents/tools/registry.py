@@ -20,8 +20,10 @@ from support_ope_agents.config.models import AppConfig, McpToolBinding
 
 from .builtin_tools import build_builtin_tools
 from .default_classify_ticket import build_default_classify_ticket_tool
+from .default_check_policy import build_default_check_policy_tool
 from .default_pii_mask import build_default_pii_mask_tool
 from .default_read_shared_memory import build_default_read_shared_memory_tool
+from .default_request_revision import build_default_request_revision_tool
 from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
 from .default_write_shared_memory import build_default_write_shared_memory_tool
@@ -207,8 +209,20 @@ class ToolRegistry:
                 ),
             ],
             COMPLIANCE_REVIEWER_AGENT: [
-                ToolSpec("check_policy", "Check compliance policy", _not_implemented_tool("check_policy")),
-                ToolSpec("request_revision", "Request draft revision", _not_implemented_tool("request_revision")),
+                ToolSpec(
+                    "check_policy",
+                    "Check draft against configured policies and required notices",
+                    build_default_check_policy_tool(self._config),
+                    provider="builtin",
+                    target="configured-policy-document-sources",
+                ),
+                ToolSpec(
+                    "request_revision",
+                    "Summarize revision points for the draft writer",
+                    build_default_request_revision_tool(),
+                    provider="builtin",
+                    target="default-revision-request",
+                ),
             ],
             BACK_SUPPORT_ESCALATION_AGENT: [
                 ToolSpec(
@@ -296,7 +310,7 @@ class ToolRegistry:
                 continue
             if setting.provider == "builtin":
                 target_name = setting.builtin_tool or logical_tool_name
-                if target_name not in self._builtin_tools:
+                if target_name not in self._builtin_tools and target_name != logical_tool_name:
                     available_builtins = ", ".join(sorted(self._builtin_tools))
                     raise ToolConfigurationError(
                         f"tools.logical_tools.{logical_tool_name} references unknown builtin tool '{target_name}'. "
@@ -325,6 +339,14 @@ class ToolRegistry:
         if setting.provider == "builtin":
             target_name = setting.builtin_tool or tool.name
             builtin = self._builtin_tools.get(target_name)
+            if builtin is None and target_name == tool.name:
+                return ToolSpec(
+                    name=tool.name,
+                    description=tool.description,
+                    handler=tool.handler,
+                    provider="builtin",
+                    target=target_name,
+                )
             if builtin is None:
                 raise ToolConfigurationError(
                     f"tools.logical_tools.{tool.name} requested builtin provider, but '{target_name}' is not available as a builtin tool"
