@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import mimetypes
 import sqlite3
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -30,7 +32,9 @@ from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.reporting import build_support_improvement_report
+from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
+from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.default_check_policy import build_default_check_policy_tool
 from support_ope_agents.tools.default_request_revision import build_default_request_revision_tool
 from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
@@ -215,6 +219,158 @@ class RuntimeService:
                 )
         return agents
 
+    def list_cases(self, cases_root: str) -> list[dict[str, object]]:
+        root = Path(cases_root).expanduser().resolve()
+        if not root.exists():
+            return []
+
+        cases: list[dict[str, object]] = []
+        for child in sorted(root.iterdir(), key=lambda item: item.name.lower()):
+            if not child.is_dir():
+                continue
+            marker = self._context.memory_store.read_case_id_marker(child)
+            if marker is None and not (child / CASE_ID_FILENAME).exists():
+                continue
+            case_id = marker or child.name
+            history = self._context.memory_store.read_chat_history(case_id, str(child))
+            cases.append(
+                {
+                    "case_id": case_id,
+                    "workspace_path": str(child),
+                    "updated_at": datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat(),
+                    "message_count": len(history),
+                }
+            )
+        return cases
+
+    def create_case(self, *, cases_root: str, prompt: str, case_id: str | None = None) -> dict[str, str]:
+        selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id)
+        workspace_path = Path(cases_root).expanduser().resolve() / selected_case_id
+        case_path = self.initialize_case(selected_case_id, str(workspace_path))
+        return {"case_id": selected_case_id, "case_path": str(case_path)}
+
+    def get_chat_history(self, *, case_id: str, workspace_path: str) -> list[dict[str, object]]:
+        return self._context.memory_store.read_chat_history(case_id, workspace_path)
+
+    def list_workspace_entries(self, *, case_id: str, workspace_path: str, relative_path: str = ".") -> dict[str, object]:
+        entries = self._context.memory_store.list_workspace_entries(case_id, workspace_path, relative_path)
+        return {
+            "case_id": case_id,
+            "workspace_path": workspace_path,
+            "current_path": "." if relative_path in {"", "."} else relative_path,
+            "entries": entries,
+        }
+
+    def get_workspace_file(self, *, case_id: str, workspace_path: str, relative_path: str, max_chars: int = 16000) -> dict[str, object]:
+        target = self._context.memory_store.resolve_workspace_path(case_id, workspace_path, relative_path)
+        guessed_mime, _ = mimetypes.guess_type(target.name)
+        mime_type = guessed_mime or "application/octet-stream"
+        is_text = target.suffix.lower() in TEXT_FILE_SUFFIXES or mime_type.startswith("text/") or mime_type in {
+            "application/json",
+            "application/xml",
+            "application/yaml",
+        }
+
+        if not is_text:
+            return {
+                "case_id": case_id,
+                "workspace_path": workspace_path,
+                "path": relative_path,
+                "name": target.name,
+                "mime_type": mime_type,
+                "preview_available": False,
+                "truncated": False,
+                "content": None,
+            }
+
+        content = self._context.memory_store.read_workspace_text(case_id, workspace_path, relative_path, max_chars=max_chars)
+        full_length = len(self._context.memory_store.read_workspace_text(case_id, workspace_path, relative_path, max_chars=None))
+        return {
+            "case_id": case_id,
+            "workspace_path": workspace_path,
+            "path": relative_path,
+            "name": target.name,
+            "mime_type": mime_type,
+            "preview_available": True,
+            "truncated": full_length > max_chars,
+            "content": content,
+        }
+
+    def save_workspace_file(
+        self,
+        *,
+        case_id: str,
+        workspace_path: str,
+        relative_dir: str,
+        filename: str,
+        content: bytes,
+    ) -> dict[str, object]:
+        safe_filename = Path(filename).name
+        relative_path = str(Path(relative_dir or ".") / safe_filename)
+        written = self._context.memory_store.write_workspace_file(case_id, workspace_path, relative_path, content)
+        return {
+            "case_id": case_id,
+            "workspace_path": workspace_path,
+            "path": written.relative_to(Path(workspace_path).expanduser().resolve()).as_posix(),
+            "size": written.stat().st_size,
+        }
+
+    def create_workspace_archive(self, *, case_id: str, workspace_path: str) -> Path:
+        case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
+        archive_path = case_paths.report_dir / f"{case_id}-workspace.zip"
+        archive_path.parent.mkdir(parents=True, exist_ok=True)
+
+        import zipfile
+
+        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for child in case_paths.root.rglob("*"):
+                if child.is_file():
+                    archive.write(child, arcname=str(child.relative_to(case_paths.root.parent)))
+        return archive_path
+
+    def workspace_file_path(self, *, case_id: str, workspace_path: str, relative_path: str) -> Path:
+        return self._context.memory_store.resolve_workspace_path(case_id, workspace_path, relative_path)
+
+    def _append_chat_message(
+        self,
+        *,
+        case_id: str,
+        workspace_path: str,
+        role: str,
+        content: str,
+        trace_id: str | None,
+        event: str,
+    ) -> None:
+        normalized = content.strip()
+        if not normalized:
+            return
+        self._context.memory_store.append_chat_history(
+            case_id,
+            workspace_path,
+            {
+                "role": role,
+                "content": normalized,
+                "trace_id": trace_id,
+                "event": event,
+                "created_at": datetime.now(tz=UTC).isoformat(),
+            },
+        )
+
+    @staticmethod
+    def _build_assistant_history_content(result: dict[str, object]) -> str:
+        state = cast(dict[str, object], result.get("state") or {})
+        candidates = [
+            str(state.get("customer_response_draft") or "").strip(),
+            str(state.get("draft_response") or "").strip(),
+            str(state.get("next_action") or "").strip(),
+            str(result.get("plan_summary") or "").strip(),
+        ]
+        for candidate in candidates:
+            if candidate:
+                return candidate
+        status = str(state.get("status") or "").strip()
+        return f"Workflow status: {status}" if status else "Workflow completed."
+
     def plan(
         self,
         *,
@@ -264,7 +420,7 @@ class RuntimeService:
             workspace_path=workspace_path,
             state=result,
         )
-        return {
+        response = {
             "case_id": selected_case_id,
             "trace_id": trace_id,
             "thread_id": trace_id,
@@ -280,6 +436,23 @@ class RuntimeService:
             "report_path": report_path,
             "state": result,
         }
+        self._append_chat_message(
+            case_id=selected_case_id,
+            workspace_path=workspace_path,
+            role="user",
+            content=prompt,
+            trace_id=trace_id,
+            event="plan",
+        )
+        self._append_chat_message(
+            case_id=selected_case_id,
+            workspace_path=workspace_path,
+            role="assistant",
+            content=self._build_assistant_history_content(response),
+            trace_id=trace_id,
+            event="plan",
+        )
+        return response
 
     def action(
         self,
@@ -351,7 +524,7 @@ class RuntimeService:
             workspace_path=workspace_path,
             state=result,
         )
-        return {
+        response = {
             "case_id": selected_case_id,
             "trace_id": current_trace_id,
             "thread_id": current_trace_id,
@@ -365,6 +538,23 @@ class RuntimeService:
             "report_path": report_path,
             "state": result,
         }
+        self._append_chat_message(
+            case_id=selected_case_id,
+            workspace_path=workspace_path,
+            role="user",
+            content=prompt,
+            trace_id=current_trace_id,
+            event="action",
+        )
+        self._append_chat_message(
+            case_id=selected_case_id,
+            workspace_path=workspace_path,
+            role="assistant",
+            content=self._build_assistant_history_content(response),
+            trace_id=current_trace_id,
+            event="action",
+        )
+        return response
 
     def resume_customer_input(
         self,
@@ -449,7 +639,7 @@ class RuntimeService:
 
         workflow_kind = self._coerce_workflow_kind(result.get("workflow_kind") or saved_state.get("workflow_kind"))
 
-        return {
+        response = {
             "case_id": case_id,
             "trace_id": trace_id,
             "thread_id": trace_id,
@@ -466,6 +656,23 @@ class RuntimeService:
             "report_path": report_path,
             "state": result,
         }
+        self._append_chat_message(
+            case_id=case_id,
+            workspace_path=workspace_path,
+            role="user",
+            content=additional_input,
+            trace_id=trace_id,
+            event="resume_customer_input",
+        )
+        self._append_chat_message(
+            case_id=case_id,
+            workspace_path=workspace_path,
+            role="assistant",
+            content=self._build_assistant_history_content(response),
+            trace_id=trace_id,
+            event="resume_customer_input",
+        )
+        return response
 
     def print_workflow_nodes(self) -> list[str]:
         graph = build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).get_graph()

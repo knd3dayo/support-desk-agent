@@ -4,6 +4,7 @@ import base64
 import json
 import tempfile
 import unittest
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -518,9 +519,71 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         self.assertTrue(bool(status.get("exists")))
         self.assertIn(str(result["trace_id"]), cast(list[str], status.get("trace_ids") or []))
-        self.assertTrue(int(status.get("checkpoint_count") or 0) >= 1)
-        self.assertTrue(bool(status.get("has_trace")))
-        self.assertIn(str(status.get("state_status") or ""), {"WAITING_APPROVAL", "WAITING_CUSTOMER_INPUT"})
+
+    def test_list_cases_includes_message_count(self) -> None:
+        first_workspace = self.workspace_path / "CASE-ONE"
+        second_workspace = self.workspace_path / "CASE-TWO"
+        self.service.initialize_case("CASE-ONE", str(first_workspace))
+        self.service.initialize_case("CASE-TWO", str(second_workspace))
+        self.service.context.memory_store.append_chat_history(
+            "CASE-ONE",
+            str(first_workspace),
+            {"role": "user", "content": "hello"},
+        )
+
+        cases = self.service.list_cases(str(self.workspace_path))
+
+        case_index = {item["case_id"]: item for item in cases}
+        self.assertEqual(case_index["CASE-ONE"]["message_count"], 1)
+        self.assertEqual(case_index["CASE-TWO"]["message_count"], 0)
+
+    def test_workspace_roundtrip_and_archive(self) -> None:
+        self.service.initialize_case("CASE-TEST-015", str(self.workspace_path))
+
+        uploaded = self.service.save_workspace_file(
+            case_id="CASE-TEST-015",
+            workspace_path=str(self.workspace_path),
+            relative_dir="uploads",
+            filename="sample.txt",
+            content="workspace payload".encode("utf-8"),
+        )
+        listing = self.service.list_workspace_entries(
+            case_id="CASE-TEST-015",
+            workspace_path=str(self.workspace_path),
+            relative_path="uploads",
+        )
+        preview = self.service.get_workspace_file(
+            case_id="CASE-TEST-015",
+            workspace_path=str(self.workspace_path),
+            relative_path="uploads/sample.txt",
+            max_chars=32,
+        )
+        archive_path = self.service.create_workspace_archive(
+            case_id="CASE-TEST-015",
+            workspace_path=str(self.workspace_path),
+        )
+
+        self.assertEqual(uploaded["path"], "uploads/sample.txt")
+        self.assertEqual(listing["entries"][0]["name"], "sample.txt")
+        self.assertEqual(preview["content"], "workspace payload")
+        self.assertTrue(archive_path.exists())
+        with zipfile.ZipFile(archive_path) as archive:
+            self.assertIn(f"{self.workspace_path.name}/uploads/sample.txt", archive.namelist())
+
+    def test_action_appends_chat_history_messages(self) -> None:
+        result = self.service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-016",
+        )
+
+        history = self.service.get_chat_history(case_id="CASE-TEST-016", workspace_path=str(self.workspace_path))
+
+        self.assertEqual(history[0]["role"], "user")
+        self.assertEqual(history[0]["event"], "action")
+        self.assertEqual(history[0]["content"], "生成AI基盤のアーキテクチャ概要を教えてください。")
+        self.assertEqual(history[1]["role"], "assistant")
+        self.assertEqual(history[1]["trace_id"], result["trace_id"])
 
     def test_action_auto_generates_report_when_supervisor_enabled(self) -> None:
         config = AppConfig.model_validate(

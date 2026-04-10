@@ -84,6 +84,24 @@ support_ope_agents:
   #   # API の待受ポートです。
   #   api_port: 8000
   #
+  #   # frontend の npm run dev から直接叩く場合の許可 origin 一覧です。
+  #   # 例: http://127.0.0.1:5173
+  #   cors_allowed_origins: []
+  #
+  #   # true の場合、API 呼び出しに軽量トークン認証を要求します。
+  #   auth_required: false
+  #
+  #   # 認証トークンです。YAML に直書きせず、環境変数参照を使います。
+  #   # 例: os.environ/SUPPORT_OPE_API_TOKEN
+  #   auth_token:
+  #
+  #   # 既定ではフロントから Authorization: Bearer <token> を送れば通ります。
+  #   # 互換用に X-Support-Ope-Token ヘッダーも受け付けます。
+  #   auth_header_name: X-Support-Ope-Token
+  #
+  #   # frontend/dist が存在する場合、FastAPI から SPA を同居配信します。
+  #   # 開発中は frontend で npm run dev を起動し、既定の API ポートへ proxy します。
+  #
   #   # MCP のトランスポート種別です。
   #   mcp_transport: streamable-http
 

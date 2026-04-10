@@ -262,7 +262,17 @@ class InterfaceSettings(StrictConfigModel):
     enable_mcp: bool = False
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    cors_allowed_origins: list[str] = Field(default_factory=list)
+    auth_required: bool = False
+    auth_token: str | None = None
+    auth_header_name: str = "X-Support-Ope-Token"
     mcp_transport: str = "streamable-http"
+
+    @model_validator(mode="after")
+    def _validate_auth_requirement(self) -> "InterfaceSettings":
+        if self.auth_required and not self.auth_token:
+            raise ValueError("interfaces.auth_token is required when interfaces.auth_required is true")
+        return self
 
 
 class AppConfig(StrictConfigModel):

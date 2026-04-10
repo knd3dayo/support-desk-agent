@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
@@ -14,6 +16,7 @@ class CaseWorkspace:
     shared_context: Path
     shared_progress: Path
     shared_summary: Path
+    shared_history: Path
     agents_dir: Path
     artifacts_dir: Path
     evidence_dir: Path
@@ -59,6 +62,7 @@ class CaseMemoryStore:
             shared_context=shared_dir / "context.md",
             shared_progress=shared_dir / "progress.md",
             shared_summary=shared_dir / "summary.md",
+            shared_history=shared_dir / "chat_history.jsonl",
             agents_dir=agents_dir,
             artifacts_dir=artifacts_dir,
             evidence_dir=evidence_dir,
@@ -79,6 +83,7 @@ class CaseMemoryStore:
         self._write_if_missing(paths.shared_context, "# Shared Context\n\n")
         self._write_if_missing(paths.shared_progress, "# Shared Progress\n\n")
         self._write_if_missing(paths.shared_summary, "# Shared Summary\n\n")
+        self._write_if_missing(paths.shared_history, "")
         return paths
 
     def ensure_agent_working_memory(self, case_id: str, agent_name: str, workspace_path: str) -> Path:
@@ -104,6 +109,69 @@ class CaseMemoryStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
             handle.write(content)
+
+    def resolve_workspace_path(self, case_id: str, workspace_path: str, relative_path: str | Path = ".") -> Path:
+        paths = self.resolve_case_paths(case_id, workspace_path=workspace_path)
+        candidate = (paths.root / Path(relative_path)).resolve()
+        if candidate != paths.root and not candidate.is_relative_to(paths.root):
+            raise ValueError("path must stay within the case workspace")
+        return candidate
+
+    def list_workspace_entries(self, case_id: str, workspace_path: str, relative_path: str | Path = ".") -> list[dict[str, Any]]:
+        target = self.resolve_workspace_path(case_id, workspace_path=workspace_path, relative_path=relative_path)
+        if not target.exists():
+            raise FileNotFoundError(target)
+        if not target.is_dir():
+            raise NotADirectoryError(target)
+
+        entries: list[dict[str, Any]] = []
+        for child in sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())):
+            relative_child = child.relative_to(self._resolve_root_path(workspace_path)).as_posix()
+            entries.append(
+                {
+                    "name": child.name,
+                    "path": relative_child,
+                    "kind": "directory" if child.is_dir() else "file",
+                    "size": child.stat().st_size if child.is_file() else None,
+                }
+            )
+        return entries
+
+    def read_workspace_text(self, case_id: str, workspace_path: str, relative_path: str | Path, max_chars: int | None = None) -> str:
+        target = self.resolve_workspace_path(case_id, workspace_path=workspace_path, relative_path=relative_path)
+        if not target.exists():
+            raise FileNotFoundError(target)
+        if not target.is_file():
+            raise IsADirectoryError(target)
+        content = target.read_text(encoding="utf-8")
+        if max_chars is None or max_chars < 0:
+            return content
+        return content[:max_chars]
+
+    def write_workspace_file(self, case_id: str, workspace_path: str, relative_path: str | Path, content: bytes) -> Path:
+        target = self.resolve_workspace_path(case_id, workspace_path=workspace_path, relative_path=relative_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        return target
+
+    def append_chat_history(self, case_id: str, workspace_path: str, message: dict[str, Any]) -> Path:
+        paths = self.resolve_case_paths(case_id, workspace_path=workspace_path)
+        paths.shared_history.parent.mkdir(parents=True, exist_ok=True)
+        with paths.shared_history.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(message, ensure_ascii=False) + "\n")
+        return paths.shared_history
+
+    def read_chat_history(self, case_id: str, workspace_path: str) -> list[dict[str, Any]]:
+        paths = self.resolve_case_paths(case_id, workspace_path=workspace_path)
+        if not paths.shared_history.exists():
+            return []
+        history: list[dict[str, Any]] = []
+        for line in paths.shared_history.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            history.append(json.loads(stripped))
+        return history
 
     def needs_compression(self, case_id: str, agent_name: str, workspace_path: str) -> bool:
         paths = self.resolve_case_paths(case_id, workspace_path=workspace_path)

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.memory.file_store import CaseMemoryStore
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
 from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
 
@@ -27,6 +28,44 @@ class MemoryToolTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
+
+    def test_case_memory_store_restricts_workspace_paths_to_case_root(self) -> None:
+        store = CaseMemoryStore(self.config)
+        store.initialize_case("CASE-TEST-005", str(self.workspace_path))
+
+        with self.assertRaises(ValueError):
+            store.resolve_workspace_path("CASE-TEST-005", str(self.workspace_path), "../outside.txt")
+
+    def test_case_memory_store_lists_and_reads_workspace_files(self) -> None:
+        store = CaseMemoryStore(self.config)
+        store.initialize_case("CASE-TEST-006", str(self.workspace_path))
+        store.write_workspace_file("CASE-TEST-006", str(self.workspace_path), "notes/example.txt", "hello world".encode("utf-8"))
+
+        entries = store.list_workspace_entries("CASE-TEST-006", str(self.workspace_path), "notes")
+
+        self.assertEqual(entries[0]["name"], "example.txt")
+        self.assertEqual(entries[0]["kind"], "file")
+        self.assertEqual(store.read_workspace_text("CASE-TEST-006", str(self.workspace_path), "notes/example.txt"), "hello world")
+
+    def test_case_memory_store_appends_and_reads_chat_history(self) -> None:
+        store = CaseMemoryStore(self.config)
+        store.initialize_case("CASE-TEST-007", str(self.workspace_path))
+        store.append_chat_history(
+            "CASE-TEST-007",
+            str(self.workspace_path),
+            {"role": "user", "content": "最初の問い合わせ", "trace_id": "trace-1"},
+        )
+        store.append_chat_history(
+            "CASE-TEST-007",
+            str(self.workspace_path),
+            {"role": "assistant", "content": "回答案です", "trace_id": "trace-1"},
+        )
+
+        history = store.read_chat_history("CASE-TEST-007", str(self.workspace_path))
+
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]["role"], "user")
+        self.assertEqual(history[1]["content"], "回答案です")
 
     async def test_write_working_memory_creates_agent_working_file(self) -> None:
         tool = build_default_write_working_memory_tool(self.config, KNOWLEDGE_RETRIEVER_AGENT)

@@ -40,6 +40,11 @@ class InitCaseRequest(BaseModel):
     workspace_path: str
 
 
+class CreateCaseRequest(BaseModel):
+    prompt: str
+    case_id: str | None = None
+
+
 class RuntimeEnvelope(BaseModel):
     case_id: str
     trace_id: str | None = None
@@ -60,3 +65,57 @@ class RuntimeEnvelope(BaseModel):
 class InitCaseResponse(BaseModel):
     case_id: str
     case_path: str
+
+
+class CaseSummary(BaseModel):
+    case_id: str
+    workspace_path: str
+    updated_at: str
+    message_count: int = 0
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+    trace_id: str | None = None
+    event: str | None = None
+    created_at: str | None = None
+
+
+class ChatHistoryResponse(BaseModel):
+    case_id: str
+    workspace_path: str
+    messages: list[ChatMessage] = Field(default_factory=list)
+
+
+class WorkspaceEntry(BaseModel):
+    name: str
+    path: str
+    kind: str
+    size: int | None = None
+
+
+class WorkspaceBrowseResponse(BaseModel):
+    case_id: str
+    workspace_path: str
+    current_path: str
+    entries: list[WorkspaceEntry] = Field(default_factory=list)
+
+
+class WorkspaceFileResponse(BaseModel):
+    case_id: str
+    workspace_path: str
+    path: str
+    name: str
+    mime_type: str | None = None
+    preview_available: bool = True
+    truncated: bool = False
+    content: str | None = None
+
+
+class WorkspaceUploadResponse(BaseModel):
+    case_id: str
+    workspace_path: str
+    path: str
+    size: int
+

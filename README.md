@@ -73,6 +73,39 @@ FastAPI 雛形も追加済みで、`trace_id` を継続識別子として plan/a
 uvicorn support_ope_agents.interfaces.api:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
+React + Vite ベースの SPA も追加済みで、ケース一覧、チャット会話、ファイルアップロード、ワークスペースツリー、ZIP ダウンロードを 1 画面で扱えます。開発時は frontend 側を別起動し、本番相当では build した `frontend/dist` を FastAPI が同居配信します。
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+開発用のホットリロードを使う場合は、別端末で次を実行します。
+
+```bash
+cd frontend
+npm run dev
+```
+
+このとき API 側は既定の `http://127.0.0.1:8000` を参照するため、先に FastAPI を起動しておきます。SPA からは次の UI 向け API を利用します。
+
+```bash
+uvicorn support_ope_agents.interfaces.api:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+軽量認証を付ける場合は [config.yml](config.yml) の `interfaces.auth_required` を true にし、`interfaces.auth_token` は `os.environ/SUPPORT_OPE_API_TOKEN` のように環境変数参照で設定します。開発中に frontend dev server を別 origin で開く場合は、`interfaces.cors_allowed_origins` に `http://127.0.0.1:5173` を追加してください。フロント画面右上の Auth Token 欄に同じトークンを保存すると、以後は `Authorization: Bearer <token>` を自動送信します。
+
+ワークスペースプレビューは、テキストに加えて画像と PDF のインライン表示にも対応しています。画像/PDF 以外のバイナリは従来どおり別ウィンドウ表示を使います。
+
+- `GET /cases`: ケース一覧
+- `POST /cases`: 既定の `work/cases` 配下に新規ケースを初期化
+- `GET /cases/{case_id}/history`: 会話履歴取得
+- `GET /cases/{case_id}/workspace`: ファイルツリー取得
+- `GET /cases/{case_id}/workspace/file`: テキストプレビュー取得
+- `POST /cases/{case_id}/workspace/upload`: ケース workspace へファイル保存
+- `GET /cases/{case_id}/workspace/download`: ケース workspace の ZIP ダウンロード
+
 MCP は最小アダプタとして `plan` と `action` ツールを公開し、どちらも `trace_id` を正式な継続キーとして扱います。
 
 共通の built-in ツールとして、画像/PDF/Office の解析、Office→PDF 変換、PDF→画像変換、テキスト抽出、Zip 操作を各エージェントへ配布します。役割別ツールはその上に追加され、最終的に [config.yml](config.yml) の `tools.logical_tools` で `enabled` と `provider: builtin | mcp` を切り替えます。`provider: mcp` を使う logical tool が 1 つでもあれば `tools.mcp_manifest_path` が必須で、設定した server 名や tool 名が参照先に存在しない場合は、CLI / API / MCP いずれの起動経路でも fail fast で起動エラーになります。
