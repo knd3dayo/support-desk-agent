@@ -525,6 +525,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         second_workspace = self.workspace_path / "CASE-TWO"
         self.service.initialize_case("CASE-ONE", str(first_workspace))
         self.service.initialize_case("CASE-TWO", str(second_workspace))
+        self.service.context.memory_store.update_case_metadata(str(first_workspace), case_title="障害調査: API タイムアウト")
         self.service.context.memory_store.append_chat_history(
             "CASE-ONE",
             str(first_workspace),
@@ -536,6 +537,21 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         case_index = {item["case_id"]: item for item in cases}
         self.assertEqual(case_index["CASE-ONE"]["message_count"], 1)
         self.assertEqual(case_index["CASE-TWO"]["message_count"], 0)
+        self.assertEqual(case_index["CASE-ONE"]["case_title"], "障害調査: API タイムアウト")
+        self.assertEqual(case_index["CASE-TWO"]["case_title"], "CASE-TWO")
+
+    def test_action_persists_case_title_for_case_list(self) -> None:
+        case_workspace = self.workspace_path / "CASE-TEST-TITLE"
+        self.service.action(
+            prompt="# API 連携後に circular import で収集失敗する件\n\n詳細を確認してください。",
+            workspace_path=str(case_workspace),
+            case_id="CASE-TEST-TITLE",
+        )
+
+        cases = self.service.list_cases(str(self.workspace_path))
+        case_index = {item["case_id"]: item for item in cases}
+
+        self.assertEqual(case_index["CASE-TEST-TITLE"]["case_title"], "API 連携後に circular import で収集失敗する件")
 
     def test_workspace_roundtrip_and_archive(self) -> None:
         self.service.initialize_case("CASE-TEST-015", str(self.workspace_path))

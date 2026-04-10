@@ -9,9 +9,13 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 
 
+CASE_METADATA_FILENAME = ".support-ope-case.json"
+
+
 @dataclass(slots=True)
 class CaseWorkspace:
     root: Path
+    case_metadata: Path
     memory_dir: Path
     shared_context: Path
     shared_progress: Path
@@ -58,6 +62,7 @@ class CaseMemoryStore:
         report_dir = root / self._config.data_paths.report_subdir
         return CaseWorkspace(
             root=root,
+            case_metadata=root / CASE_METADATA_FILENAME,
             memory_dir=memory_dir,
             shared_context=shared_dir / "context.md",
             shared_progress=shared_dir / "progress.md",
@@ -80,11 +85,33 @@ class CaseMemoryStore:
         paths.report_dir.mkdir(parents=True, exist_ok=True)
         self.write_case_id_marker(paths.root, case_id)
 
+        self._write_if_missing(paths.case_metadata, "{}\n")
         self._write_if_missing(paths.shared_context, "# Shared Context\n\n")
         self._write_if_missing(paths.shared_progress, "# Shared Progress\n\n")
         self._write_if_missing(paths.shared_summary, "# Shared Summary\n\n")
         self._write_if_missing(paths.shared_history, "")
         return paths
+
+    def read_case_metadata(self, workspace_path: str | Path) -> dict[str, Any]:
+        metadata_path = self._resolve_root_path(workspace_path) / CASE_METADATA_FILENAME
+        if not metadata_path.exists():
+            return {}
+        try:
+            parsed = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    def update_case_metadata(self, workspace_path: str | Path, **updates: object) -> Path:
+        metadata_path = self._resolve_root_path(workspace_path) / CASE_METADATA_FILENAME
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        current = self.read_case_metadata(workspace_path)
+        for key, value in updates.items():
+            if value is None:
+                continue
+            current[key] = value
+        metadata_path.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return metadata_path
 
     def ensure_agent_working_memory(self, case_id: str, agent_name: str, workspace_path: str) -> Path:
         paths = self.resolve_case_paths(case_id, workspace_path=workspace_path)

@@ -31,6 +31,7 @@ from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
+from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
@@ -232,10 +233,12 @@ class RuntimeService:
             if marker is None and not (child / CASE_ID_FILENAME).exists():
                 continue
             case_id = marker or child.name
+            metadata = self._context.memory_store.read_case_metadata(child)
             history = self._context.memory_store.read_chat_history(case_id, str(child))
             cases.append(
                 {
                     "case_id": case_id,
+                    "case_title": str(metadata.get("case_title") or case_id),
                     "workspace_path": str(child),
                     "updated_at": datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat(),
                     "message_count": len(history),
@@ -247,7 +250,21 @@ class RuntimeService:
         selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id)
         workspace_path = Path(cases_root).expanduser().resolve() / selected_case_id
         case_path = self.initialize_case(selected_case_id, str(workspace_path))
-        return {"case_id": selected_case_id, "case_path": str(case_path)}
+        case_title = self._persist_case_title(
+            case_id=selected_case_id,
+            workspace_path=str(case_path),
+            case_title=derive_case_title(prompt, fallback=selected_case_id),
+        )
+        return {"case_id": selected_case_id, "case_path": str(case_path), "case_title": case_title}
+
+    def _persist_case_title(self, *, case_id: str, workspace_path: str, case_title: str | None) -> str:
+        normalized = str(case_title or "").strip() or case_id
+        self._context.memory_store.update_case_metadata(workspace_path, case_id=case_id, case_title=normalized)
+        return normalized
+
+    def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: dict[str, object], prompt: str) -> str:
+        case_title = str(state.get("case_title") or "").strip() or derive_case_title(prompt, fallback=case_id)
+        return self._persist_case_title(case_id=case_id, workspace_path=workspace_path, case_title=case_title)
 
     def get_chat_history(self, *, case_id: str, workspace_path: str) -> list[dict[str, object]]:
         return self._context.memory_store.read_chat_history(case_id, workspace_path)
@@ -414,6 +431,12 @@ class RuntimeService:
             "plan_steps": plan_steps,
         }
         result = self._invoke_workflow(state, trace_id)
+        self._sync_case_title_from_state(
+            case_id=selected_case_id,
+            workspace_path=workspace_path,
+            state=result,
+            prompt=prompt,
+        )
         report_path = self._maybe_auto_generate_report(
             case_id=selected_case_id,
             trace_id=trace_id,
@@ -518,6 +541,12 @@ class RuntimeService:
             "approval_decision": "pending",
         }
         result = self._invoke_workflow(state, current_trace_id)
+        self._sync_case_title_from_state(
+            case_id=selected_case_id,
+            workspace_path=workspace_path,
+            state=result,
+            prompt=prompt,
+        )
         report_path = self._maybe_auto_generate_report(
             case_id=selected_case_id,
             trace_id=current_trace_id,
@@ -630,6 +659,12 @@ class RuntimeService:
         resumed_state["next_action"] = "追加情報を反映して Intake を再実行する"
 
         result = self._invoke_workflow(resumed_state, trace_id)
+        self._sync_case_title_from_state(
+            case_id=case_id,
+            workspace_path=workspace_path,
+            state=result,
+            prompt=merged_prompt,
+        )
         report_path = self._maybe_auto_generate_report(
             case_id=case_id,
             trace_id=trace_id,

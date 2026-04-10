@@ -61,11 +61,16 @@ support_ope_agents:
         self._tmpdir.cleanup()
 
     def test_cases_endpoint_lists_workspace_cases(self) -> None:
+        (self.case_path / ".support-ope-case.json").write_text(
+            '{\n  "case_title": "API 調査依頼"\n}\n',
+            encoding="utf-8",
+        )
         response = self.client.get("/cases")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload[0]["case_id"], "CASE-API-001")
+        self.assertEqual(payload[0]["case_title"], "API 調査依頼")
 
     def test_ui_config_endpoint_returns_display_metadata(self) -> None:
         response = self.client.get("/ui-config")
@@ -81,6 +86,7 @@ support_ope_agents:
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["case_id"], "CASE-API-NEW")
+        self.assertEqual(payload["case_title"], "CASE-API-NEW の調査を開始してください")
         self.assertTrue((self.cases_root / "CASE-API-NEW" / ".support-ope-case-id").exists())
 
     def test_workspace_upload_browse_preview_and_download(self) -> None:

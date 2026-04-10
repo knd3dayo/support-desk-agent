@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
@@ -186,6 +187,8 @@ class IntakePhaseExecutor:
         update.setdefault("intake_ticket_artifacts", {})
         update.setdefault("customer_followup_answers", {})
         update["masked_issue"] = raw_issue
+        if raw_issue and not str(update.get("case_title") or "").strip():
+            update["case_title"] = derive_case_title(raw_issue, fallback=str(update.get("case_id") or "新規ケース"))
         return cast("CaseState", update)
 
     def apply_pii_mask(self, state: CaseState) -> CaseState:

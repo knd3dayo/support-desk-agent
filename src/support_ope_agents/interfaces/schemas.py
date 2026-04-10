@@ -65,10 +65,12 @@ class RuntimeEnvelope(BaseModel):
 class InitCaseResponse(BaseModel):
     case_id: str
     case_path: str
+    case_title: str
 
 
 class CaseSummary(BaseModel):
     case_id: str
+    case_title: str
     workspace_path: str
     updated_at: str
     message_count: int = 0

@@ -1,5 +1,6 @@
 export type CaseSummary = {
   case_id: string;
+  case_title: string;
   workspace_path: string;
   updated_at: string;
   message_count: number;
@@ -73,5 +74,6 @@ export type RuntimeEnvelope = {
 
 export type InitCaseResponse = {
   case_id: string;
+  case_title: string;
   case_path: string;
 };
