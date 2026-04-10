@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 class PlanRequest(BaseModel):
     prompt: str
     workspace_path: str
+    external_ticket_id: str | None = None
+    internal_ticket_id: str | None = None
 
 
 class ActionRequest(BaseModel):
@@ -15,6 +17,8 @@ class ActionRequest(BaseModel):
     workspace_path: str
     trace_id: str | None = None
     execution_plan: str | None = None
+    external_ticket_id: str | None = None
+    internal_ticket_id: str | None = None
 
 
 class ResumeCustomerInputRequest(BaseModel):
@@ -23,6 +27,8 @@ class ResumeCustomerInputRequest(BaseModel):
     workspace_path: str
     additional_input: str
     answer_key: str | None = None
+    external_ticket_id: str | None = None
+    internal_ticket_id: str | None = None
 
 
 class DescribeAgentsRequest(BaseModel):
@@ -42,6 +48,8 @@ class RuntimeEnvelope(BaseModel):
     workflow_kind: str | None = None
     workflow_label: str | None = None
     execution_mode: str | None = None
+    external_ticket_id: str | None = None
+    internal_ticket_id: str | None = None
     plan_summary: str | None = None
     plan_steps: list[str] = Field(default_factory=list)
     requires_approval: bool | None = None

@@ -97,6 +97,8 @@ support_ope_agents:
   #
   #   # external_ticket は顧客向けケース管理システムを指します。
   #   # tools.overrides に明示設定がなければ、この mcp_server / mcp_tool から自動で logical tool binding を組み立てます。
+  #   # external_ticket_id は CLI / API から明示指定でき、未指定時は trace_id 由来の EXT-TRACE-... を使います。
+  #   # MCP tool は少なくとも ticket_id 引数を受け取り、その ID に対応するケース情報を返す前提です。
   #   external_ticket:
   #     description: 顧客向けケース管理システム
   #     mcp_server: support-ticket-mcp
@@ -104,6 +106,8 @@ support_ope_agents:
   #
   #   # internal_ticket は内部管理用チケットを指します。
   #   # tools.overrides に明示設定がなければ、この mcp_server / mcp_tool から自動で logical tool binding を組み立てます。
+  #   # internal_ticket_id は CLI / API から明示指定でき、未指定時は trace_id 由来の INT-TRACE-... を使います。
+  #   # MCP tool は少なくとも ticket_id 引数を受け取り、その ID に対応する内部チケット情報を返す前提です。
   #   internal_ticket:
   #     description: 内部管理用チケットシステム
   #     mcp_server: support-ticket-mcp

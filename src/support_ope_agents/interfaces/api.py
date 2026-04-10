@@ -28,7 +28,12 @@ def create_app(config_path: str = "config.yml") -> FastAPI:
 
     @app.post("/plan", response_model=RuntimeEnvelope)
     def plan(request: PlanRequest) -> RuntimeEnvelope:
-        result = service.plan(prompt=request.prompt, workspace_path=request.workspace_path)
+        result = service.plan(
+            prompt=request.prompt,
+            workspace_path=request.workspace_path,
+            external_ticket_id=request.external_ticket_id,
+            internal_ticket_id=request.internal_ticket_id,
+        )
         return RuntimeEnvelope.model_validate(result)
 
     @app.post("/action", response_model=RuntimeEnvelope)
@@ -38,6 +43,8 @@ def create_app(config_path: str = "config.yml") -> FastAPI:
             workspace_path=request.workspace_path,
             trace_id=request.trace_id,
             execution_plan=request.execution_plan,
+            external_ticket_id=request.external_ticket_id,
+            internal_ticket_id=request.internal_ticket_id,
         )
         return RuntimeEnvelope.model_validate(result)
 
@@ -49,6 +56,8 @@ def create_app(config_path: str = "config.yml") -> FastAPI:
             workspace_path=request.workspace_path,
             additional_input=request.additional_input,
             answer_key=request.answer_key,
+            external_ticket_id=request.external_ticket_id,
+            internal_ticket_id=request.internal_ticket_id,
         )
         return RuntimeEnvelope.model_validate(result)
 
