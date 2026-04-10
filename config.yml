@@ -80,6 +80,19 @@ support_ope_agents:
   # KnowledgeRetrieverAgent が参照する文書群とチケットソースの設定です。
   # 通常はここで文書名称、説明、格納先パスを定義し、DeepAgents backend から参照します。
   # knowledge_retrieval:
+  #   # 文書探索時に除外する既定 glob パターンです。
+  #   # 未指定時は .git や node_modules、.venv、__pycache__ などを除外します。
+  #   # 指定すると既定値ごと上書きします。
+  #   ignore_patterns:
+  #     - .*
+  #     - '**/.*'
+  #     - node_modules/**
+  #     - '**/node_modules/**'
+  #
+  #   # 追加の除外パターンを書いたテキストファイルです。
+  #   # 1 行 1 パターンで、# から始まる行と空行は無視します。
+  #   ignore_patterns_file: ./.support-ope-ignore
+  #
   #   document_sources:
   #     - name: python312_manual
   #       description: Python 3.12 の公式仕様・標準ライブラリ資料

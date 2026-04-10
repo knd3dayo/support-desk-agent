@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 from pathlib import Path
@@ -7,17 +8,46 @@ from pathlib import Path
 from support_ope_agents.config.models import AppConfig
 
 
-def _candidate_files(source_path: Path) -> list[Path]:
+def _load_ignore_patterns(config: AppConfig) -> list[str]:
+    patterns = [pattern.strip() for pattern in config.knowledge_retrieval.ignore_patterns if pattern.strip()]
+    ignore_file = config.knowledge_retrieval.ignore_patterns_file
+    if ignore_file is None or not ignore_file.exists():
+        return patterns
+
+    for line in ignore_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        patterns.append(stripped)
+    return patterns
+
+
+def _matches_ignore_pattern(relative_path: str, pattern: str) -> bool:
+    normalized_pattern = pattern.strip().replace("\\", "/")
+    if not normalized_pattern:
+        return False
+    if normalized_pattern.endswith("/"):
+        normalized_pattern = f"{normalized_pattern}**"
+    return fnmatch.fnmatchcase(relative_path, normalized_pattern)
+
+
+def _is_ignored_path(source_path: Path, candidate: Path, ignore_patterns: list[str]) -> bool:
+    relative_path = candidate.relative_to(source_path).as_posix()
+    return any(_matches_ignore_pattern(relative_path, pattern) for pattern in ignore_patterns)
+
+
+def _candidate_files(source_path: Path, ignore_patterns: list[str]) -> list[Path]:
     if source_path.is_file():
+        if _is_ignored_path(source_path.parent, source_path, ignore_patterns):
+            return []
         return [source_path]
     if not source_path.exists() or not source_path.is_dir():
         return []
 
-    ignored_parts = {".git", ".venv", "venv", "node_modules", "site-packages", ".pytest_cache", "__pycache__"}
     candidates = [
         path
         for path in source_path.rglob("*.md")
-        if path.is_file() and not any(part.startswith(".") or part in ignored_parts for part in path.relative_to(source_path).parts)
+        if path.is_file() and not _is_ignored_path(source_path, path, ignore_patterns)
     ]
 
     def _score(path: Path) -> tuple[int, int, str]:
@@ -90,6 +120,8 @@ def _virtual_path(source_name: str, source_root: Path, candidate: Path) -> str:
 
 
 def build_default_search_documents_tool(config: AppConfig):
+    ignore_patterns = _load_ignore_patterns(config)
+
     def _search_documents(*, query: str = "") -> str:
         document_sources = config.knowledge_retrieval.document_sources
         if not document_sources:
@@ -106,7 +138,7 @@ def build_default_search_documents_tool(config: AppConfig):
         results = []
         for source in document_sources:
             source_path = Path(source.path).expanduser().resolve()
-            candidates = _candidate_files(source_path)
+            candidates = _candidate_files(source_path, ignore_patterns)
             if not candidates:
                 results.append(
                     {

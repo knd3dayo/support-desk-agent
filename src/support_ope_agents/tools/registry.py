@@ -253,6 +253,9 @@ class ToolRegistry:
         return normalized
 
     def _inject_knowledge_retrieval_overrides(self, normalized: dict[str, dict[str, Any]]) -> None:
+        if self._mcp_override_resolver is None:
+            return
+
         role_overrides = normalized.setdefault(KNOWLEDGE_RETRIEVER_AGENT, {})
         knowledge_retrieval = self._config.knowledge_retrieval
         configured_ticket_tools = {

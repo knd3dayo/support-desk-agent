@@ -1,6 +1,9 @@
 # ai-platform-poc 向け sample
 
-このディレクトリは、ai-platform-poc チームが support-ope-agents をそのまま試すための最小サンプルです。
+* このディレクトリは、ai-platform-poc チームが support-ope-agents を実 LLM / 実 MCP 連携込みで試すためのサンプルです。
+* ai-platform-poc チームが問合せ元の顧客、sampleが一次サポート窓口、ai-chat-utilチームがバックサポートをイメージしており、
+本sampleにより確実な回答を生成できるか？できない場合はai-chat-utilチームへのエスカレーション文書が作成可能か？を確かめることを目的としています。
+* ここで発見された、support-ope-agentsの不具合は、イシューとして残して、ソース改修に役立てます。
 
 ## 1. 含まれるもの
 
@@ -21,7 +24,8 @@
 1. workspace テンプレートを任意の作業ディレクトリへコピーする
 2. `.evidence/` 配下へ pytest 出力、調査メモ、エラーログを置く
 3. sample_prompt.txt をそのまま使うか、問い合わせ文面を調整する
-4. sample config を指定して action を実行する
+4. OpenAI API キーと、external / internal ticket を引ける MCP 環境を用意する
+5. sample config を指定して action を実行する
 
 実行例:
 
@@ -34,9 +38,10 @@ python -m support_ope_agents.cli action \
   --config /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/config.yml
 ```
 
-ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。
+ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、KnowledgeRetrieverAgent は external / internal ticket の実参照をスキップします。実チケットを引きたい場合は `--external-ticket-id` と `--internal-ticket-id` を明示指定してください。
 
 ## 4. 補足
 
+- この sample は実 LLM / 実 MCP 前提です。`OPENAI_API_KEY` と、sample config の `support-ticket-mcp` を解決できる MCP 実行環境を事前に用意してください
 - ai-chat-util 側に MCP manifest がある場合は、sample config の `tools.mcp_manifest_path` や `tools.overrides` を環境に合わせて有効化してください
 - LangChain ドキュメントの path は `/home/user/oss/langchain-ai/langchain` を前提にしています

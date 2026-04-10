@@ -12,11 +12,22 @@
 - description: source の内容説明
 - path: 実ファイルの格納先パス
 
+`knowledge_retrieval.ignore_patterns` と `knowledge_retrieval.ignore_patterns_file` では、文書探索から除外するパスを指定する。
+
+- ignore_patterns: source root からの相対パスに対する glob パターン。未指定時は `.git`、`node_modules`、`.venv`、`__pycache__` などを既定で除外する
+- ignore_patterns_file: 1 行 1 パターンの追加除外ファイル。空行と `#` コメントは無視する
+
 例:
 
 ```yaml
 support_ope_agents:
   knowledge_retrieval:
+    ignore_patterns:
+      - .*
+      - '**/.*'
+      - node_modules/**
+      - '**/node_modules/**'
+    ignore_patterns_file: ./.support-ope-ignore
     document_sources:
       - name: python312_manual
         description: Python 3.12 の公式仕様・標準ライブラリ資料
@@ -34,6 +45,8 @@ support_ope_agents:
 - KnowledgeRetrieverAgent は `CompositeBackend` を使い、複数の document_sources を 1 つの backend に束ねる
 - 各 source は `/knowledge/<source_name>/` に route する
 - default backend は `StateBackend` とし、knowledge 以外の一時ファイルは state 側で扱う
+
+現時点の support-ope-agents では、ignore_patterns は主に既定の `search_documents` 実装で使う。DeepAgents の FilesystemBackend 自体には `.gitignore` を自動解釈する共通設定はないため、support-ope-agents 側で探索候補を絞る。
 
 例:
 

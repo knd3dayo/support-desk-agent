@@ -1,8 +1,9 @@
 support_ope_agents:
   llm:
     provider: openai
-    model: gpt-4.1
+    model: poc-chat-model
     api_key: os.environ/OPENAI_API_KEY
+    base_url: http://localhost:4000
 
   knowledge_retrieval:
     document_sources:
@@ -17,18 +18,20 @@ support_ope_agents:
         path: /home/user/oss/langchain-ai/langchain
 
     external_ticket:
+      # 実 MCP で顧客向けチケットを取得する前提の sample 設定
       description: ai-platform-poc チームの顧客向け検証問い合わせ
       mcp_server: support-ticket-mcp
       mcp_tool: get_external_ticket
 
     internal_ticket:
+      # 実 MCP で内部管理チケットを取得する前提の sample 設定
       description: ai-platform-poc チームの内部管理チケット
       mcp_server: support-ticket-mcp
       mcp_tool: get_internal_ticket
 
   tools:
     enable_python_analysis: true
-    # ai-chat-util 側に manifest を配置している場合は有効化する
+    # 実 MCP を使う場合は、環境に合わせて manifest / overrides を有効化する
     # mcp_manifest_path: /home/user/source/repos/ai-chat-util/app/ai-chat-util-mcp.json
     # overrides:
     #   KnowledgeRetrieverAgent:

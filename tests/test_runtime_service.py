@@ -33,6 +33,8 @@ from support_ope_agents.workflow.state import CaseState
 class _FakeToolRegistry:
     def __init__(self, config: AppConfig):
         self._config = config
+        self.external_ticket_calls: list[str] = []
+        self.internal_ticket_calls: list[str] = []
         self._read_shared_memory = build_default_read_shared_memory_tool(config)
         self._write_shared_memory = build_default_write_shared_memory_tool(config)
         self._search_documents = build_default_search_documents_tool(config)
@@ -178,17 +180,17 @@ class _FakeToolRegistry:
             ensure_ascii=False,
         )
 
-    @staticmethod
-    def _external_ticket(*_: object, **kwargs: object) -> str:
+    def _external_ticket(self, *_: object, **kwargs: object) -> str:
         ticket_id = str(kwargs.get("ticket_id") or "")
         if ticket_id:
+            self.external_ticket_calls.append(ticket_id)
             return f"external ticket fetched: {ticket_id}"
         return "external_ticket tool is not configured."
 
-    @staticmethod
-    def _internal_ticket(*_: object, **kwargs: object) -> str:
+    def _internal_ticket(self, *_: object, **kwargs: object) -> str:
         ticket_id = str(kwargs.get("ticket_id") or "")
         if ticket_id:
+            self.internal_ticket_calls.append(ticket_id)
             return f"internal ticket fetched: {ticket_id}"
         return "internal_ticket tool is not configured."
 
@@ -342,6 +344,34 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         state = cast(CaseState, result["state"])
         self.assertEqual(str(state.get("external_ticket_id") or ""), "EXT-123")
         self.assertEqual(str(state.get("internal_ticket_id") or ""), "INT-456")
+        self.assertTrue(bool(state.get("external_ticket_lookup_enabled")))
+        self.assertTrue(bool(state.get("internal_ticket_lookup_enabled")))
+        registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
+        self.assertEqual(registry.external_ticket_calls, ["EXT-123"])
+        self.assertEqual(registry.internal_ticket_calls, ["INT-456"])
+
+    def test_action_skips_ticket_lookup_for_auto_generated_ticket_ids(self) -> None:
+        result = self.service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-008",
+        )
+
+        state = cast(CaseState, result["state"])
+        self.assertFalse(bool(state.get("external_ticket_lookup_enabled")))
+        self.assertFalse(bool(state.get("internal_ticket_lookup_enabled")))
+        self.assertTrue(str(state.get("external_ticket_id") or "").startswith("EXT-TRACE-"))
+        self.assertTrue(str(state.get("internal_ticket_id") or "").startswith("INT-TRACE-"))
+
+        results = cast(list[dict[str, object]], state.get("knowledge_retrieval_results") or [])
+        external_result = next(item for item in results if str(item.get("source_name") or "") == "external_ticket")
+        internal_result = next(item for item in results if str(item.get("source_name") or "") == "internal_ticket")
+        self.assertEqual(str(external_result.get("status") or ""), "skipped")
+        self.assertEqual(str(internal_result.get("status") or ""), "skipped")
+
+        registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
+        self.assertEqual(registry.external_ticket_calls, [])
+        self.assertEqual(registry.internal_ticket_calls, [])
 
 
 if __name__ == "__main__":

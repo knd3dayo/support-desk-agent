@@ -10,6 +10,7 @@ class LlmSettings(BaseModel):
     provider: str
     model: str
     api_key: str
+    base_url: str | None = None
 
 
 class ConfigPathSettings(BaseModel):
@@ -83,6 +84,31 @@ class TicketSourceSettings(BaseModel):
 
 class KnowledgeRetrievalSettings(BaseModel):
     document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
+    ignore_patterns: list[str] = Field(
+        default_factory=lambda: [
+            ".*",
+            "**/.*",
+            ".*/**",
+            "**/.*/**",
+            "node_modules/**",
+            "**/node_modules/**",
+            ".venv/**",
+            "**/.venv/**",
+            "venv/**",
+            "**/venv/**",
+            "site-packages/**",
+            "**/site-packages/**",
+            ".pytest_cache/**",
+            "**/.pytest_cache/**",
+            "__pycache__/**",
+            "**/__pycache__/**",
+            "build/**",
+            "**/build/**",
+            "dist/**",
+            "**/dist/**",
+        ]
+    )
+    ignore_patterns_file: Path | None = None
     external_ticket: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
     internal_ticket: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
 

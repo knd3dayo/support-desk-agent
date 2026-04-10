@@ -88,7 +88,12 @@ def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
         return None
     if not config.llm.api_key:
         return None
-    return ChatOpenAI(model=config.llm.model, api_key=cast(Any, config.llm.api_key), temperature=0)
+    return ChatOpenAI(
+        model=config.llm.model,
+        api_key=cast(Any, config.llm.api_key),
+        base_url=config.llm.base_url,
+        temperature=0,
+    )
 
 
 def _truncate_text(text: str, limit: int) -> str:

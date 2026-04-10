@@ -46,6 +46,8 @@ class CaseState(TypedDict, total=False):
     customer_followup_answers: dict[str, dict[str, str]]
     external_ticket_id: str
     internal_ticket_id: str
+    external_ticket_lookup_enabled: bool
+    internal_ticket_lookup_enabled: bool
     plan_summary: str
     plan_steps: list[str]
     investigation_summary: str

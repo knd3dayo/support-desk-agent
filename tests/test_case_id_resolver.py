@@ -24,6 +24,14 @@ class CaseIdResolverServiceTests(unittest.TestCase):
         self.assertEqual(resolver.resolve_external_ticket_id(explicit_ticket_id="ext-001"), "EXT-001")
         self.assertEqual(resolver.resolve_internal_ticket_id(explicit_ticket_id="int-001"), "INT-001")
 
+    def test_detects_auto_generated_ticket_ids(self) -> None:
+        resolver = CaseIdResolverService()
+
+        self.assertTrue(resolver.is_auto_generated_external_ticket_id("EXT-TRACE-abc123"))
+        self.assertTrue(resolver.is_auto_generated_internal_ticket_id("INT-TRACE-abc123"))
+        self.assertFalse(resolver.is_auto_generated_external_ticket_id("EXT-001"))
+        self.assertFalse(resolver.is_auto_generated_internal_ticket_id("INT-001"))
+
 
 if __name__ == "__main__":
     unittest.main()

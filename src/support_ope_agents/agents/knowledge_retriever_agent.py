@@ -82,23 +82,48 @@ class KnowledgeRetrieverPhaseExecutor:
             "evidence": [],
         }
 
+    @staticmethod
+    def _build_skipped_ticket_result(source_name: str, ticket_id: str) -> dict[str, object]:
+        return {
+            "source_name": source_name,
+            "source_description": "",
+            "source_type": "ticket_source",
+            "status": "skipped",
+            "summary": (
+                f"{source_name} lookup skipped because the ticket ID was auto-generated for trace correlation: {ticket_id}"
+                if ticket_id
+                else f"{source_name} lookup skipped because no explicit ticket ID was provided."
+            ),
+            "matched_paths": [],
+            "evidence": [],
+        }
+
     def execute(self, state: Mapping[str, object]) -> dict[str, object]:
         raw_issue = str(state.get("raw_issue") or "")
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         external_ticket_id = str(state.get("external_ticket_id") or "").strip()
         internal_ticket_id = str(state.get("internal_ticket_id") or "").strip()
+        external_ticket_lookup_enabled = bool(state.get("external_ticket_lookup_enabled"))
+        internal_ticket_lookup_enabled = bool(state.get("internal_ticket_lookup_enabled"))
         document_message, document_results = self._parse_document_result(
             self._invoke_tool(self.search_documents_tool, query=raw_issue)
         )
-        external_ticket_result = self._build_ticket_result(
-            "external_ticket",
-            self._invoke_tool(self.external_ticket_tool, ticket_id=external_ticket_id),
-        )
-        internal_ticket_result = self._build_ticket_result(
-            "internal_ticket",
-            self._invoke_tool(self.internal_ticket_tool, ticket_id=internal_ticket_id),
-        )
+        if external_ticket_lookup_enabled:
+            external_ticket_result = self._build_ticket_result(
+                "external_ticket",
+                self._invoke_tool(self.external_ticket_tool, ticket_id=external_ticket_id),
+            )
+        else:
+            external_ticket_result = self._build_skipped_ticket_result("external_ticket", external_ticket_id)
+
+        if internal_ticket_lookup_enabled:
+            internal_ticket_result = self._build_ticket_result(
+                "internal_ticket",
+                self._invoke_tool(self.internal_ticket_tool, ticket_id=internal_ticket_id),
+            )
+        else:
+            internal_ticket_result = self._build_skipped_ticket_result("internal_ticket", internal_ticket_id)
 
         results: list[dict[str, object]] = [*document_results, external_ticket_result, internal_ticket_result]
         adopted_sources = [
@@ -120,6 +145,8 @@ class KnowledgeRetrieverPhaseExecutor:
                     f"Query: {raw_issue or 'n/a'}",
                     f"External ticket ID: {external_ticket_id or 'n/a'}",
                     f"Internal ticket ID: {internal_ticket_id or 'n/a'}",
+                    f"External ticket lookup: {'enabled' if external_ticket_lookup_enabled else 'skipped'}",
+                    f"Internal ticket lookup: {'enabled' if internal_ticket_lookup_enabled else 'skipped'}",
                     f"Summary: {summary}",
                     f"Adopted sources: {', '.join(adopted_sources) if adopted_sources else 'none'}",
                 ],

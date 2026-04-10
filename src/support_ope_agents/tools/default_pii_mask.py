@@ -14,7 +14,12 @@ def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
         return None
     if not config.llm.api_key:
         return None
-    return ChatOpenAI(model=config.llm.model, api_key=cast(Any, config.llm.api_key), temperature=0)
+    return ChatOpenAI(
+        model=config.llm.model,
+        api_key=cast(Any, config.llm.api_key),
+        base_url=config.llm.base_url,
+        temperature=0,
+    )
 
 
 def _stringify_response_content(content: Any) -> str:
@@ -86,7 +91,10 @@ def build_default_pii_mask_tool(config: AppConfig):
         if normalized_context:
             instructions.extend(["", f"Context: {normalized_context}"])
         instructions.extend(["", "Input text:", normalized_text])
-        response = await model.ainvoke([HumanMessage(content="\n".join(instructions))])
+        try:
+            response = await model.ainvoke([HumanMessage(content="\n".join(instructions))])
+        except Exception:
+            return _fallback_mask(normalized_text)
         content = _stringify_response_content(response.content)
         return content or _fallback_mask(normalized_text)
 

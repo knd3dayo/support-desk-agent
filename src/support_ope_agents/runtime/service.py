@@ -141,6 +141,30 @@ class RuntimeService:
             self._context.memory_store.ensure_agent_working_memory(case_id, definition.role, workspace_path=workspace_path)
         return case_paths.root
 
+    @staticmethod
+    def _has_explicit_ticket_id(value: str | None) -> bool:
+        return bool(value and value.strip())
+
+    def _resolve_ticket_lookup_enabled(
+        self,
+        *,
+        explicit_ticket_id: str | None,
+        saved_ticket_id: object,
+        saved_lookup_enabled: object,
+        ticket_kind: str,
+    ) -> bool:
+        if self._has_explicit_ticket_id(explicit_ticket_id):
+            return True
+        if isinstance(saved_lookup_enabled, bool):
+            return saved_lookup_enabled
+
+        normalized_saved_ticket_id = str(saved_ticket_id or "").strip()
+        if not normalized_saved_ticket_id:
+            return False
+        if ticket_kind == "external":
+            return not self._context.case_id_resolver_service.is_auto_generated_external_ticket_id(normalized_saved_ticket_id)
+        return not self._context.case_id_resolver_service.is_auto_generated_internal_ticket_id(normalized_saved_ticket_id)
+
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:
         agents: list[dict[str, object]] = []
         for definition in self._context.agent_factory.build_default_definitions():
@@ -179,6 +203,8 @@ class RuntimeService:
             explicit_ticket_id=internal_ticket_id,
             trace_id=trace_id,
         )
+        external_ticket_lookup_enabled = self._has_explicit_ticket_id(external_ticket_id)
+        internal_ticket_lookup_enabled = self._has_explicit_ticket_id(internal_ticket_id)
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
 
         workflow_kind = route_workflow(prompt)
@@ -195,6 +221,8 @@ class RuntimeService:
             "raw_issue": prompt,
             "external_ticket_id": resolved_external_ticket_id,
             "internal_ticket_id": resolved_internal_ticket_id,
+            "external_ticket_lookup_enabled": external_ticket_lookup_enabled,
+            "internal_ticket_lookup_enabled": internal_ticket_lookup_enabled,
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
         }
@@ -242,6 +270,18 @@ class RuntimeService:
             explicit_ticket_id=internal_ticket_id or str(saved_state.get("internal_ticket_id") or "") or None,
             trace_id=current_trace_id,
         )
+        external_ticket_lookup_enabled = self._resolve_ticket_lookup_enabled(
+            explicit_ticket_id=external_ticket_id,
+            saved_ticket_id=saved_state.get("external_ticket_id"),
+            saved_lookup_enabled=saved_state.get("external_ticket_lookup_enabled"),
+            ticket_kind="external",
+        )
+        internal_ticket_lookup_enabled = self._resolve_ticket_lookup_enabled(
+            explicit_ticket_id=internal_ticket_id,
+            saved_ticket_id=saved_state.get("internal_ticket_id"),
+            saved_lookup_enabled=saved_state.get("internal_ticket_lookup_enabled"),
+            ticket_kind="internal",
+        )
 
         if not saved_state:
             workflow_kind = route_workflow(prompt)
@@ -264,6 +304,8 @@ class RuntimeService:
             "raw_issue": prompt,
             "external_ticket_id": resolved_external_ticket_id,
             "internal_ticket_id": resolved_internal_ticket_id,
+            "external_ticket_lookup_enabled": external_ticket_lookup_enabled,
+            "internal_ticket_lookup_enabled": internal_ticket_lookup_enabled,
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
             "approval_decision": "pending",
@@ -324,6 +366,18 @@ class RuntimeService:
         resumed_state["internal_ticket_id"] = self._context.case_id_resolver_service.resolve_internal_ticket_id(
             explicit_ticket_id=internal_ticket_id or str(saved_state.get("internal_ticket_id") or "") or None,
             trace_id=trace_id,
+        )
+        resumed_state["external_ticket_lookup_enabled"] = self._resolve_ticket_lookup_enabled(
+            explicit_ticket_id=external_ticket_id,
+            saved_ticket_id=saved_state.get("external_ticket_id"),
+            saved_lookup_enabled=saved_state.get("external_ticket_lookup_enabled"),
+            ticket_kind="external",
+        )
+        resumed_state["internal_ticket_lookup_enabled"] = self._resolve_ticket_lookup_enabled(
+            explicit_ticket_id=internal_ticket_id,
+            saved_ticket_id=saved_state.get("internal_ticket_id"),
+            saved_lookup_enabled=saved_state.get("internal_ticket_lookup_enabled"),
+            ticket_kind="internal",
         )
         resumed_state["intake_rework_required"] = False
         resumed_state["intake_rework_reason"] = ""

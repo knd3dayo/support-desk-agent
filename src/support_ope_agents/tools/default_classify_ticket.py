@@ -14,7 +14,12 @@ def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
         return None
     if not config.llm.api_key:
         return None
-    return ChatOpenAI(model=config.llm.model, api_key=cast(Any, config.llm.api_key), temperature=0)
+    return ChatOpenAI(
+        model=config.llm.model,
+        api_key=cast(Any, config.llm.api_key),
+        base_url=config.llm.base_url,
+        temperature=0,
+    )
 
 
 def _stringify_response_content(content: Any) -> str:
@@ -84,7 +89,10 @@ def build_default_classify_ticket_tool(config: AppConfig):
         if normalized_context:
             instructions.extend(["", f"Context: {normalized_context}"])
         instructions.extend(["", "Issue:", normalized_text])
-        response = await model.ainvoke([HumanMessage(content="\n".join(instructions))])
+        try:
+            response = await model.ainvoke([HumanMessage(content="\n".join(instructions))])
+        except Exception:
+            return json.dumps(_fallback_classification(normalized_text), ensure_ascii=False)
         content = _stringify_response_content(response.content)
         if not content:
             return json.dumps(_fallback_classification(normalized_text), ensure_ascii=False)
