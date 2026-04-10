@@ -3,6 +3,7 @@ import type {
   ChatHistoryResponse,
   InitCaseResponse,
   RuntimeEnvelope,
+  UiConfigResponse,
   WorkspaceBrowseResponse,
   WorkspaceFileResponse,
   WorkspaceUploadResponse,
@@ -53,6 +54,10 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
 
 export function listCases(): Promise<CaseSummary[]> {
   return requestJson<CaseSummary[]>('/cases');
+}
+
+export function loadUiConfig(): Promise<UiConfigResponse> {
+  return requestJson<UiConfigResponse>('/ui-config');
 }
 
 export function createCase(prompt: string): Promise<InitCaseResponse> {

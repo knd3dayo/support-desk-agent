@@ -1,6 +1,7 @@
 :root {
   color-scheme: light;
   font-family: "IBM Plex Sans JP", "Noto Sans JP", sans-serif;
+  font-size: 14px;
   background:
     radial-gradient(circle at top right, rgba(255, 182, 73, 0.28), transparent 24%),
     radial-gradient(circle at bottom left, rgba(19, 96, 142, 0.24), transparent 30%),
@@ -83,6 +84,21 @@ input {
   font-family: "Space Grotesk", "IBM Plex Sans JP", sans-serif;
 }
 
+.panel-header h1 {
+  font-size: 1.85rem;
+  line-height: 1.05;
+}
+
+.panel-header h2 {
+  font-size: 1.55rem;
+  line-height: 1.1;
+}
+
+.empty-state h3 {
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
 .eyebrow {
   margin: 0;
   color: #7a5f2d;
@@ -93,7 +109,34 @@ input {
 
 .panel-copy {
   color: rgba(16, 33, 47, 0.68);
+  font-size: 0.9rem;
   line-height: 1.6;
+}
+
+.target-chip-block {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  margin: 10px 0 4px;
+}
+
+.target-chip-block p {
+  margin: 0;
+  color: rgba(16, 33, 47, 0.7);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.target-chip {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(16, 50, 77, 0.92), rgba(22, 93, 99, 0.88));
+  color: #f7f3eb;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
 }
 
 .ghost-button,
@@ -125,7 +168,7 @@ input {
   border-radius: 999px;
   background: linear-gradient(135deg, #10324d, #1a6175);
   color: #f4efe4;
-  font-size: 0.88rem;
+  font-size: 0.76rem;
 }
 
 .status-stack {
@@ -145,7 +188,7 @@ input {
 }
 
 .auth-box span {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: rgba(16, 33, 47, 0.72);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -182,6 +225,7 @@ input {
 
 .case-id {
   font-weight: 700;
+  font-size: 0.92rem;
 }
 
 .case-meta,
@@ -203,6 +247,7 @@ input {
   max-width: 86%;
   padding: 16px 18px;
   border-radius: 24px;
+  font-size: 0.88rem;
   line-height: 1.7;
 }
 
@@ -225,7 +270,7 @@ input {
 }
 
 .message-role {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -243,6 +288,7 @@ input {
   border-radius: 20px;
   padding: 16px;
   min-height: 120px;
+  font-size: 0.9rem;
   background: rgba(255, 255, 255, 0.9);
 }
 
@@ -307,6 +353,7 @@ input {
   gap: 4px;
   text-align: left;
   padding: 12px 14px;
+  font-size: 0.86rem;
   background: rgba(255, 255, 255, 0.72);
 }
 
@@ -336,6 +383,8 @@ input {
   border-radius: 20px;
   padding: 16px;
   min-height: 320px;
+  font-size: 0.82rem;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
@@ -370,6 +419,7 @@ input {
 
 .empty-state {
   margin: auto;
+  font-size: 0.88rem;
   text-align: center;
   color: rgba(16, 33, 47, 0.72);
 }

@@ -84,6 +84,16 @@ support_ope_agents:
   #   # API の待受ポートです。
   #   api_port: 8000
   #
+  #   # UI 上で表示するアプリ名です。
+  #   ui_app_name: Support Desk
+  #
+  #   # UI が何向けかを示すラベルです。
+  #   # 例: ai-platform-poc 向けサンプル
+  #   ui_target_label:
+  #
+  #   # 補足説明を表示したい場合の任意テキストです。
+  #   ui_target_description:
+  #
   #   # frontend の npm run dev から直接叩く場合の許可 origin 一覧です。
   #   # 例: http://127.0.0.1:5173
   #   cors_allowed_origins: []

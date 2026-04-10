@@ -51,6 +51,13 @@ export type WorkspaceUploadResponse = {
   size: number;
 };
 
+export type UiConfigResponse = {
+  app_name: string;
+  target_label?: string | null;
+  target_description?: string | null;
+  auth_required: boolean;
+};
+
 export type RuntimeEnvelope = {
   case_id: string;
   trace_id?: string | null;

@@ -29,6 +29,9 @@ support_ope_agents:
     enable_cli: true
     enable_api: false
     enable_mcp: false
+    ui_app_name: Support Desk
+    ui_target_label: ai-platform-poc 向けサンプル
+    ui_target_description: ai-platform-poc チームの問い合わせ検証とバックサポート連携を試すためのサンプル UI
 
   agents:
     SuperVisorAgent:

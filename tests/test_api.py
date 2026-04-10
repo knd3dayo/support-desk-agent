@@ -67,6 +67,14 @@ support_ope_agents:
         payload = response.json()
         self.assertEqual(payload[0]["case_id"], "CASE-API-001")
 
+    def test_ui_config_endpoint_returns_display_metadata(self) -> None:
+        response = self.client.get("/ui-config")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["app_name"], "Support Desk")
+        self.assertFalse(payload["auth_required"])
+
     def test_create_case_endpoint_initializes_workspace_under_default_cases_root(self) -> None:
         response = self.client.post("/cases", json={"prompt": "CASE-API-NEW の調査を開始してください"})
 

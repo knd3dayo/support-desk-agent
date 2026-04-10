@@ -8,6 +8,7 @@ import {
   loadFile,
   loadHistory,
   loadRawFileBlob,
+  loadUiConfig,
   rawFileUrl,
   resumeCustomerInput,
   saveAuthToken,
@@ -21,6 +22,7 @@ import type {
   WorkspaceBrowseResponse,
   WorkspaceEntry,
   WorkspaceFileResponse,
+  UiConfigResponse,
 } from './types';
 
 type PendingQuestion = {
@@ -69,8 +71,15 @@ export default function App() {
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [authToken, setAuthToken] = useState(() => getSavedAuthToken());
   const [inlinePreviewUrl, setInlinePreviewUrl] = useState<string | null>(null);
+  const [uiConfig, setUiConfig] = useState<UiConfigResponse>({
+    app_name: 'Support Desk',
+    target_label: null,
+    target_description: null,
+    auth_required: false,
+  });
 
   useEffect(() => {
+    void refreshUiConfig();
     void refreshCases();
   }, []);
 
@@ -89,6 +98,18 @@ export default function App() {
     });
     if (!selectedCase && nextCases.length > 0) {
       await selectCase(nextCases[0]);
+    }
+  }
+
+  async function refreshUiConfig() {
+    try {
+      const config = await loadUiConfig();
+      setUiConfig(config);
+      if (config.auth_required && !getSavedAuthToken()) {
+        setStatusLine('この画面は認証トークンが必要です。右上に入力してください。');
+      }
+    } catch {
+      setStatusLine('UI 設定の取得に失敗しました。');
     }
   }
 
@@ -234,12 +255,18 @@ export default function App() {
         <div className="panel-header">
           <div>
             <p className="eyebrow">Session Index</p>
-            <h1>Support Desk</h1>
+            <h1>{uiConfig.app_name}</h1>
           </div>
           <button className="ghost-button" onClick={() => setSelectedCase(null)} type="button">
             新規ケース
           </button>
         </div>
+        {uiConfig.target_label ? (
+          <div className="target-chip-block panel-subtle">
+            <span className="target-chip">{uiConfig.target_label}</span>
+            {uiConfig.target_description ? <p>{uiConfig.target_description}</p> : null}
+          </div>
+        ) : null}
         <p className="panel-copy">ケースごとの会話履歴を左側で切り替えます。</p>
         <div className="case-list">
           {cases.map((item) => (
@@ -270,7 +297,7 @@ export default function App() {
                 type="password"
                 value={authToken}
                 onChange={(event) => setAuthToken(event.target.value)}
-                placeholder="未設定なら空欄のまま"
+                placeholder={uiConfig.auth_required ? 'この画面では必須です' : '未設定なら空欄のまま'}
               />
               <button className="ghost-button" type="button" onClick={persistAuthToken}>
                 保存

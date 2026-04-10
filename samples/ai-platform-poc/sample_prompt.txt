@@ -1,3 +1,0 @@
-ai-platform-poc の resume targeted test が circular import で失敗しています。
-ai-platform-poc の検証メモ、ai-chat-util のソース、LangChain の関連ドキュメントを参照し、
-原因候補、追加で見るべきログ、ai-chat-util チームへ返す調査論点を整理してください。

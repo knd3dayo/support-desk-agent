@@ -27,6 +27,7 @@ from .schemas import (
     PlanRequest,
     ResumeCustomerInputRequest,
     RuntimeEnvelope,
+    UiConfigResponse,
     WorkspaceBrowseResponse,
     WorkspaceFileResponse,
     WorkspaceUploadResponse,
@@ -80,6 +81,16 @@ def create_app(config_path: str = "config.yml") -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/ui-config", response_model=UiConfigResponse)
+    def get_ui_config() -> UiConfigResponse:
+        interfaces = context.config.interfaces
+        return UiConfigResponse(
+            app_name=interfaces.ui_app_name,
+            target_label=interfaces.ui_target_label,
+            target_description=interfaces.ui_target_description,
+            auth_required=interfaces.auth_required,
+        )
 
     @app.get("/cases", response_model=list[CaseSummary])
     def list_cases(cases_root: str = Query(default=str(default_cases_root)), _: None = Depends(require_auth)) -> list[CaseSummary]:

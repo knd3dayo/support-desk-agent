@@ -119,3 +119,10 @@ class WorkspaceUploadResponse(BaseModel):
     path: str
     size: int
 
+
+class UiConfigResponse(BaseModel):
+    app_name: str
+    target_label: str | None = None
+    target_description: str | None = None
+    auth_required: bool = False
+

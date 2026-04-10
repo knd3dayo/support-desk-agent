@@ -262,6 +262,9 @@ class InterfaceSettings(StrictConfigModel):
     enable_mcp: bool = False
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    ui_app_name: str = "Support Desk"
+    ui_target_label: str | None = None
+    ui_target_description: str | None = None
     cors_allowed_origins: list[str] = Field(default_factory=list)
     auth_required: bool = False
     auth_token: str | None = None
