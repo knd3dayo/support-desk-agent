@@ -64,6 +64,9 @@ ApprovalAgent が参照する使用ツール詳細は次を参照する。
 - ApprovalAgent は DeepAgent ではなく workflow ノードとして実装する
 - 外部から見える継続識別子は trace_id に統一する
 - 差戻しや再調査時の指示は state と shared/progress.md に残して再開可能にする
+- record_approval_decision の有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools.record_approval_decision で管理する
+- logical_tools は enabled: false による無効化、provider: builtin による builtin 実装利用、provider: mcp による外部 MCP 利用の 3 パターンで扱う
+- provider: mcp の場合は manifest と server / tool 定義を起動時に検証し、current builtin は未実装プレースホルダーとして扱う
 
 ## 10. 未決事項
 

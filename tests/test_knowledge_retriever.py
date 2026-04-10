@@ -30,7 +30,24 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                             "description": "external ticket",
                             "mcp_server": "support-ticket-mcp",
                             "mcp_tool": "get_external_ticket",
-                        },
+                        }
+                    },
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+
+    def test_old_top_level_knowledge_retrieval_config_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "dummy", "base_url": "http://localhost:4000"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "knowledge_retrieval": {
+                        "document_sources": [
+                            {"name": "docs", "description": "test docs", "path": "/tmp/docs"}
+                        ]
                     },
                     "interfaces": {},
                     "agents": {},
@@ -108,17 +125,8 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                     "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
                     "config_paths": {},
                     "data_paths": {},
-                    "knowledge_retrieval": {
-                        "document_sources": [
-                            {
-                                "name": "docs",
-                                "description": "test docs",
-                                "path": str(root),
-                            }
-                        ]
-                    },
+                    "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "docs", "description": "test docs", "path": str(root)}]}},
                     "interfaces": {},
-                    "agents": {},
                 }
             )
 
@@ -143,18 +151,8 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                     "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
                     "config_paths": {},
                     "data_paths": {},
-                    "knowledge_retrieval": {
-                        "document_sources": [
-                            {
-                                "name": "docs",
-                                "description": "test docs",
-                                "path": str(root),
-                            }
-                        ],
-                        "ignore_patterns_file": str(ignore_file),
-                    },
+                    "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "docs", "description": "test docs", "path": str(root)}], "ignore_patterns_file": str(ignore_file)}},
                     "interfaces": {},
-                    "agents": {},
                 }
             )
 
@@ -172,17 +170,8 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                 "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
                 "config_paths": {},
                 "data_paths": {},
-                "knowledge_retrieval": {
-                    "document_sources": [
-                        {
-                            "name": "ai-platform-poc",
-                            "description": "生成AI基盤のアーキテクチャ検討資料",
-                            "path": str(source_path),
-                        }
-                    ]
-                },
+                "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "ai-platform-poc", "description": "生成AI基盤のアーキテクチャ検討資料", "path": str(source_path)}]}},
                 "interfaces": {},
-                "agents": {},
             }
         )
         executor = KnowledgeRetrieverPhaseExecutor(

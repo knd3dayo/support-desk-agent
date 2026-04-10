@@ -5,44 +5,25 @@ support_ope_agents:
     api_key: os.environ/OPENAI_API_KEY
     base_url: http://localhost:4000
 
-  knowledge_retrieval:
-    document_sources:
-      - name: ai-platform-poc
-        description: ai-platform-poc の技術検証資料と設計資料
-        path: /home/user/source/repos/ai-platform-poc
-      - name: ai-chat-util
-        description: ai-chat-util のソースコードと関連実装
-        path: /home/user/source/repos/ai-chat-util
-      - name: langchain-docs
-        description: LangChain のローカルドキュメント
-        path: /home/user/oss/langchain-ai/langchain
-
-    external_ticket:
-      # 実 MCP で顧客向けチケットを取得する前提の sample 設定
-      description: ai-platform-poc チームの顧客向け検証問い合わせ
-      mcp_server: support-ticket-mcp
-      mcp_tool: get_external_ticket
-
-    internal_ticket:
-      # 実 MCP で内部管理チケットを取得する前提の sample 設定
-      description: ai-platform-poc チームの内部管理チケット
-      mcp_server: support-ticket-mcp
-      mcp_tool: get_internal_ticket
-
   tools:
-    enable_python_analysis: true
-    # 実 MCP を使う場合は、環境に合わせて manifest / overrides を有効化する
+    logical_tools:
+      run_python_analysis:
+        enabled: true
+        provider: builtin
+      external_ticket:
+        enabled: true
+        provider: mcp
+        description: ai-platform-poc チームの顧客向け検証問い合わせ
+        server: support-ticket-mcp
+        tool: get_external_ticket
+      internal_ticket:
+        enabled: true
+        provider: mcp
+        description: ai-platform-poc チームの内部管理チケット
+        server: support-ticket-mcp
+        tool: get_internal_ticket
+    # 実 MCP を使う場合は、環境に合わせて manifest を有効化する
     # mcp_manifest_path: /home/user/source/repos/ai-chat-util/app/ai-chat-util-mcp.json
-    # overrides:
-    #   KnowledgeRetrieverAgent:
-    #     external_ticket:
-    #       type: mcp
-    #       server: support-ticket-mcp
-    #       tool: get_external_ticket
-    #     internal_ticket:
-    #       type: mcp
-    #       server: support-ticket-mcp
-    #       tool: get_internal_ticket
 
   interfaces:
     enable_cli: true
@@ -56,12 +37,24 @@ support_ope_agents:
     IntakeAgent:
       enabled: true
       auto_compress: true
+      pii_mask:
+        enabled: false
     LogAnalyzerAgent:
       enabled: true
       auto_compress: true
     KnowledgeRetrieverAgent:
       enabled: true
       auto_compress: true
+      document_sources:
+        - name: ai-platform-poc
+          description: ai-platform-poc の技術検証資料と設計資料
+          path: /home/user/source/repos/ai-platform-poc
+        - name: ai-chat-util
+          description: ai-chat-util のソースコードと関連実装
+          path: /home/user/source/repos/ai-chat-util
+        - name: langchain-docs
+          description: LangChain のローカルドキュメント
+          path: /home/user/oss/langchain-ai/langchain
     DraftWriterAgent:
       enabled: true
       auto_compress: true

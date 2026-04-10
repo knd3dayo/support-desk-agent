@@ -342,17 +342,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
                 "config_paths": {},
                 "data_paths": {},
-                "knowledge_retrieval": {
-                    "document_sources": [
-                        {
-                            "name": "ai-platform-poc",
-                            "description": "生成AI基盤のアーキテクチャ検討資料",
-                            "path": "/home/user/source/repos/ai-platform-poc",
-                        }
-                    ]
-                },
+                "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "ai-platform-poc", "description": "生成AI基盤のアーキテクチャ検討資料", "path": "/home/user/source/repos/ai-platform-poc"}]}},
                 "interfaces": {},
-                "agents": {},
             }
         )
         service = self._build_service(config)

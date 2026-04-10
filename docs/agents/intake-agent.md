@@ -82,6 +82,9 @@ IntakeAgent が参照する使用ツール詳細は次を参照する。
 - [docs/tools/specs/classify_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/classify_ticket.md)
 - [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_shared_memory.md)
 
+ticket 取得系ツールの有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools.external_ticket / internal_ticket で管理する。
+logical_tools は disabled、builtin、mcp の 3 パターンで表現し、provider: mcp の場合は manifest と server / tool 定義を起動時に検証する。
+
 ## 6. 処理内容
 
 IntakeAgent の処理は次の 8 段階を基本とする。
@@ -89,7 +92,7 @@ IntakeAgent の処理は次の 8 段階を基本とする。
 1. 入力正規化
    raw_issue の余分なノイズを除去し、問い合わせの主題、事象、期待動作、制約条件を抽出しやすい形へ整える。
 2. PII マスキング
-   [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の intake.pii_mask.enabled が true の場合にのみ実行する。既定値は false とし、無効時は raw_issue をそのまま後続へ渡す。
+   [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の agents.IntakeAgent.pii_mask.enabled が true の場合にのみ実行する。既定値は false とし、無効時は raw_issue をそのまま後続へ渡す。
 3. ticket 初期 hydration
    明示指定された external_ticket_id または internal_ticket_id があり、対応する MCP ツールが有効な場合は ticket 情報と添付ファイルを取得し、workspace 配下へ保存する。取得結果は Supervisor と後続 agent が再利用できるよう path と要約を state に載せる。
 4. 分類

@@ -65,26 +65,30 @@ uvicorn support_ope_agents.interfaces.api:create_app --factory --host 127.0.0.1 
 
 MCP は最小アダプタとして `plan` と `action` ツールを公開し、どちらも `trace_id` を正式な継続キーとして扱います。
 
-共通の built-in ツールとして、画像/PDF/Office の解析、Office→PDF 変換、PDF→画像変換、テキスト抽出、Zip 操作を各エージェントへ配布します。役割別ツールはその上に追加され、最終的に [config.yml](config.yml) の `tools.overrides` で `builtin` / `mcp` / `disabled` に差し替えできます。`tools.mcp_manifest_path` で単一の `mcp.json` を指定し、設定した server 名や tool 名が参照先に存在しない場合は、CLI / API / MCP いずれの起動経路でも fail fast で起動エラーになります。
+共通の built-in ツールとして、画像/PDF/Office の解析、Office→PDF 変換、PDF→画像変換、テキスト抽出、Zip 操作を各エージェントへ配布します。役割別ツールはその上に追加され、最終的に [config.yml](config.yml) の `tools.logical_tools` で `enabled` と `provider: builtin | mcp` を切り替えます。`provider: mcp` を使う logical tool が 1 つでもあれば `tools.mcp_manifest_path` が必須で、設定した server 名や tool 名が参照先に存在しない場合は、CLI / API / MCP いずれの起動経路でも fail fast で起動エラーになります。
 
-KnowledgeRetrieverAgent については、[config.yml](config.yml) の `knowledge_retrieval.document_sources` に定義した複数の文書ソースを DeepAgents の `CompositeBackend` でまとめて扱います。各 source は `/knowledge/<source_name>/` に route され、Agent は 1 つの backend から複数文書ソースを `read` / `glob` / `grep` できます。`external_ticket` と `internal_ticket` は `tools.overrides` が優先され、未指定なら `knowledge_retrieval.external_ticket` / `knowledge_retrieval.internal_ticket` の設定から MCP binding を自動解決します。
+KnowledgeRetrieverAgent については、[config.yml](config.yml) の `agents.KnowledgeRetrieverAgent.document_sources` に定義した複数の文書ソースを DeepAgents の `CompositeBackend` でまとめて扱います。各 source は `/knowledge/<source_name>/` に route され、Agent は 1 つの backend から複数文書ソースを `read` / `glob` / `grep` できます。`external_ticket` と `internal_ticket` は `tools.logical_tools.external_ticket` / `internal_ticket` で provider を定義し、MCP 利用時は起動時に binding を検証します。
 
 instruction は src 内にデフォルトを同梱しているため、最初に動かすだけであれば .instructions の準備は不要です。必要になった時だけ [config.yml](config.yml) の `config_paths.instructions_path` で外部ディレクトリを指定し、共通指示や役割別指示を override できます。
 
 ```yaml
 support_ope_agents:
+	agents:
+		KnowledgeRetrieverAgent:
+			document_sources:
+				- name: ai-platform-poc
+				  description: 生成AI基盤の設計資料
+				  path: /home/user/source/repos/ai-platform-poc
 	tools:
 		mcp_manifest_path: ../ai-chat-util/app/ai-chat-util-mcp.json
-		overrides:
-			LogAnalyzerAgent:
-				analyze_pdf_files:
-					type: builtin
-				read_log_file:
-					type: mcp
-					server: AIChatUtilLocal
-					tool: analyze_files
-				convert_office_files_to_pdf:
-					type: disabled
+		logical_tools:
+			read_log_file:
+				enabled: true
+				provider: mcp
+				server: AIChatUtilLocal
+				tool: analyze_files
+			run_python_analysis:
+				enabled: false
 ```
 
 現在の workflow ルーティング対象は次の 3 系統です。

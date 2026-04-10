@@ -30,29 +30,6 @@ support_ope_agents:
   #   # ケース用 workspace 配下に作る証跡ディレクトリ名です。
   #   evidence_subdir: .evidence
 
-  # IntakeAgent の前処理設定です。
-  # 通常は PII マスキング無効の既定値のままで構いません。
-  # intake:
-  #   pii_mask:
-  #     # true の場合のみ Intake で PII マスキングを実行します。
-  #     enabled: false
-  #
-  #   # 例: Intake で明示 ticket ID を使って一次情報を hydration する場合の設定です。
-  #   external_ticket:
-  #     description: 顧客向けケース管理システム
-  #     mcp_server: support-ticket-mcp
-  #     mcp_tool: get_external_ticket
-  #   internal_ticket:
-  #     description: 内部管理用チケットシステム
-  #     mcp_server: support-ticket-mcp
-  #     mcp_tool: get_internal_ticket
-
-  # 上記 MCP tool は ticket_id を受け取り、summary と attachments を含む JSON を返すことを推奨します。
-  # attachments の各要素は以下のいずれかを持てます。
-  #   - content_base64: バイナリ添付
-  #   - content: テキスト添付
-  #   - path: 既に取得済みファイルへのパス
-
   # ワークフロー実行時のコンテキスト圧縮や承認ノードの設定です。
   # 通常は既定値のままで構いません。
   # workflow:
@@ -100,55 +77,6 @@ support_ope_agents:
   #         - 発生条件を示す追加ログ
   #         - 期待動作と実際の動作差分
 
-  # KnowledgeRetrieverAgent が参照する文書群とチケットソースの設定です。
-  # 通常はここで文書名称、説明、格納先パスを定義し、DeepAgents backend から参照します。
-  # knowledge_retrieval:
-  #   # 文書探索時に除外する既定 glob パターンです。
-  #   # 未指定時は .git や node_modules、.venv、__pycache__ などを除外します。
-  #   # 指定すると既定値ごと上書きします。
-  #   ignore_patterns:
-  #     - .*
-  #     - '**/.*'
-  #     - node_modules/**
-  #     - '**/node_modules/**'
-  #
-  #   # 追加の除外パターンを書いたテキストファイルです。
-  #   # 1 行 1 パターンで、# から始まる行と空行は無視します。
-  #   ignore_patterns_file: ./.support-ope-ignore
-  #
-  #   document_sources:
-  #     - name: python312_manual
-  #       description: Python 3.12 の公式仕様・標準ライブラリ資料
-  #       path: ./docsources/python312_manual
-  #     - name: denodo93_manual
-  #       description: Denodo 9.3 の製品マニュアル
-  #       path: ./docsources/denodo93_manual
-  #     - name: growi_knowledge
-  #       description: 社内 GROWI にエクスポートした運用ナレッジ
-  #       path: ./docsources/growi_knowledge
-  #     - name: ai-platform-poc
-  #       description: 生成AI基盤のアーキテクチャ検討資料
-  #       path: /home/user/source/repos/ai-platform-poc
-  #   # DeepAgents backend では各 source を /knowledge/<name>/ 配下へ mount または route して参照します。
-  #
-  #   # external_ticket は顧客向けケース管理システムを指します。
-  #   # tools.overrides に明示設定がなければ、この mcp_server / mcp_tool から自動で logical tool binding を組み立てます。
-  #   # external_ticket_id は CLI / API から明示指定でき、未指定時は trace_id 由来の EXT-TRACE-... を使います。
-  #   # MCP tool は少なくとも ticket_id 引数を受け取り、その ID に対応するケース情報を返す前提です。
-  #   external_ticket:
-  #     description: 顧客向けケース管理システム
-  #     mcp_server: support-ticket-mcp
-  #     mcp_tool: get_external_ticket
-  #
-  #   # internal_ticket は内部管理用チケットを指します。
-  #   # tools.overrides に明示設定がなければ、この mcp_server / mcp_tool から自動で logical tool binding を組み立てます。
-  #   # internal_ticket_id は CLI / API から明示指定でき、未指定時は trace_id 由来の INT-TRACE-... を使います。
-  #   # MCP tool は少なくとも ticket_id 引数を受け取り、その ID に対応する内部チケット情報を返す前提です。
-  #   internal_ticket:
-  #     description: 内部管理用チケットシステム
-  #     mcp_server: support-ticket-mcp
-  #     mcp_tool: get_internal_ticket
-
   # トレース基盤の設定です。
   # トレースを使わない場合は未指定で構いません。
   # tracing:
@@ -182,22 +110,11 @@ support_ope_agents:
   #   # MCP のトランスポート種別です。
   #   mcp_transport: streamable-http
 
-  # ツールの有効化や外部 MCP への差し替え設定です。
-  # 通常は未指定で構いません。
+  # ツールの供給方法と共通 runtime 設定です。
+  # logical_tools では、各論理ツールを無効化するか、builtin を使うか、MCP を使うかを定義します。
   # tools:
-  #   # Zendesk 連携ツールを有効化します。
-  #   enable_zendesk: false
-  #
-  #   # Redmine 連携ツールを有効化します。
-  #   enable_redmine: false
-  #
-  #   # ナレッジベース連携ツールを有効化します。
-  #   enable_knowledge_base: false
-  #
-  #   # Python を使う解析ツールを有効化します。
-  #   enable_python_analysis: true
-  #
   #   # 外部 MCP 定義ファイルへのパスです。
+  #   # logical_tools のどれかで provider: mcp を使う場合は必須です。
   #   mcp_manifest_path:
   #
   #   # MCP 呼び出しの既定タイムアウト秒です。
@@ -213,8 +130,51 @@ support_ope_agents:
   #   # 実行名でも絶対パスでも指定できます。
   #   libreoffice_command:
   #
-  #   # 論理ツール名ごとの上書き設定です。
-  #   overrides: {}
+  #   # 論理ツールごとの有効化と供給元です。
+  #   logical_tools:
+  #     # まず KnowledgeRetrieverAgent で使う文書検索を有効化します。
+  #     search_documents:
+  #       enabled: true
+  #       provider: builtin
+  #
+  #     # 次にケース情報の取得元を必要に応じて設定します。
+  #     external_ticket:
+  #       enabled: true
+  #       provider: mcp
+  #       description: 顧客向けケース管理システム
+  #       server: support-ticket-mcp
+  #       tool: get_external_ticket
+  #     internal_ticket:
+  #       enabled: true
+  #       provider: mcp
+  #       description: 内部管理用チケットシステム
+  #       server: support-ticket-mcp
+  #       tool: get_internal_ticket
+  #
+  #     # LogAnalyzerAgent で builtin を使う場合です。
+  #     run_python_analysis:
+  #       enabled: true
+  #       provider: builtin
+  #
+  #     # 承認後の更新処理を個別に切り替える場合です。
+  #     prepare_ticket_update:
+  #       enabled: true
+  #       provider: builtin
+  #     zendesk_reply:
+  #       enabled: true
+  #       provider: builtin
+  #     redmine_update:
+  #       enabled: false
+  #
+  #     # builtin があっても明示的に使わない例です。
+  #     record_approval_decision:
+  #       enabled: false
+
+  # 上記 external_ticket / internal_ticket の MCP tool は ticket_id を受け取り、summary と attachments を含む JSON を返すことを推奨します。
+  # attachments の各要素は以下のいずれかを持てます。
+  #   - content_base64: バイナリ添付
+  #   - content: テキスト添付
+  #   - path: 既に取得済みファイルへのパス
 
   # Agent ごとの個別設定です。
   # 既定値のままでよければ未指定で構いません。
@@ -228,6 +188,9 @@ support_ope_agents:
   #   IntakeAgent:
   #     enabled: true
   #     auto_compress: true
+  #     pii_mask:
+  #       # true の場合のみ Intake で PII マスキングを実行します。
+  #       enabled: false
   #
   #   # ログ解析 Agent の設定です。
   #   LogAnalyzerAgent:
@@ -238,6 +201,34 @@ support_ope_agents:
   #   KnowledgeRetrieverAgent:
   #     enabled: true
   #     auto_compress: true
+  #     # 文書探索時に除外する既定 glob パターンです。
+  #     # 未指定時は .git や node_modules、.venv、__pycache__ などを除外します。
+  #     # 指定すると既定値ごと上書きします。
+  #     ignore_patterns:
+  #       - .*
+  #       - '**/.*'
+  #       - node_modules/**
+  #       - '**/node_modules/**'
+  #
+  #     # 追加の除外パターンを書いたテキストファイルです。
+  #     # 1 行 1 パターンで、# から始まる行と空行は無視します。
+  #     ignore_patterns_file: ./.support-ope-ignore
+  #
+  #     # KnowledgeRetrieverAgent が参照する文書群です。
+  #     document_sources:
+  #       - name: python312_manual
+  #         description: Python 3.12 の公式仕様・標準ライブラリ資料
+  #         path: ./docsources/python312_manual
+  #       - name: denodo93_manual
+  #         description: Denodo 9.3 の製品マニュアル
+  #         path: ./docsources/denodo93_manual
+  #       - name: growi_knowledge
+  #         description: 社内 GROWI にエクスポートした運用ナレッジ
+  #         path: ./docsources/growi_knowledge
+  #       - name: ai-platform-poc
+  #         description: 生成AI基盤のアーキテクチャ検討資料
+  #         path: /home/user/source/repos/ai-platform-poc
+  #     # DeepAgents backend では各 source を /knowledge/<name>/ 配下へ mount または route して参照します。
   #
   #   # ドラフト作成 Agent の設定です。
   #   DraftWriterAgent:
@@ -256,5 +247,15 @@ support_ope_agents:
   #
   #   # バックサポート問い合わせ文案作成 Agent の設定です。
   #   BackSupportInquiryWriterAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # 承認フェーズ Agent の設定です。
+  #   ApprovalAgent:
+  #     enabled: true
+  #     auto_compress: true
+  #
+  #   # チケット更新 Agent の設定です。
+  #   TicketUpdateAgent:
   #     enabled: true
   #     auto_compress: true

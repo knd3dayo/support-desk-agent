@@ -80,6 +80,9 @@ LogAnalyzerAgent の処理は次の段階を基本とする。
 - 実処理は LogAnalyzerPhaseExecutor に集約し、Supervisor から直接呼べる形にする
 - 証跡の前処理は ToolRegistry が提供する builtin の analyze_pdf_files、analyze_office_files、analyze_image_files、extract_text_from_file、list_zip_contents、extract_zip などを優先利用する
 - ログ形式判定は builtin の detect_log_format_and_search に寄せ、LogAnalyzer 側では対象選定、前処理オーケストレーション、要約化に集中する
+- run_python_analysis の有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools.run_python_analysis で管理する
+- logical_tools は enabled: false による無効化、provider: builtin による builtin 実装利用、provider: mcp による外部 MCP 利用の 3 パターンで扱う
+- provider: mcp の場合は manifest と server / tool 定義を起動時に検証し、current builtin は未実装プレースホルダーとして扱う
 
 ## 10. 未決事項
 

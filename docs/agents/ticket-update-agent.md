@@ -68,6 +68,9 @@ TicketUpdateAgent が参照する使用ツール詳細は次を参照する。
 - TicketUpdateAgent は LangGraph subgraph として実装し、prepare と execute を分離する
 - 外部チケット更新は当面スタブ化し、後続で MCP または API adapter へ置き換える
 - 更新前 HITL は ApprovalAgent とは別の停止点として扱う
+- prepare_ticket_update、zendesk_reply、redmine_update の有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools 配下で管理する
+- logical_tools は enabled: false による無効化、provider: builtin による builtin 実装利用、provider: mcp による外部 MCP 利用の 3 パターンで扱う
+- provider: mcp の場合は manifest と server / tool 定義を起動時に検証し、current builtin は未実装プレースホルダーとして扱う
 
 ## 10. 未決事項
 

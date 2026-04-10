@@ -6,6 +6,30 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+DEFAULT_DOCUMENT_IGNORE_PATTERNS = [
+    ".*",
+    "**/.*",
+    ".*/**",
+    "**/.*/**",
+    "node_modules/**",
+    "**/node_modules/**",
+    ".venv/**",
+    "**/.venv/**",
+    "venv/**",
+    "**/venv/**",
+    "site-packages/**",
+    "**/site-packages/**",
+    ".pytest_cache/**",
+    "**/.pytest_cache/**",
+    "__pycache__/**",
+    "**/__pycache__/**",
+    "build/**",
+    "**/build/**",
+    "dist/**",
+    "**/dist/**",
+]
+
+
 class StrictConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -82,30 +106,7 @@ class KnowledgeDocumentSource(StrictConfigModel):
 
 class KnowledgeRetrievalSettings(StrictConfigModel):
     document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
-    ignore_patterns: list[str] = Field(
-        default_factory=lambda: [
-            ".*",
-            "**/.*",
-            ".*/**",
-            "**/.*/**",
-            "node_modules/**",
-            "**/node_modules/**",
-            ".venv/**",
-            "**/.venv/**",
-            "venv/**",
-            "**/venv/**",
-            "site-packages/**",
-            "**/site-packages/**",
-            ".pytest_cache/**",
-            "**/.pytest_cache/**",
-            "__pycache__/**",
-            "**/__pycache__/**",
-            "build/**",
-            "**/build/**",
-            "dist/**",
-            "**/dist/**",
-        ]
-    )
+    ignore_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DOCUMENT_IGNORE_PATTERNS.copy())
     ignore_patterns_file: Path | None = None
 
 
@@ -131,11 +132,17 @@ class AgentSettings(StrictConfigModel):
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
+class KnowledgeRetrieverAgentSettings(AgentSettings):
+    document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
+    ignore_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DOCUMENT_IGNORE_PATTERNS.copy())
+    ignore_patterns_file: Path | None = None
+
+
 class AgentCatalogSettings(StrictConfigModel):
     SuperVisorAgent: AgentSettings = Field(default_factory=AgentSettings)
     IntakeAgent: IntakeAgentSettings = Field(default_factory=IntakeAgentSettings)
     LogAnalyzerAgent: AgentSettings = Field(default_factory=AgentSettings)
-    KnowledgeRetrieverAgent: AgentSettings = Field(default_factory=AgentSettings)
+    KnowledgeRetrieverAgent: KnowledgeRetrieverAgentSettings = Field(default_factory=KnowledgeRetrieverAgentSettings)
     DraftWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
     ComplianceReviewerAgent: AgentSettings = Field(default_factory=AgentSettings)
     BackSupportEscalationAgent: AgentSettings = Field(default_factory=AgentSettings)
@@ -143,7 +150,7 @@ class AgentCatalogSettings(StrictConfigModel):
     ApprovalAgent: AgentSettings = Field(default_factory=AgentSettings)
     TicketUpdateAgent: AgentSettings = Field(default_factory=AgentSettings)
 
-    def get(self, role: str) -> AgentSettings | IntakeAgentSettings | None:
+    def get(self, role: str) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | None:
         return getattr(self, role, None)
 
 
@@ -221,7 +228,6 @@ class AppConfig(StrictConfigModel):
     config_paths: ConfigPathSettings
     data_paths: DataPathSettings
     workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
-    knowledge_retrieval: KnowledgeRetrievalSettings = Field(default_factory=KnowledgeRetrievalSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)
     tools: ToolSettings = Field(default_factory=ToolSettings)
     interfaces: InterfaceSettings = Field(default_factory=InterfaceSettings)

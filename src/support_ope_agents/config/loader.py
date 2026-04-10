@@ -48,15 +48,17 @@ def load_config(config_path: str | Path) -> AppConfig:
 
     resolved["data_paths"] = resolved.get("data_paths", {})
 
-    knowledge_retrieval = resolved.get("knowledge_retrieval", {})
-    document_sources = knowledge_retrieval.get("document_sources", [])
+    agents = resolved.get("agents", {})
+    knowledge_retriever = agents.get("KnowledgeRetrieverAgent", {})
+    document_sources = knowledge_retriever.get("document_sources", [])
     for source in document_sources:
         if isinstance(source, dict) and source.get("path"):
             source["path"] = _resolve_path(base_dir, source["path"])
-    ignore_patterns_file = knowledge_retrieval.get("ignore_patterns_file")
+    ignore_patterns_file = knowledge_retriever.get("ignore_patterns_file")
     if ignore_patterns_file:
-        knowledge_retrieval["ignore_patterns_file"] = _resolve_path(base_dir, ignore_patterns_file)
-    resolved["knowledge_retrieval"] = knowledge_retrieval
+        knowledge_retriever["ignore_patterns_file"] = _resolve_path(base_dir, ignore_patterns_file)
+    agents["KnowledgeRetrieverAgent"] = knowledge_retriever
+    resolved["agents"] = agents
 
     tools = resolved.get("tools", {})
     manifest_path = tools.get("mcp_manifest_path")

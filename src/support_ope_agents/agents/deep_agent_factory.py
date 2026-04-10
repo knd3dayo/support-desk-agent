@@ -100,7 +100,7 @@ class DeepAgentFactory:
             return None
 
         routes: dict[str, Any] = {}
-        for source in self._config.knowledge_retrieval.document_sources:
+        for source in self._config.agents.KnowledgeRetrieverAgent.document_sources:
             source_path = Path(source.path).expanduser().resolve()
             route_prefix = f"/knowledge/{source.name}/"
             routes[route_prefix] = FilesystemBackend(root_dir=str(source_path), virtual_mode=True)
@@ -116,7 +116,7 @@ class DeepAgentFactory:
     def _describe_backend_for_role(self, role: str) -> dict[str, Any] | None:
         if role != KNOWLEDGE_RETRIEVER_AGENT:
             return None
-        document_sources = self._config.knowledge_retrieval.document_sources
+        document_sources = self._config.agents.KnowledgeRetrieverAgent.document_sources
         if not document_sources:
             return None
         return {

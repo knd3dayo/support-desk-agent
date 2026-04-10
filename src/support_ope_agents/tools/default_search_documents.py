@@ -9,8 +9,9 @@ from support_ope_agents.config.models import AppConfig
 
 
 def _load_ignore_patterns(config: AppConfig) -> list[str]:
-    patterns = [pattern.strip() for pattern in config.knowledge_retrieval.ignore_patterns if pattern.strip()]
-    ignore_file = config.knowledge_retrieval.ignore_patterns_file
+    settings = config.agents.KnowledgeRetrieverAgent
+    patterns = [pattern.strip() for pattern in settings.ignore_patterns if pattern.strip()]
+    ignore_file = settings.ignore_patterns_file
     if ignore_file is None or not ignore_file.exists():
         return patterns
 
@@ -123,12 +124,12 @@ def build_default_search_documents_tool(config: AppConfig):
     ignore_patterns = _load_ignore_patterns(config)
 
     def _search_documents(*, query: str = "") -> str:
-        document_sources = config.knowledge_retrieval.document_sources
+        document_sources = config.agents.KnowledgeRetrieverAgent.document_sources
         if not document_sources:
             return json.dumps(
                 {
                     "status": "unavailable",
-                    "message": "参照可能なドキュメントがないので回答できません。knowledge_retrieval.document_sources を設定してください。",
+                    "message": "参照可能なドキュメントがないので回答できません。agents.KnowledgeRetrieverAgent.document_sources を設定してください。",
                     "query": query,
                     "results": [],
                 },

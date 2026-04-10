@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 from support_ope_agents.agents.roles import (
+    APPROVAL_AGENT,
     BACK_SUPPORT_ESCALATION_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
     COMPLIANCE_REVIEWER_AGENT,
@@ -13,6 +14,7 @@ from support_ope_agents.agents.roles import (
     KNOWLEDGE_RETRIEVER_AGENT,
     LOG_ANALYZER_AGENT,
     SUPERVISOR_AGENT,
+    TICKET_UPDATE_AGENT,
 )
 from support_ope_agents.config.models import AppConfig, McpToolBinding
 
@@ -239,6 +241,30 @@ class ToolRegistry:
                     build_default_write_shared_memory_tool(self._config),
                     provider="builtin",
                     target="default-case-memory-writer",
+                ),
+            ],
+            APPROVAL_AGENT: [
+                ToolSpec(
+                    "record_approval_decision",
+                    "Record approval or rejection decisions",
+                    _not_implemented_tool("record_approval_decision"),
+                ),
+            ],
+            TICKET_UPDATE_AGENT: [
+                ToolSpec(
+                    "prepare_ticket_update",
+                    "Prepare external ticket update payload",
+                    _not_implemented_tool("prepare_ticket_update"),
+                ),
+                ToolSpec(
+                    "zendesk_reply",
+                    "Update customer-facing ticket in Zendesk",
+                    _not_implemented_tool("zendesk_reply"),
+                ),
+                ToolSpec(
+                    "redmine_update",
+                    "Update internal ticket in Redmine",
+                    _not_implemented_tool("redmine_update"),
                 ),
             ],
         }

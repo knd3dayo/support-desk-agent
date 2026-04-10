@@ -286,6 +286,15 @@ resume 時は次の入力を受け付ける。
 - 非秘匿設定は [config.yml](../config.yml) に置く
 - API キーなどの秘匿情報は .env または実環境変数に置く
 - YAML では os.environ/ENV_NAME 形式で参照する
+- agent 固有の挙動は agents.<AgentName> 配下へ置く
+- 共通ツールの有効化と供給元は tools.logical_tools.<logical_tool_name> 配下へ置く
+- tools.logical_tools では各論理ツールを次の 3 パターンで表現する
+  - enabled: false で無効化する
+  - enabled: true と provider: builtin で builtin 実装を使う
+  - enabled: true と provider: mcp で外部 MCP 実装を使う
+- provider: mcp の論理ツールを有効化する場合は、manifest と server / tool 定義を起動時に必須とし、不足時は fail fast で停止する
+- PII マスキング設定は agents.IntakeAgent.pii_mask.enabled に置く
+- KnowledgeRetrieverAgent の文書探索対象は agents.KnowledgeRetrieverAgent.document_sources に置く
 
 ## 10. 初期実装スコープ
 
