@@ -591,9 +591,10 @@ input {
 }
 
 .send-button {
-  padding: 14px 18px;
-  background: linear-gradient(135deg, #10324d, #165d63);
-  color: #f4efe4;
+  padding: 10px 16px;
+  background: rgba(16, 33, 47, 0.06);
+  color: #10212f;
+  font-size: 0.84rem;
 }
 
 .followup-banner {
