@@ -81,6 +81,30 @@ def _cmd_export_tool_docs(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_generate_report(args: argparse.Namespace) -> int:
+    service = _build_service(args.config)
+    result = service.generate_support_improvement_report(
+        case_id=args.case_id,
+        trace_id=args.trace_id,
+        workspace_path=args.workspace_path,
+        checklist=list(args.checklist or []),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_checkpoint_status(args: argparse.Namespace) -> int:
+    service = _build_service(args.config)
+    result = service.checkpoint_status(
+        case_id=args.case_id,
+        workspace_path=args.workspace_path,
+        trace_id=args.trace_id,
+        limit=args.limit,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="support-ope-agents CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -141,6 +165,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory where generated per-tool markdown drafts are written",
     )
     export_tool_docs.set_defaults(func=_cmd_export_tool_docs)
+
+    generate_report = subparsers.add_parser(
+        "generate-report",
+        help="Generate a support improvement evaluation report into the report directory",
+        parents=[common],
+    )
+    generate_report.add_argument("--case-id", required=True, help="Case identifier")
+    generate_report.add_argument("--trace-id", required=True, help="Trace identifier")
+    generate_report.add_argument("--workspace-path", required=True, help="Workspace path for the case")
+    generate_report.add_argument(
+        "--checklist",
+        action="append",
+        default=None,
+        help="Optional checklist item to include in the report. Can be passed multiple times.",
+    )
+    generate_report.set_defaults(func=_cmd_generate_report)
+
+    checkpoint_status = subparsers.add_parser(
+        "checkpoint-status",
+        help="Show workspace-local SQLite checkpoint DB status and trace IDs",
+        parents=[common],
+    )
+    checkpoint_status.add_argument("--case-id", required=True, help="Case identifier")
+    checkpoint_status.add_argument("--workspace-path", required=True, help="Workspace path for the case")
+    checkpoint_status.add_argument("--trace-id", default=None, help="Optional trace identifier to inspect")
+    checkpoint_status.add_argument("--limit", type=int, default=20, help="Maximum number of trace IDs to list")
+    checkpoint_status.set_defaults(func=_cmd_checkpoint_status)
 
     return parser
 

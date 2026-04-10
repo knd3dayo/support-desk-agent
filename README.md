@@ -37,7 +37,7 @@ python -m support_ope_agents.cli print-workflow --config config.yml
 python -m support_ope_agents.cli init-case --prompt "CASE-001 の調査を開始してください" --workspace-path /data/support/case-001 --config config.yml
 ```
 
-指定した workspace が、そのケースの実体ディレクトリとして使われます。`.memory`、`.artifacts`、`.evidence`、`traces` などの管理用ファイルもこの workspace 配下に作られます。
+指定した workspace が、そのケースの実体ディレクトリとして使われます。`.memory`、`.artifacts`、`.evidence`、`report`、`traces/checkpoints.sqlite` などの管理用ファイルもこの workspace 配下に作られます。
 
 ```bash
 python -m support_ope_agents.cli init-case --prompt "CASE-002 の調査を開始してください" --config config.yml --workspace-path /data/support/case-002
@@ -56,6 +56,16 @@ action モードでは、plan モードの trace_id を指定して同一 trace_
 ```bash
 python -m support_ope_agents.cli action "CASE-003 の仕様か不具合か切り分けてください" --workspace-path /data/support/case-003 --trace-id TRACE-xxxx --config config.yml
 ```
+
+workspace 配下の SQLite checkpointer の状態は次のコマンドで確認できます。
+
+```bash
+python -m support_ope_agents.cli checkpoint-status --case-id CASE-003 --workspace-path /data/support/case-003 --trace-id TRACE-xxxx --config config.yml
+```
+
+改善レポートは明示的に generate-report で作成できるほか、[config.yml](config.yml) の `agents.SuperVisorAgent.auto_generate_report` を true にすると action / resume 実行後に自動生成できます。出力先は `data_paths.report_subdir` で、既定では workspace 配下の `report/support-improvement-<trace_id>.md` です。
+
+plan モードでは改善レポートは自動生成しません。plan は実行前の計画結果であり、実際にどの agent が何を呼び、どの調査結果で承認待ちやクローズに到達したかという評価材料が不足するためです。
 
 FastAPI 雛形も追加済みで、`trace_id` を継続識別子として plan/action を公開できます。
 
@@ -100,6 +110,6 @@ support_ope_agents:
 ## 今後の実装対象
 
 - DeepAgent の task ツール経由でのサブエージェント起動
-- LangGraph checkpointer を使った非同期 HITL
+- Approval interrupt の再開 UX 改善
 - Zendesk / Redmine / ナレッジベース接続
 - ガバナンス層とトレース基盤の接続

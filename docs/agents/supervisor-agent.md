@@ -117,7 +117,7 @@ shared/progress.md には次を残す。
 - shared/context.md への反映は Supervisor が最終判断した内容に限定する
 - 実行クラスは read_shared_memory と write_shared_memory を用いて、investigation / draft_review フェーズの共有メモリ更新経路を統一し、共有メモリ内容を子エージェント起動計画やレビュー重点の判断材料として使う
 - BackSupportEscalationAgent / BackSupportInquiryWriterAgent は、通常回答ドラフト系とは別の補助分岐として扱う
-- エスカレーション判定語彙と workflow_kind ごとの既定依頼資料は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の workflow.escalation で調整可能とする
+- エスカレーション判定語彙と workflow_kind ごとの既定依頼資料は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の agents.BackSupportEscalationAgent.escalation で調整可能とする
 - Intake 出力評価のチェックリストは [src/support_ope_agents/instructions/defaults/SuperVisorAgent.md](/home/user/source/repos/support-ope-agents/src/support_ope_agents/instructions/defaults/SuperVisorAgent.md) の既定指示に置き、必要なら config_paths.instructions_path 配下の SuperVisorAgent.md で丸ごとオーバーライドする
 
 ## 10. 未決事項

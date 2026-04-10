@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 DEFAULT_DOCUMENT_IGNORE_PATTERNS = [
@@ -49,6 +49,8 @@ class DataPathSettings(StrictConfigModel):
     shared_memory_subdir: str = ".memory"
     artifacts_subdir: str = ".artifacts"
     evidence_subdir: str = ".evidence"
+    report_subdir: str = "report"
+    checkpoint_db_filename: str = "checkpoints.sqlite"
 
 
 class EscalationSettings(StrictConfigModel):
@@ -89,12 +91,11 @@ class WorkflowSettings(StrictConfigModel):
     approval_node: str = "wait_for_approval"
     auto_compress: bool = True
     max_summary_chars: int = 4000
-    escalation: EscalationSettings = Field(default_factory=EscalationSettings)
 
 
 class TracingSettings(StrictConfigModel):
     enabled: bool = False
-    provider: str = "langsmith"
+    provider: str = "langfuse"
     project_name: str = "support-ope-agents"
 
 
@@ -161,21 +162,37 @@ class ComplianceReviewerAgentSettings(AgentSettings):
     max_review_loops: int = 3
 
 
+class SupervisorAgentSettings(AgentSettings):
+    auto_generate_report: bool = False
+    report_on: list[Literal["waiting_approval", "closed"]] = Field(default_factory=lambda: ["waiting_approval"])
+
+    @field_validator("report_on", mode="before")
+    @classmethod
+    def _coerce_report_on(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [value]
+        return value
+
+
+class BackSupportEscalationAgentSettings(AgentSettings):
+    escalation: EscalationSettings = Field(default_factory=EscalationSettings)
+
+
 class AgentCatalogSettings(StrictConfigModel):
-    SuperVisorAgent: AgentSettings = Field(default_factory=AgentSettings)
+    SuperVisorAgent: SupervisorAgentSettings = Field(default_factory=SupervisorAgentSettings)
     IntakeAgent: IntakeAgentSettings = Field(default_factory=IntakeAgentSettings)
     LogAnalyzerAgent: AgentSettings = Field(default_factory=AgentSettings)
     KnowledgeRetrieverAgent: KnowledgeRetrieverAgentSettings = Field(default_factory=KnowledgeRetrieverAgentSettings)
     DraftWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
     ComplianceReviewerAgent: ComplianceReviewerAgentSettings = Field(default_factory=ComplianceReviewerAgentSettings)
-    BackSupportEscalationAgent: AgentSettings = Field(default_factory=AgentSettings)
+    BackSupportEscalationAgent: BackSupportEscalationAgentSettings = Field(default_factory=BackSupportEscalationAgentSettings)
     BackSupportInquiryWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
     ApprovalAgent: AgentSettings = Field(default_factory=AgentSettings)
     TicketUpdateAgent: AgentSettings = Field(default_factory=AgentSettings)
 
     def get(
         self, role: str
-    ) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | None:
+    ) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | None:
         return getattr(self, role, None)
 
 

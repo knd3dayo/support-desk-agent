@@ -7,6 +7,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import (
@@ -467,6 +468,216 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         selected_file = str(state.get("log_analysis_file") or "")
         self.assertIn(".artifacts/intake/external_attachments/external-log.log", selected_file)
         self.assertNotEqual(selected_file, str(lower_priority_log.resolve()))
+
+    def test_generate_support_improvement_report_writes_report_folder(self) -> None:
+        result = self.service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-011",
+        )
+
+        report = self.service.generate_support_improvement_report(
+            case_id="CASE-TEST-011",
+            trace_id=str(result["trace_id"]),
+            workspace_path=str(self.workspace_path),
+            checklist=["回答に注意文が含まれているか", "ナレッジソースが記録されているか"],
+        )
+
+        report_path = Path(str(report["report_path"]))
+        self.assertTrue(report_path.exists())
+        self.assertEqual(report_path.parent.name, "report")
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn("# Support Improvement Report: CASE-TEST-011", content)
+        self.assertIn("sequenceDiagram", content)
+        self.assertIn("KnowledgeRetrieverAgent", content)
+        self.assertIn("ユーザー指定チェックリスト", content)
+
+    def test_action_does_not_write_legacy_json_state_file(self) -> None:
+        result = self.service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-013",
+        )
+
+        legacy_state_path = self.workspace_path / "traces" / f"{result['trace_id']}.json"
+        self.assertFalse(legacy_state_path.exists())
+        self.assertTrue((self.workspace_path / "traces" / "checkpoints.sqlite").exists())
+
+    def test_checkpoint_status_lists_workspace_scoped_trace_ids(self) -> None:
+        result = self.service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-014",
+        )
+
+        status = self.service.checkpoint_status(
+            case_id="CASE-TEST-014",
+            workspace_path=str(self.workspace_path),
+            trace_id=str(result["trace_id"]),
+        )
+
+        self.assertTrue(bool(status.get("exists")))
+        self.assertIn(str(result["trace_id"]), cast(list[str], status.get("trace_ids") or []))
+        self.assertTrue(int(status.get("checkpoint_count") or 0) >= 1)
+        self.assertTrue(bool(status.get("has_trace")))
+        self.assertIn(str(status.get("state_status") or ""), {"WAITING_APPROVAL", "WAITING_CUSTOMER_INPUT"})
+
+    def test_action_auto_generates_report_when_supervisor_enabled(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "SuperVisorAgent": {"auto_generate_report": True, "report_on": ["waiting_approval"]}
+                },
+            }
+        )
+        service = self._build_service(config)
+
+        result = service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-015",
+        )
+
+        report_path = Path(str(result.get("report_path") or ""))
+        self.assertTrue(report_path.exists())
+        self.assertEqual(report_path.parent.name, "report")
+
+    def test_action_does_not_auto_generate_report_for_non_matching_trigger(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "SuperVisorAgent": {"auto_generate_report": True, "report_on": ["closed"]}
+                },
+            }
+        )
+        service = self._build_service(config)
+
+        result = service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-016",
+        )
+
+        self.assertIsNone(result.get("report_path"))
+
+    def test_supervisor_report_on_accepts_single_string(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "SuperVisorAgent": {"auto_generate_report": True, "report_on": "waiting_approval"}
+                },
+            }
+        )
+        self.assertEqual(config.agents.SuperVisorAgent.report_on, ["waiting_approval"])
+
+    def test_action_auto_generates_report_for_closed_trigger(self) -> None:
+        captured: dict[str, object] = {}
+
+        class _FakeWorkflow:
+            def invoke(self, state: CaseState, config: dict[str, object] | None = None) -> CaseState:
+                updated = dict(state)
+                updated["status"] = "CLOSED"
+                updated["ticket_update_result"] = "updated"
+                return cast(CaseState, updated)
+
+        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, supervisor_executor=None):
+            captured["checkpointer"] = checkpointer
+            return _FakeWorkflow()
+
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "SuperVisorAgent": {"auto_generate_report": True, "report_on": ["closed"]}
+                },
+            }
+        )
+        service = self._build_service(config)
+
+        with patch("support_ope_agents.runtime.service.build_case_workflow", _fake_build_case_workflow):
+            result = service.action(
+                prompt="クローズまで進むケースです。",
+                workspace_path=str(self.workspace_path),
+                case_id="CASE-TEST-017",
+            )
+
+        report_path = Path(str(result.get("report_path") or ""))
+        self.assertTrue(report_path.exists())
+        self.assertEqual(report_path.parent.name, "report")
+
+    def test_action_uses_workspace_scoped_sqlite_checkpointer_when_available(self) -> None:
+        captured: dict[str, object] = {}
+
+        class _FakeCheckpointer:
+            def __init__(self, conn_string: str):
+                self.conn_string = conn_string
+
+        class _FakeSqliteSaver:
+            @staticmethod
+            def from_conn_string(conn_string: str):
+                captured["conn_string"] = conn_string
+
+                class _ContextManager:
+                    def __enter__(self):
+                        return _FakeCheckpointer(conn_string)
+
+                    def __exit__(self, exc_type, exc, tb):
+                        return False
+
+                return _ContextManager()
+
+        class _FakeWorkflow:
+            def invoke(self, state: CaseState, config: dict[str, object] | None = None) -> CaseState:
+                captured["invoke_config"] = config or {}
+                updated = dict(state)
+                updated["status"] = "WAITING_APPROVAL"
+                return cast(CaseState, updated)
+
+        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, supervisor_executor=None):
+            captured["checkpointer"] = checkpointer
+            return _FakeWorkflow()
+
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "config_paths": {},
+                "data_paths": {"checkpoint_db_filename": "workflow.sqlite"},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+        service = self._build_service(config)
+
+        with patch("support_ope_agents.runtime.service.SqliteSaver", _FakeSqliteSaver), patch(
+            "support_ope_agents.runtime.service.build_case_workflow", _fake_build_case_workflow
+        ):
+            result = service.action(
+                prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+                workspace_path=str(self.workspace_path),
+                case_id="CASE-TEST-012",
+            )
+
+        self.assertEqual(str(captured.get("conn_string") or ""), str(self.workspace_path / "traces" / "workflow.sqlite"))
+        self.assertIsNotNone(captured.get("checkpointer"))
+        self.assertEqual(
+            captured.get("invoke_config"),
+            {"configurable": {"thread_id": str(result["trace_id"]), "checkpoint_ns": ""}},
+        )
 
 
 if __name__ == "__main__":

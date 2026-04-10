@@ -45,6 +45,56 @@ class _FakeKnowledgeRetrieverExecutor:
 
 
 class SupervisorAgentTests(unittest.TestCase):
+    def test_supervisor_uses_back_support_escalation_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "BackSupportEscalationAgent": {
+                            "escalation": {
+                                "uncertainty_markers": ["need_escalation_marker"],
+                                "missing_log_markers": ["custom missing logs"],
+                                "default_missing_artifacts_by_workflow": {
+                                    "incident_investigation": ["カスタムログ一式"],
+                                    "specification_inquiry": ["仕様差分の根拠資料"],
+                                    "ambiguous_case": ["追加ヒアリング結果"],
+                                },
+                            }
+                        }
+                    },
+                }
+            )
+            read_shared_memory = build_default_read_shared_memory_tool(config)
+            write_shared_memory = build_default_write_shared_memory_tool(config)
+            workspace_path = Path(tmpdir)
+
+            supervisor = SupervisorPhaseExecutor(
+                read_shared_memory_tool=read_shared_memory,
+                write_shared_memory_tool=write_shared_memory,
+                escalation_settings=config.agents.BackSupportEscalationAgent.escalation,
+            )
+
+            result = supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-ESC-001",
+                    "workspace_path": str(workspace_path),
+                    "execution_mode": "action",
+                    "workflow_kind": "incident_investigation",
+                    "intake_category": "incident_investigation",
+                    "intake_urgency": "high",
+                    "intake_incident_timeframe": "2026-04-10 10:15 頃",
+                    "raw_issue": "障害調査",
+                    "investigation_summary": "need_escalation_marker が残っています",
+                    "log_analysis_summary": "custom missing logs",
+                }
+            )
+
+            self.assertTrue(bool(result.get("escalation_required")))
+            self.assertIn("カスタムログ一式", list(result.get("escalation_missing_artifacts") or []))
     def test_supervisor_records_final_adopted_knowledge_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig.model_validate(

@@ -17,6 +17,7 @@ class CaseWorkspace:
     agents_dir: Path
     artifacts_dir: Path
     evidence_dir: Path
+    report_dir: Path
 
 
 CasePaths = CaseWorkspace
@@ -51,6 +52,7 @@ class CaseMemoryStore:
         agents_dir = memory_dir / "agents"
         artifacts_dir = root / self._config.data_paths.artifacts_subdir
         evidence_dir = root / self._config.data_paths.evidence_subdir
+        report_dir = root / self._config.data_paths.report_subdir
         return CaseWorkspace(
             root=root,
             memory_dir=memory_dir,
@@ -60,6 +62,7 @@ class CaseMemoryStore:
             agents_dir=agents_dir,
             artifacts_dir=artifacts_dir,
             evidence_dir=evidence_dir,
+            report_dir=report_dir,
         )
 
     def initialize_case(self, case_id: str, workspace_path: str) -> CasePaths:
@@ -70,6 +73,7 @@ class CaseMemoryStore:
         paths.agents_dir.mkdir(parents=True, exist_ok=True)
         paths.artifacts_dir.mkdir(parents=True, exist_ok=True)
         paths.evidence_dir.mkdir(parents=True, exist_ok=True)
+        paths.report_dir.mkdir(parents=True, exist_ok=True)
         self.write_case_id_marker(paths.root, case_id)
 
         self._write_if_missing(paths.shared_context, "# Shared Context\n\n")

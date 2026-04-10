@@ -104,6 +104,47 @@ support_ope_agents:
 
 ## 5. Agent 設定
 
+## 5.1 data_paths と checkpoint 保存先
+
+`data_paths.checkpoint_db_filename` では、workspace 配下の `traces/` ディレクトリに作る LangGraph checkpointer 用 SQLite ファイル名を指定する。
+
+- 既定値: `checkpoints.sqlite`
+- 実際の保存先: `<workspace>/traces/<checkpoint_db_filename>`
+- state の正本はこの SQLite checkpoint DB であり、trace ごとの JSON state は使わない
+
+例:
+
+```yaml
+support_ope_agents:
+  data_paths:
+    checkpoint_db_filename: checkpoints.sqlite
+```
+
+`data_paths.report_subdir` では、改善レポートの出力ディレクトリ名を指定する。既定値は `report` で、実際の出力先は `<workspace>/<report_subdir>/support-improvement-<trace_id>.md` になる。
+
+`agents.SuperVisorAgent.auto_generate_report` を true にすると、Supervisor 実行結果に応じて改善レポートを自動生成する。
+
+- `report_on: [waiting_approval]`: WAITING_APPROVAL 到達時に自動生成
+- `report_on: [closed]`: CLOSED 到達時に自動生成
+- `report_on: waiting_approval` のように単一文字列でも指定でき、その場合は 1 要素のリストとして扱う
+
+plan モードでは自動生成しない。改善レポートは実行結果の評価を含むため、agent 呼び出し結果、採用ソース、ドラフトレビュー結果、承認待ちまたはクローズ到達後の状態が揃う action / resume 後にだけ生成する。
+
+例:
+
+```yaml
+support_ope_agents:
+  data_paths:
+    report_subdir: report
+  agents:
+    SuperVisorAgent:
+      auto_generate_report: true
+      report_on:
+        - waiting_approval
+```
+
+エスカレーション判定語彙と不足資料補完の設定は `agents.BackSupportEscalationAgent.escalation` 配下に置く。BackSupportEscalationAgent を中心とした分岐の振る舞いをここで調整する。
+
 `agents.IntakeAgent.pii_mask.enabled` では、IntakeAgent が PII マスキングを既定で実行するかを制御する。
 
 - enabled: true のときのみ pii_mask を実行する

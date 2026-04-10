@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import json
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
+
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
 from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
@@ -27,6 +29,7 @@ from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
+from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.default_check_policy import build_default_check_policy_tool
 from support_ope_agents.tools.default_request_revision import build_default_request_revision_tool
@@ -135,7 +138,7 @@ class RuntimeService:
             compliance_reviewer_executor=self._compliance_reviewer_executor,
             back_support_escalation_executor=self._back_support_escalation_executor,
             back_support_inquiry_writer_executor=self._back_support_inquiry_writer_executor,
-            escalation_settings=context.config.workflow.escalation,
+            escalation_settings=context.config.agents.BackSupportEscalationAgent.escalation,
             compliance_max_review_loops=context.config.agents.ComplianceReviewerAgent.max_review_loops,
         )
 
@@ -254,11 +257,13 @@ class RuntimeService:
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
         }
-        result = cast(
-            CaseState,
-            build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).invoke(state),
+        result = self._invoke_workflow(state, trace_id)
+        report_path = self._maybe_auto_generate_report(
+            case_id=selected_case_id,
+            trace_id=trace_id,
+            workspace_path=workspace_path,
+            state=result,
         )
-        self._save_state(selected_case_id, trace_id, result)
         return {
             "case_id": selected_case_id,
             "trace_id": trace_id,
@@ -272,6 +277,7 @@ class RuntimeService:
             "plan_steps": plan_steps,
             "requires_approval": result.get("status") == "WAITING_APPROVAL",
             "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
+            "report_path": report_path,
             "state": result,
         }
 
@@ -338,11 +344,13 @@ class RuntimeService:
             "plan_steps": plan_steps,
             "approval_decision": "pending",
         }
-        result = cast(
-            CaseState,
-            build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).invoke(state),
+        result = self._invoke_workflow(state, current_trace_id)
+        report_path = self._maybe_auto_generate_report(
+            case_id=selected_case_id,
+            trace_id=current_trace_id,
+            workspace_path=workspace_path,
+            state=result,
         )
-        self._save_state(selected_case_id, current_trace_id, result)
         return {
             "case_id": selected_case_id,
             "trace_id": current_trace_id,
@@ -354,6 +362,7 @@ class RuntimeService:
             "external_ticket_id": resolved_external_ticket_id,
             "internal_ticket_id": resolved_internal_ticket_id,
             "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
+            "report_path": report_path,
             "state": result,
         }
 
@@ -430,11 +439,13 @@ class RuntimeService:
         resumed_state["customer_followup_answers"] = answer_records
         resumed_state["next_action"] = "追加情報を反映して Intake を再実行する"
 
-        result = cast(
-            CaseState,
-            build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).invoke(resumed_state),
+        result = self._invoke_workflow(resumed_state, trace_id)
+        report_path = self._maybe_auto_generate_report(
+            case_id=case_id,
+            trace_id=trace_id,
+            workspace_path=workspace_path,
+            state=result,
         )
-        self._save_state(case_id, trace_id, result)
 
         workflow_kind = self._coerce_workflow_kind(result.get("workflow_kind") or saved_state.get("workflow_kind"))
 
@@ -452,6 +463,7 @@ class RuntimeService:
             "plan_steps": list(result.get("plan_steps") or saved_state.get("plan_steps") or []),
             "requires_approval": result.get("status") == "WAITING_APPROVAL",
             "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
+            "report_path": report_path,
             "state": result,
         }
 
@@ -459,37 +471,148 @@ class RuntimeService:
         graph = build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).get_graph()
         return sorted(node.id for node in graph.nodes.values())
 
-    def state_file_path(self, case_id: str, trace_id: str, workspace_path: str) -> Path:
+    def checkpoint_db_path(self, case_id: str, workspace_path: str) -> Path:
         case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
         state_dir = case_paths.root / "traces"
         state_dir.mkdir(parents=True, exist_ok=True)
-        return state_dir / f"{trace_id}.json"
+        return state_dir / self._context.config.data_paths.checkpoint_db_filename
 
-    def _save_state(self, case_id: str, trace_id: str, state: CaseState) -> None:
-        workspace_path = str(state.get("workspace_path") or "").strip()
-        if not workspace_path:
-            raise ValueError("workspace_path is required to save state")
-        state_path = self.state_file_path(case_id, trace_id, workspace_path=workspace_path)
-        normalized_state = self._normalize_state_ids(state, trace_id=trace_id)
-        state_path.write_text(json.dumps(normalized_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    def report_file_path(self, case_id: str, trace_id: str, workspace_path: str) -> Path:
+        case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
+        case_paths.report_dir.mkdir(parents=True, exist_ok=True)
+        return case_paths.report_dir / f"support-improvement-{trace_id}.md"
+
+    def checkpoint_status(
+        self,
+        *,
+        case_id: str,
+        workspace_path: str,
+        trace_id: str | None = None,
+        limit: int = 20,
+    ) -> dict[str, object]:
+        db_path = self.checkpoint_db_path(case_id, workspace_path)
+        result: dict[str, object] = {
+            "case_id": case_id,
+            "workspace_path": workspace_path,
+            "checkpoint_db_path": str(db_path),
+            "exists": db_path.exists(),
+            "trace_ids": [],
+            "checkpoint_count": 0,
+        }
+        if not db_path.exists():
+            return result
+
+        result["size_bytes"] = db_path.stat().st_size
+        with sqlite3.connect(str(db_path)) as conn:
+            checkpoint_count = conn.execute("SELECT COUNT(*) FROM checkpoints").fetchone()
+            result["checkpoint_count"] = int(checkpoint_count[0]) if checkpoint_count else 0
+            rows = conn.execute(
+                "SELECT DISTINCT thread_id FROM checkpoints ORDER BY thread_id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            result["trace_ids"] = [str(row[0]) for row in rows]
+
+        if trace_id:
+            state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
+            result["trace_id"] = trace_id
+            result["has_trace"] = bool(state)
+            if state:
+                result["state_status"] = str(state.get("status") or "")
+                result["workflow_kind"] = str(state.get("workflow_kind") or "")
+        return result
+
+    def generate_support_improvement_report(
+        self,
+        *,
+        case_id: str,
+        trace_id: str,
+        workspace_path: str,
+        checklist: list[str] | None = None,
+    ) -> dict[str, object]:
+        state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
+        if not state:
+            raise ValueError("指定された trace_id の保存 state が見つかりません")
+
+        result = build_support_improvement_report(
+            case_id=case_id,
+            trace_id=trace_id,
+            workspace_path=workspace_path,
+            state=state,
+            memory_store=self._context.memory_store,
+            checklist=checklist,
+        )
+        return {
+            "case_id": case_id,
+            "trace_id": trace_id,
+            "report_path": str(result.report_path),
+            "sequence_diagram": result.sequence_diagram,
+        }
+
+    def _maybe_auto_generate_report(
+        self,
+        *,
+        case_id: str,
+        trace_id: str,
+        workspace_path: str,
+        state: CaseState,
+    ) -> str | None:
+        settings = self._context.config.agents.SuperVisorAgent
+        if not settings.auto_generate_report:
+            return None
+
+        status = str(state.get("status") or "")
+        trigger_map = {
+            "WAITING_APPROVAL": "waiting_approval",
+            "CLOSED": "closed",
+        }
+        trigger = trigger_map.get(status)
+        if trigger is None or trigger not in settings.report_on:
+            return None
+
+        result = build_support_improvement_report(
+            case_id=case_id,
+            trace_id=trace_id,
+            workspace_path=workspace_path,
+            state=state,
+            memory_store=self._context.memory_store,
+            checklist=None,
+        )
+        return str(result.report_path)
 
     def _load_state(self, *, case_id: str | None, trace_id: str | None, workspace_path: str | None = None) -> CaseState:
-        if not trace_id:
+        if not trace_id or not case_id or not workspace_path:
             return {}
 
-        if not workspace_path:
-            return {}
-
-        if case_id:
-            state_path = self.state_file_path(case_id, trace_id, workspace_path=workspace_path)
-            if state_path.exists():
-                loaded_state = json.loads(state_path.read_text(encoding="utf-8"))
-                return self._normalize_state_ids(loaded_state, trace_id=trace_id)
-            return {}
-        return {}
+        with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
+            graph = build_case_workflow(
+                checkpointer=checkpointer,
+                intake_executor=self._intake_executor,
+                supervisor_executor=self._supervisor_executor,
+            )
+            snapshot = graph.get_state({"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}})
+            return self._normalize_state_ids(cast(dict[str, object], snapshot.values), trace_id=trace_id)
 
     def _migrate_legacy_traces(self) -> None:
         return
+
+    def _invoke_workflow(self, state: CaseState, trace_id: str) -> CaseState:
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        workflow_config = {"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}}
+
+        with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
+            graph = build_case_workflow(
+                checkpointer=checkpointer,
+                intake_executor=self._intake_executor,
+                supervisor_executor=self._supervisor_executor,
+            )
+            return cast(CaseState, graph.invoke(state, config=workflow_config))
+
+    def _workflow_checkpointer(self, *, case_id: str, workspace_path: str):
+        if not case_id or not workspace_path:
+            raise ValueError("case_id and workspace_path are required to use the SQLite checkpointer")
+        checkpoint_db_path = self.checkpoint_db_path(case_id, workspace_path)
+        return SqliteSaver.from_conn_string(str(checkpoint_db_path))
 
     def _normalize_state_ids(self, state: dict[str, object] | CaseState, *, trace_id: str | None = None) -> CaseState:
         normalized_trace_id = self._normalize_trace_id(

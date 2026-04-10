@@ -29,6 +29,12 @@ support_ope_agents:
   #
   #   # ケース用 workspace 配下に作る証跡ディレクトリ名です。
   #   evidence_subdir: .evidence
+  #
+  #   # ケース用 workspace 配下に作るレポート出力ディレクトリ名です。
+  #   report_subdir: report
+  #
+  #   # LangGraph checkpointer 用 SQLite ファイル名です。
+  #   checkpoint_db_filename: checkpoints.sqlite
 
   # ワークフロー実行時のコンテキスト圧縮や承認ノードの設定です。
   # 通常は既定値のままで構いません。
@@ -48,35 +54,6 @@ support_ope_agents:
   #   # 圧縮サマリの最大文字数です。
   #   max_summary_chars: 4000
   #
-  #   # エスカレーション判定と不足資料補完の設定です。
-  #   escalation:
-  #     # 未解決や確証不足とみなす語句です。
-  #     uncertainty_markers:
-  #       - 未解決
-  #       - 不明
-  #       - 特定でき
-  #       - 確証
-  #       - 追加ログ
-  #       - need more logs
-  #       - unable to conclude
-  #       - insufficient evidence
-  #
-  #     # ログ不足とみなす語句です。
-  #     missing_log_markers:
-  #       - ログファイルが見つからなかった
-  #
-  #     # workflow_kind ごとの既定依頼資料です。
-  #     default_missing_artifacts_by_workflow:
-  #       incident_investigation:
-  #         - 発生時刻前後のアプリケーションログ
-  #         - 再現手順または実施操作
-  #       specification_inquiry:
-  #         - 関連仕様書または設定値
-  #         - 期待動作と実際の動作差分
-  #       ambiguous_case:
-  #         - 発生条件を示す追加ログ
-  #         - 期待動作と実際の動作差分
-
   # トレース基盤の設定です。
   # トレースを使わない場合は未指定で構いません。
   # tracing:
@@ -84,7 +61,7 @@ support_ope_agents:
   #   enabled: false
   #
   #   # トレース送信先プロバイダです。
-  #   provider: langsmith
+  #   provider: langfuse
   #
   #   # トレースのプロジェクト名です。
   #   project_name: support-ope-agents
@@ -191,6 +168,12 @@ support_ope_agents:
   #   SuperVisorAgent:
   #     enabled: true
   #     auto_compress: true
+  #     # true の場合、指定トリガで改善レポートを自動生成します。
+  #     auto_generate_report: false
+  #     # 自動生成する契機です。waiting_approval / closed を指定できます。
+  #     # 1 件だけなら waiting_approval のような単一文字列でも指定できます。
+  #     report_on:
+  #       - waiting_approval
   #
   #   # 受付 Agent の設定です。
   #   IntakeAgent:
@@ -287,6 +270,34 @@ support_ope_agents:
   #   BackSupportEscalationAgent:
   #     enabled: true
   #     auto_compress: true
+  #     # エスカレーション判定と不足資料補完の設定です。
+  #     escalation:
+  #       # 未解決や確証不足とみなす語句です。
+  #       uncertainty_markers:
+  #         - 未解決
+  #         - 不明
+  #         - 特定でき
+  #         - 確証
+  #         - 追加ログ
+  #         - need more logs
+  #         - unable to conclude
+  #         - insufficient evidence
+  #
+  #       # ログ不足とみなす語句です。
+  #       missing_log_markers:
+  #         - ログファイルが見つからなかった
+  #
+  #       # workflow_kind ごとの既定依頼資料です。
+  #       default_missing_artifacts_by_workflow:
+  #         incident_investigation:
+  #           - 発生時刻前後のアプリケーションログ
+  #           - 再現手順または実施操作
+  #         specification_inquiry:
+  #           - 関連仕様書または設定値
+  #           - 期待動作と実際の動作差分
+  #         ambiguous_case:
+  #           - 発生条件を示す追加ログ
+  #           - 期待動作と実際の動作差分
   #
   #   # バックサポート問い合わせ文案作成 Agent の設定です。
   #   BackSupportInquiryWriterAgent:
