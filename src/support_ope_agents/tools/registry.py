@@ -10,7 +10,6 @@ from support_ope_agents.agents.roles import (
     INTAKE_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,
     LOG_ANALYZER_AGENT,
-    RESOLUTION_AGENT,
     SUPERVISOR_AGENT,
 )
 from support_ope_agents.config.models import AppConfig, BuiltinToolBinding, DisabledToolBinding, McpToolBinding
@@ -78,6 +77,8 @@ class ToolRegistry:
                 ToolSpec("scan_workspace_artifacts", "Scan workspace artifacts", _not_implemented_tool("scan_workspace_artifacts")),
                 ToolSpec("spawn_log_analyzer_agent", "Delegate to log analyzer agent", _not_implemented_tool("spawn_log_analyzer_agent")),
                 ToolSpec("spawn_knowledge_retriever_agent", "Delegate to knowledge retriever agent", _not_implemented_tool("spawn_knowledge_retriever_agent")),
+                ToolSpec("spawn_draft_writer_agent", "Delegate draft creation", _not_implemented_tool("spawn_draft_writer_agent")),
+                ToolSpec("spawn_compliance_reviewer_agent", "Delegate compliance review", _not_implemented_tool("spawn_compliance_reviewer_agent")),
             ],
             INTAKE_AGENT: [
                 ToolSpec("pii_mask", "Mask PII from issue text or logs", _not_implemented_tool("pii_mask")),
@@ -93,11 +94,6 @@ class ToolRegistry:
                 ToolSpec("search_kb", "Search knowledge base", _not_implemented_tool("search_kb")),
                 ToolSpec("search_ticket_history", "Search historical tickets", _not_implemented_tool("search_ticket_history")),
                 ToolSpec("write_working_memory", "Write agent working memory", _not_implemented_tool("write_working_memory")),
-            ],
-            RESOLUTION_AGENT: [
-                ToolSpec("read_shared_memory", "Read shared case memory", _not_implemented_tool("read_shared_memory")),
-                ToolSpec("spawn_draft_writer_agent", "Delegate draft creation", _not_implemented_tool("spawn_draft_writer_agent")),
-                ToolSpec("spawn_compliance_reviewer_agent", "Delegate compliance review", _not_implemented_tool("spawn_compliance_reviewer_agent")),
             ],
             DRAFT_WRITER_AGENT: [
                 ToolSpec("write_draft", "Write draft response", _not_implemented_tool("write_draft")),

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from support_ope_agents.agents.intake_agent import IntakePhaseExecutor
 from support_ope_agents.agents.deep_agent_factory import DeepAgentFactory
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
@@ -53,6 +54,7 @@ class RuntimeService:
     def __init__(self, context: RuntimeContext):
         self._context = context
         self._migrate_legacy_traces()
+        self._intake_executor = IntakePhaseExecutor(context.memory_store)
 
     @property
     def context(self) -> RuntimeContext:
@@ -117,7 +119,7 @@ class RuntimeService:
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
         }
-        result = build_case_workflow().invoke(state)
+        result = build_case_workflow(intake_executor=self._intake_executor).invoke(state)
         self._save_state(selected_case_id, trace_id, result)
         return {
             "case_id": selected_case_id,
@@ -169,7 +171,7 @@ class RuntimeService:
             "plan_steps": plan_steps,
             "approval_decision": "pending",
         }
-        result = build_case_workflow().invoke(state)
+        result = build_case_workflow(intake_executor=self._intake_executor).invoke(state)
         self._save_state(selected_case_id, current_trace_id, result)
         return {
             "case_id": selected_case_id,
@@ -183,7 +185,7 @@ class RuntimeService:
         }
 
     def print_workflow_nodes(self) -> list[str]:
-        graph = build_case_workflow().get_graph()
+        graph = build_case_workflow(intake_executor=self._intake_executor).get_graph()
         return sorted(node.id for node in graph.nodes.values())
 
     def state_file_path(self, case_id: str, trace_id: str, workspace_path: str) -> Path:
