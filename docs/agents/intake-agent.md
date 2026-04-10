@@ -66,10 +66,12 @@ CaseState へ反映する主な出力:
 
 ## 5. 使用ツール
 
-IntakeAgent の使用ツール詳細は次を参照する。
+IntakeAgent が参照する使用ツール詳細は次を参照する。
 
-- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
-- IntakeAgent 用ツール: [docs/tools/intake-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/intake-tools.md)
+- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- [docs/tools/specs/pii_mask.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/pii_mask.md)
+- [docs/tools/specs/classify_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/classify_ticket.md)
+- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_shared_memory.md)
 
 ## 6. 処理内容
 

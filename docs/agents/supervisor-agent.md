@@ -49,10 +49,21 @@ CaseState へ反映する主な出力:
 
 ## 5. 使用ツール
 
-SuperVisorAgent の使用ツール詳細は次を参照する。
+SuperVisorAgent が参照する使用ツール詳細は次を参照する。
 
-- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
-- SuperVisorAgent 用ツール: [docs/tools/supervisor-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/supervisor-tools.md)
+- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- [docs/tools/specs/read_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/read_shared_memory.md)
+- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_shared_memory.md)
+- [docs/tools/specs/inspect_workflow_state.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/inspect_workflow_state.md)
+- [docs/tools/specs/evaluate_agent_result.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/evaluate_agent_result.md)
+- [docs/tools/specs/route_phase_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/route_phase_agent.md)
+- [docs/tools/specs/scan_workspace_artifacts.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/scan_workspace_artifacts.md)
+- [docs/tools/specs/spawn_log_analyzer_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_log_analyzer_agent.md)
+- [docs/tools/specs/spawn_knowledge_retriever_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_knowledge_retriever_agent.md)
+- [docs/tools/specs/spawn_draft_writer_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_draft_writer_agent.md)
+- [docs/tools/specs/spawn_compliance_reviewer_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_compliance_reviewer_agent.md)
+- [docs/tools/specs/spawn_back_support_escalation_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_back_support_escalation_agent.md)
+- [docs/tools/specs/spawn_back_support_inquiry_writer_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_back_support_inquiry_writer_agent.md)
 
 ## 6. 処理内容
 

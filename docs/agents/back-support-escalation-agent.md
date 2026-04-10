@@ -34,10 +34,12 @@ CaseState へ反映しうる主な出力:
 
 ## 5. 使用ツール
 
-BackSupportEscalationAgent の使用ツール詳細は次を参照する。
+BackSupportEscalationAgent が参照する使用ツール詳細は次を参照する。
 
-- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
-- BackSupportEscalationAgent 用ツール: [docs/tools/back-support-escalation-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/back-support-escalation-tools.md)
+- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- [docs/tools/specs/read_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/read_shared_memory.md)
+- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_shared_memory.md)
+- [docs/tools/specs/scan_workspace_artifacts.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/scan_workspace_artifacts.md)
 
 ## 6. 処理内容
 

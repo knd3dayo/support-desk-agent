@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-本書は各 role 用ツール設計で共通となる前提を定義する。
+本書は tool 個別ページで共通となる前提を定義する。
 
 ## 2. 対象
 
@@ -14,30 +14,18 @@
 ## 3. 基本方針
 
 - agent からは論理ツール名のみを参照し、実装差し替えは ToolRegistry に閉じ込める
+- tool の責務、利用 agent、既定実装、実装状況は tool 個別ページに分離する
 - 既定実装は builtin を優先し、外部接続が必要なものは後続で MCP または API adapter に置き換える
 - 共有メモリの読み書きは write_shared_memory / read_shared_memory の論理ツール経由に統一する
 - 実装未着手のツールでも、設計上の責務と I/O 契約は先に固定する
 
-## 4. 共通ツール
+## 4. 読み方
 
-### 4.1 shared memory 系
+- 共通方針を確認したうえで、必要な tool 個別ページを参照する
+- agent 文書は role 別ツール設計書ではなく、利用する tool ページへ直接リンクする
+- role 別ツール文書は generated 下書きや旧構成との比較用途に限定する
 
-- read_shared_memory: shared/context.md、shared/progress.md、shared/summary.md をまとめて読む。既定実装は [src/support_ope_agents/tools/default_read_shared_memory.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/default_read_shared_memory.py) を利用する。
-- write_shared_memory: shared/context.md、shared/progress.md、shared/summary.md へ書き込む。既定実装は [src/support_ope_agents/tools/default_write_shared_memory.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/default_write_shared_memory.py) を利用する。
-
-### 4.2 working memory / draft 系
-
-- write_working_memory: agent 個別の working.md へ作業ログを残すための論理ツール。既定実装は [src/support_ope_agents/tools/default_write_working_memory.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/default_write_working_memory.py) を利用し、`.memory/agents/<Agent>/working.md` を更新する。
-- write_draft: 顧客向け回答や問い合わせ文案を生成するための論理ツール。既定実装は [src/support_ope_agents/tools/default_write_draft.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/default_write_draft.py) を利用し、`.artifacts/drafts/*.md` を更新する。
-
-## 5. 実装状況
-
-- read_shared_memory: 実装済み
-- write_shared_memory: 実装済み
-- write_working_memory: 実装済み
-- write_draft: 実装済み
-
-## 6. 実装上の接続点
+## 5. 実装上の接続点
 
 - ToolRegistry: [src/support_ope_agents/tools/registry.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/registry.py)
 - builtin tools: [src/support_ope_agents/tools/builtin_tools.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/builtin_tools.py)

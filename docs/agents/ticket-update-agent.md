@@ -35,10 +35,12 @@ CaseState へ反映する主な出力:
 
 ## 5. 使用ツール
 
-TicketUpdateAgent の使用ツール詳細は次を参照する。
+TicketUpdateAgent が参照する使用ツール詳細は次を参照する。
 
-- 共通事項: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
-- TicketUpdateAgent 用ツール: [docs/tools/ticket-update-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/ticket-update-tools.md)
+- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
+- [docs/tools/specs/prepare_ticket_update.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/prepare_ticket_update.md)
+- [docs/tools/specs/zendesk_reply.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/zendesk_reply.md)
+- [docs/tools/specs/redmine_update.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/redmine_update.md)
 
 ## 6. 処理内容
 
