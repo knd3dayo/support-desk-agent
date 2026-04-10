@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from typing import cast
 
+from pydantic import ValidationError
+
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.default_search_documents import build_default_search_documents_tool
@@ -16,24 +18,53 @@ REPO_ROOT = Path("/home/user/source/repos")
 
 
 class KnowledgeRetrieverTests(unittest.TestCase):
-    def test_registry_keeps_ticket_tools_available_without_mcp_resolver(self) -> None:
+    def test_old_ticket_source_config_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "dummy", "base_url": "http://localhost:4000"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "knowledge_retrieval": {
+                        "external_ticket": {
+                            "description": "external ticket",
+                            "mcp_server": "support-ticket-mcp",
+                            "mcp_tool": "get_external_ticket",
+                        },
+                    },
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+
+    def test_enabled_mcp_logical_tool_requires_manifest(self) -> None:
+        with self.assertRaises(ValidationError):
+            AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "dummy", "base_url": "http://localhost:4000"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "tools": {
+                        "logical_tools": {
+                            "external_ticket": {
+                                "enabled": True,
+                                "provider": "mcp",
+                                "server": "support-ticket-mcp",
+                                "tool": "get_external_ticket",
+                            }
+                        }
+                    },
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+
+    def test_registry_keeps_ticket_tools_available_without_logical_tool_config(self) -> None:
         config = AppConfig.model_validate(
             {
                 "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "dummy", "base_url": "http://localhost:4000"},
                 "config_paths": {},
                 "data_paths": {},
-                "knowledge_retrieval": {
-                    "external_ticket": {
-                        "description": "external ticket",
-                        "mcp_server": "support-ticket-mcp",
-                        "mcp_tool": "get_external_ticket",
-                    },
-                    "internal_ticket": {
-                        "description": "internal ticket",
-                        "mcp_server": "support-ticket-mcp",
-                        "mcp_tool": "get_internal_ticket",
-                    },
-                },
                 "interfaces": {},
                 "agents": {},
             }

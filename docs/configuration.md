@@ -59,7 +59,7 @@ support_ope_agents:
 
 - enabled: true のときのみ pii_mask を実行する
 - 既定値: false
-- false の場合でも、将来 Supervisor や運用ポリシーに応じて明示的に有効化できるようにする
+- Supervisor はこの設定を参照せず、PII マスクの実行有無は IntakeAgent 側でのみ判断する
 
 例:
 
@@ -73,13 +73,30 @@ support_ope_agents:
 IntakeAgent は明示指定された external_ticket_id / internal_ticket_id があり、対応する MCP ツールが有効な場合に、ticket 情報と添付ファイルを case workspace 配下へ取り込む。
 保存先の既定値は `.artifacts/intake/` とし、後続 agent はその投影結果を再利用する。
 
-## 5. Ticket Source 設定
+## 5. Intake Ticket Source 設定
 
-`knowledge_retrieval.external_ticket` と `knowledge_retrieval.internal_ticket` では、各論理ツールに対応する MCP tool を指定する。
+`intake.external_ticket` と `intake.internal_ticket` では、IntakeAgent と KnowledgeRetrieverAgent が共有する各論理ツールに対応する MCP tool を指定する。
 
 - mcp_server: MCP manifest 上の server 名
 - mcp_tool: 呼び出す tool 名
 - description: source の説明
+
+例:
+
+```yaml
+support_ope_agents:
+  intake:
+    pii_mask:
+      enabled: false
+    external_ticket:
+      description: 顧客向けケース管理システム
+      mcp_server: support-ticket-mcp
+      mcp_tool: get_external_ticket
+    internal_ticket:
+      description: 内部管理用チケットシステム
+      mcp_server: support-ticket-mcp
+      mcp_tool: get_internal_ticket
+```
 
 external_ticket_id と internal_ticket_id は config.yml ではなく実行入力で与える。
 
@@ -139,8 +156,24 @@ IntakeAgent と KnowledgeRetrieverAgent は同じ external_ticket / internal_tic
 KnowledgeRetrieverAgent の ticket source 解決は次の優先順位に従う。
 
 1. `tools.overrides`
-2. `knowledge_retrieval.external_ticket` / `knowledge_retrieval.internal_ticket`
-3. 既定 unavailable 実装
+2. `intake.external_ticket` / `intake.internal_ticket`
+3. 後方互換のための `knowledge_retrieval.external_ticket` / `knowledge_retrieval.internal_ticket`
+4. 既定 unavailable 実装
+
+## 6. LibreOffice 設定
+
+Office 系ファイルの PDF 変換では `tools.libreoffice_command` を使う。
+
+- 指定値は `soffice` のような実行名でも、絶対パスでもよい
+- 未指定時は `soffice`、`libreoffice` の順で探索する
+
+例:
+
+```yaml
+support_ope_agents:
+  tools:
+    libreoffice_command: /usr/bin/soffice
+```
 
 ## 7. document_sources 未設定時
 

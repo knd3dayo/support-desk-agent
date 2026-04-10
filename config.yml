@@ -36,9 +36,8 @@ support_ope_agents:
   #   pii_mask:
   #     # true の場合のみ Intake で PII マスキングを実行します。
   #     enabled: false
-
-  # 例: Intake で明示 ticket ID を使って一次情報を hydration する場合の設定です。
-  # knowledge_retrieval:
+  #
+  #   # 例: Intake で明示 ticket ID を使って一次情報を hydration する場合の設定です。
   #   external_ticket:
   #     description: 顧客向けケース管理システム
   #     mcp_server: support-ticket-mcp
@@ -47,7 +46,7 @@ support_ope_agents:
   #     description: 内部管理用チケットシステム
   #     mcp_server: support-ticket-mcp
   #     mcp_tool: get_internal_ticket
-  #
+
   # 上記 MCP tool は ticket_id を受け取り、summary と attachments を含む JSON を返すことを推奨します。
   # attachments の各要素は以下のいずれかを持てます。
   #   - content_base64: バイナリ添付
@@ -211,6 +210,7 @@ support_ope_agents:
   #   analysis_max_chars: 16000
   #
   #   # Office 変換に使う LibreOffice 実行ファイルのパスです。
+  #   # 実行名でも絶対パスでも指定できます。
   #   libreoffice_command:
   #
   #   # 論理ツール名ごとの上書き設定です。

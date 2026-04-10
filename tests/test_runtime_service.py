@@ -429,9 +429,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
                 "config_paths": {},
                 "data_paths": {},
-                "intake": {"pii_mask": {"enabled": True}},
+                "agents": {"IntakeAgent": {"pii_mask": {"enabled": True}}},
                 "interfaces": {},
-                "agents": {},
             }
         )
         service = self._build_service(config)

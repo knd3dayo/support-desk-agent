@@ -3,27 +3,31 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class LlmSettings(BaseModel):
+class StrictConfigModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class LlmSettings(StrictConfigModel):
     provider: str
     model: str
     api_key: str
     base_url: str | None = None
 
 
-class ConfigPathSettings(BaseModel):
+class ConfigPathSettings(StrictConfigModel):
     instructions_path: Path | None = None
 
 
-class DataPathSettings(BaseModel):
+class DataPathSettings(StrictConfigModel):
     shared_memory_subdir: str = ".memory"
     artifacts_subdir: str = ".artifacts"
     evidence_subdir: str = ".evidence"
 
 
-class EscalationSettings(BaseModel):
+class EscalationSettings(StrictConfigModel):
     uncertainty_markers: list[str] = Field(
         default_factory=lambda: [
             "未解決",
@@ -55,7 +59,7 @@ class EscalationSettings(BaseModel):
     )
 
 
-class WorkflowSettings(BaseModel):
+class WorkflowSettings(StrictConfigModel):
     max_context_chars: int = 12000
     compress_threshold_chars: int = 9000
     approval_node: str = "wait_for_approval"
@@ -64,25 +68,19 @@ class WorkflowSettings(BaseModel):
     escalation: EscalationSettings = Field(default_factory=EscalationSettings)
 
 
-class TracingSettings(BaseModel):
+class TracingSettings(StrictConfigModel):
     enabled: bool = False
     provider: str = "langsmith"
     project_name: str = "support-ope-agents"
 
 
-class KnowledgeDocumentSource(BaseModel):
+class KnowledgeDocumentSource(StrictConfigModel):
     name: str
     description: str
     path: Path
 
 
-class TicketSourceSettings(BaseModel):
-    description: str = ""
-    mcp_server: str | None = None
-    mcp_tool: str | None = None
-
-
-class KnowledgeRetrievalSettings(BaseModel):
+class KnowledgeRetrievalSettings(StrictConfigModel):
     document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
     ignore_patterns: list[str] = Field(
         default_factory=lambda: [
@@ -109,62 +107,22 @@ class KnowledgeRetrievalSettings(BaseModel):
         ]
     )
     ignore_patterns_file: Path | None = None
-    external_ticket: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
-    internal_ticket: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
 
 
-class IntakePiiMaskSettings(BaseModel):
+class IntakePiiMaskSettings(StrictConfigModel):
     enabled: bool = False
 
 
-class IntakeSettings(BaseModel):
+class IntakeAgentSettings(StrictConfigModel):
+    enabled: bool = True
+    max_context_chars: int | None = None
+    compress_threshold_chars: int | None = None
+    auto_compress: bool = True
+    model: str | None = None
     pii_mask: IntakePiiMaskSettings = Field(default_factory=IntakePiiMaskSettings)
 
 
-class McpToolBinding(BaseModel):
-    type: Literal["mcp"] = "mcp"
-    server: str
-    tool: str
-
-
-class BuiltinToolBinding(BaseModel):
-    type: Literal["builtin"] = "builtin"
-    tool: str | None = None
-
-
-class DisabledToolBinding(BaseModel):
-    type: Literal["disabled"] = "disabled"
-
-
-ToolBinding = BuiltinToolBinding | McpToolBinding | DisabledToolBinding
-
-
-class ToolSettings(BaseModel):
-    enable_zendesk: bool = False
-    enable_redmine: bool = False
-    enable_knowledge_base: bool = False
-    enable_python_analysis: bool = True
-    mcp_manifest_path: Path | None = None
-    mcp_timeout_seconds: float = 30.0
-    download_timeout_seconds: float = 30.0
-    analysis_max_chars: int = 16000
-    libreoffice_command: str | None = None
-    overrides: dict[str, dict[str, ToolBinding]] = Field(default_factory=dict)
-
-    def has_overrides(self) -> bool:
-        return any(self.overrides.values())
-
-
-class InterfaceSettings(BaseModel):
-    enable_cli: bool = True
-    enable_api: bool = False
-    enable_mcp: bool = False
-    api_host: str = "127.0.0.1"
-    api_port: int = 8000
-    mcp_transport: str = "streamable-http"
-
-
-class AgentSettings(BaseModel):
+class AgentSettings(StrictConfigModel):
     enabled: bool = True
     max_context_chars: int | None = None
     compress_threshold_chars: int | None = None
@@ -173,14 +131,98 @@ class AgentSettings(BaseModel):
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
-class AppConfig(BaseModel):
+class AgentCatalogSettings(StrictConfigModel):
+    SuperVisorAgent: AgentSettings = Field(default_factory=AgentSettings)
+    IntakeAgent: IntakeAgentSettings = Field(default_factory=IntakeAgentSettings)
+    LogAnalyzerAgent: AgentSettings = Field(default_factory=AgentSettings)
+    KnowledgeRetrieverAgent: AgentSettings = Field(default_factory=AgentSettings)
+    DraftWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
+    ComplianceReviewerAgent: AgentSettings = Field(default_factory=AgentSettings)
+    BackSupportEscalationAgent: AgentSettings = Field(default_factory=AgentSettings)
+    BackSupportInquiryWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
+    ApprovalAgent: AgentSettings = Field(default_factory=AgentSettings)
+    TicketUpdateAgent: AgentSettings = Field(default_factory=AgentSettings)
+
+    def get(self, role: str) -> AgentSettings | IntakeAgentSettings | None:
+        return getattr(self, role, None)
+
+
+class McpToolBinding(StrictConfigModel):
+    type: Literal["mcp"] = "mcp"
+    server: str
+    tool: str
+
+
+class BuiltinToolBinding(StrictConfigModel):
+    type: Literal["builtin"] = "builtin"
+    tool: str | None = None
+
+
+class DisabledToolBinding(StrictConfigModel):
+    type: Literal["disabled"] = "disabled"
+
+
+ToolBinding = BuiltinToolBinding | McpToolBinding | DisabledToolBinding
+
+
+class LogicalToolSettings(StrictConfigModel):
+    enabled: bool = True
+    provider: Literal["builtin", "mcp"] = "builtin"
+    builtin_tool: str | None = None
+    server: str | None = None
+    tool: str | None = None
+    description: str = ""
+
+    @model_validator(mode="after")
+    def _validate_enabled_provider(self) -> "LogicalToolSettings":
+        if not self.enabled:
+            return self
+        if self.provider == "mcp":
+            if not self.server or not self.tool:
+                raise ValueError("enabled logical tool with provider='mcp' requires both 'server' and 'tool'")
+            return self
+        if self.server or self.tool:
+            raise ValueError("logical tool with provider='builtin' cannot define 'server' or 'tool'")
+        return self
+
+
+class ToolSettings(StrictConfigModel):
+    mcp_manifest_path: Path | None = None
+    mcp_timeout_seconds: float = 30.0
+    download_timeout_seconds: float = 30.0
+    analysis_max_chars: int = 16000
+    libreoffice_command: str | None = None
+    logical_tools: dict[str, LogicalToolSettings] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_mcp_manifest_requirement(self) -> "ToolSettings":
+        if self.has_enabled_mcp_tools() and self.mcp_manifest_path is None:
+            raise ValueError("tools.mcp_manifest_path is required when any enabled logical tool uses provider='mcp'")
+        return self
+
+    def has_enabled_mcp_tools(self) -> bool:
+        return any(tool.enabled and tool.provider == "mcp" for tool in self.logical_tools.values())
+
+    def get_logical_tool(self, name: str) -> LogicalToolSettings | None:
+        return self.logical_tools.get(name)
+
+
+class InterfaceSettings(StrictConfigModel):
+    enable_cli: bool = True
+    enable_api: bool = False
+    enable_mcp: bool = False
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
+    mcp_transport: str = "streamable-http"
+
+
+class AppConfig(StrictConfigModel):
     llm: LlmSettings
     config_paths: ConfigPathSettings
     data_paths: DataPathSettings
-    intake: IntakeSettings = Field(default_factory=IntakeSettings)
     workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
     knowledge_retrieval: KnowledgeRetrievalSettings = Field(default_factory=KnowledgeRetrievalSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)
     tools: ToolSettings = Field(default_factory=ToolSettings)
     interfaces: InterfaceSettings = Field(default_factory=InterfaceSettings)
-    agents: dict[str, AgentSettings] = Field(default_factory=dict)
+    agents: AgentCatalogSettings = Field(default_factory=AgentCatalogSettings)

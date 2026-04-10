@@ -128,14 +128,14 @@ class McpToolOverrideResolver:
     def from_config(cls, config: AppConfig) -> "McpToolOverrideResolver":
         manifest_path = config.tools.mcp_manifest_path
         if manifest_path is None:
-            raise ToolConfigurationError("tools.mcp_manifest_path is required when tools.overrides are configured")
+            raise ToolConfigurationError("tools.mcp_manifest_path is required when enabled logical tools use provider='mcp'")
         return cls(McpManifest.load(manifest_path), default_timeout_seconds=config.tools.mcp_timeout_seconds)
 
     def validate_binding(self, *, role: str, logical_tool_name: str, binding: McpToolBinding) -> None:
         if binding.server not in self._manifest.servers:
             available = ", ".join(sorted(self._manifest.servers)) or "<none>"
             raise ToolConfigurationError(
-                f"tools.overrides.{role}.{logical_tool_name} references unknown MCP server '{binding.server}'. "
+                f"{role}.{logical_tool_name} references unknown MCP server '{binding.server}'. "
                 f"manifest={self._manifest.path} available_servers=[{available}]"
             )
 
@@ -143,9 +143,12 @@ class McpToolOverrideResolver:
         if binding.tool not in available_tools:
             tools_text = ", ".join(sorted(available_tools)) or "<none>"
             raise ToolConfigurationError(
-                f"tools.overrides.{role}.{logical_tool_name} references unknown MCP tool '{binding.tool}'. "
+                f"{role}.{logical_tool_name} references unknown MCP tool '{binding.tool}'. "
                 f"server='{binding.server}' manifest={self._manifest.path} available_tools=[{tools_text}]"
             )
+
+    def validate_logical_tool(self, *, logical_tool_name: str, binding: McpToolBinding) -> None:
+        self.validate_binding(role="tools.logical_tools", logical_tool_name=logical_tool_name, binding=binding)
 
     def build_handler(self, binding: McpToolBinding, logical_tool_name: str) -> Callable[..., Any]:
         async def _handler(*args: object, **kwargs: object) -> str:

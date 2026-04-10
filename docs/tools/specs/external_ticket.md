@@ -12,7 +12,7 @@
 ## 3. 既定実装 / 接続点
 
 - 論理ツール名: external_ticket
-- 既定では未接続で、MCP override または [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の knowledge_retrieval.external_ticket で構成する
+- 既定では未接続で、MCP override または [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の intake.external_ticket で構成する
 - ToolRegistry 定義: [src/support_ope_agents/tools/registry.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/registry.py)
 - IntakeAgent では、明示 external_ticket_id が与えられた場合の初期 hydration に使う
 - KnowledgeRetrieverAgent では、workspace 取り込み済み情報で不足する場合の再取得に使う

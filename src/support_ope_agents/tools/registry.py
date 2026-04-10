@@ -14,7 +14,7 @@ from support_ope_agents.agents.roles import (
     LOG_ANALYZER_AGENT,
     SUPERVISOR_AGENT,
 )
-from support_ope_agents.config.models import AppConfig, BuiltinToolBinding, DisabledToolBinding, McpToolBinding
+from support_ope_agents.config.models import AppConfig, McpToolBinding
 
 from .builtin_tools import build_builtin_tools
 from .default_classify_ticket import build_default_classify_ticket_tool
@@ -68,14 +68,13 @@ class ToolRegistry:
             for name, builtin in build_builtin_tools(config).items()
         }
         self._role_tools = self._build_role_tools()
-        self._normalized_overrides = self._normalize_overrides()
-        self._validate_overrides()
+        self._validate_logical_tool_settings()
 
     def get_tools(self, role: str) -> list[ToolSpec]:
         base_tools = [*self._builtin_tools.values(), *self._role_tools.get(role, [])]
         resolved_tools: list[ToolSpec] = []
         for tool in base_tools:
-            resolved = self._resolve_tool_override(role, tool)
+            resolved = self._resolve_tool_configuration(tool)
             if resolved is not None:
                 resolved_tools.append(resolved)
         return resolved_tools
@@ -123,14 +122,14 @@ class ToolRegistry:
                     "external_ticket",
                     "Fetch customer-facing external ticket information",
                     _unavailable_tool(
-                        "external_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.external_ticket in config.yml."
+                        "external_ticket tool is not configured. Configure tools.logical_tools.external_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
                     "internal_ticket",
                     "Fetch internal management ticket information",
                     _unavailable_tool(
-                        "internal_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.internal_ticket in config.yml."
+                        "internal_ticket tool is not configured. Configure tools.logical_tools.internal_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
@@ -178,14 +177,14 @@ class ToolRegistry:
                     "external_ticket",
                     "Fetch customer-facing external ticket information",
                     _unavailable_tool(
-                        "external_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.external_ticket in config.yml."
+                        "external_ticket tool is not configured. Configure tools.logical_tools.external_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
                     "internal_ticket",
                     "Fetch internal management ticket information",
                     _unavailable_tool(
-                        "internal_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.internal_ticket in config.yml."
+                        "internal_ticket tool is not configured. Configure tools.logical_tools.internal_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
@@ -253,95 +252,57 @@ class ToolRegistry:
             available[tool.name] = tool
         return available
 
-    def _normalize_overrides(self) -> dict[str, dict[str, Any]]:
-        normalized: dict[str, dict[str, Any]] = {}
-        for role, overrides in self._config.tools.overrides.items():
-            role_overrides = normalized.setdefault(role, {})
-            for logical_tool_name, binding in overrides.items():
-                if logical_tool_name in role_overrides:
-                    raise ToolConfigurationError(
-                        f"tools.overrides defines duplicate logical tool '{logical_tool_name}' for role '{role}'"
-                    )
-                role_overrides[logical_tool_name] = binding
-        self._inject_knowledge_retrieval_overrides(normalized)
-        return normalized
+    def _known_logical_tool_names(self) -> set[str]:
+        names = set(self._builtin_tools)
+        for role in DEFAULT_AGENT_ROLES:
+            names.update(self._available_tools_for_role(role))
+        return names
 
-    def _inject_knowledge_retrieval_overrides(self, normalized: dict[str, dict[str, Any]]) -> None:
-        if self._mcp_override_resolver is None:
-            return
-
-        knowledge_retrieval = self._config.knowledge_retrieval
-        configured_ticket_tools = {
-            "external_ticket": knowledge_retrieval.external_ticket,
-            "internal_ticket": knowledge_retrieval.internal_ticket,
-        }
-
-        for role in (KNOWLEDGE_RETRIEVER_AGENT, INTAKE_AGENT):
-            role_overrides = normalized.setdefault(role, {})
-            for logical_tool_name, ticket_settings in configured_ticket_tools.items():
-                if logical_tool_name in role_overrides:
-                    continue
-                if not ticket_settings.mcp_server or not ticket_settings.mcp_tool:
-                    continue
-                role_overrides[logical_tool_name] = McpToolBinding(
-                    server=ticket_settings.mcp_server,
-                    tool=ticket_settings.mcp_tool,
-                )
-
-    def _validate_overrides(self) -> None:
-        if not self._normalized_overrides:
-            return
-
-        for normalized_role, overrides in self._normalized_overrides.items():
-            if normalized_role not in self._role_tools:
-                available_roles = ", ".join(DEFAULT_AGENT_ROLES)
+    def _validate_logical_tool_settings(self) -> None:
+        available_tool_names = self._known_logical_tool_names()
+        for logical_tool_name, setting in self._config.tools.logical_tools.items():
+            if logical_tool_name not in available_tool_names:
+                known_tools = ", ".join(sorted(available_tool_names))
                 raise ToolConfigurationError(
-                    f"tools.overrides references unknown role '{normalized_role}'. Available roles=[{available_roles}]"
+                    f"tools.logical_tools.{logical_tool_name} does not match any known logical tool. available_tools=[{known_tools}]"
                 )
-
-            available_tools = self._available_tools_for_role(normalized_role)
-            available_tool_names = set(available_tools)
-            for logical_tool_name, binding in overrides.items():
-                if logical_tool_name not in available_tool_names:
-                    known_tools = ", ".join(sorted(available_tool_names))
+            if not setting.enabled:
+                continue
+            if setting.provider == "builtin":
+                target_name = setting.builtin_tool or logical_tool_name
+                if target_name not in self._builtin_tools:
+                    available_builtins = ", ".join(sorted(self._builtin_tools))
                     raise ToolConfigurationError(
-                        f"tools.overrides.{normalized_role}.{logical_tool_name} does not match any logical tool for role '{normalized_role}'. "
-                        f"available_tools=[{known_tools}]"
+                        f"tools.logical_tools.{logical_tool_name} references unknown builtin tool '{target_name}'. "
+                        f"available_builtin_tools=[{available_builtins}]"
                     )
-                if isinstance(binding, BuiltinToolBinding):
-                    target_name = binding.tool or logical_tool_name
-                    if target_name not in self._builtin_tools:
-                        available_builtins = ", ".join(sorted(self._builtin_tools))
-                        raise ToolConfigurationError(
-                            f"tools.overrides.{normalized_role}.{logical_tool_name} references unknown builtin tool '{target_name}'. "
-                            f"available_builtin_tools=[{available_builtins}]"
-                        )
-                    continue
-                if isinstance(binding, DisabledToolBinding):
-                    continue
-                if binding.type == "mcp":
-                    if self._mcp_override_resolver is None:
-                        raise ToolConfigurationError(
-                            "tools.mcp_manifest_path is required when configuring tools.overrides with MCP bindings"
-                        )
-                    self._mcp_override_resolver.validate_binding(
-                        role=normalized_role,
-                        logical_tool_name=logical_tool_name,
-                        binding=binding,
-                    )
+                continue
+            binding = McpToolBinding(server=str(setting.server), tool=str(setting.tool))
+            if self._mcp_override_resolver is None:
+                raise ToolConfigurationError(
+                    f"tools.logical_tools.{logical_tool_name} requires an MCP resolver, but tools.mcp_manifest_path is not configured"
+                )
+            self._mcp_override_resolver.validate_logical_tool(logical_tool_name=logical_tool_name, binding=binding)
 
-    def _resolve_tool_override(self, role: str, tool: ToolSpec) -> ToolSpec | None:
-        overrides = self._normalized_overrides.get(role, {})
-        binding = overrides.get(tool.name)
-        if binding is None:
+    def _resolve_tool_configuration(self, tool: ToolSpec) -> ToolSpec | None:
+        setting = self._config.tools.get_logical_tool(tool.name)
+        if setting is None:
             return tool
-
-        if isinstance(binding, DisabledToolBinding):
-            return None
-
-        if isinstance(binding, BuiltinToolBinding):
-            target_name = binding.tool or tool.name
-            builtin = self._builtin_tools[target_name]
+        if not setting.enabled:
+            return ToolSpec(
+                name=tool.name,
+                description=tool.description,
+                handler=_unavailable_tool(f"Tool '{tool.name}' is disabled in config.yml."),
+                provider="disabled",
+                target=tool.target,
+            )
+        if setting.provider == "builtin":
+            target_name = setting.builtin_tool or tool.name
+            builtin = self._builtin_tools.get(target_name)
+            if builtin is None:
+                raise ToolConfigurationError(
+                    f"tools.logical_tools.{tool.name} requested builtin provider, but '{target_name}' is not available as a builtin tool"
+                )
             return ToolSpec(
                 name=tool.name,
                 description=tool.description,
@@ -349,18 +310,15 @@ class ToolRegistry:
                 provider="builtin",
                 target=target_name,
             )
-
-        if isinstance(binding, McpToolBinding):
-            if self._mcp_override_resolver is None:
-                raise ToolConfigurationError(
-                    f"tools.overrides.{role}.{tool.name} requested an MCP binding but no MCP resolver is configured"
-                )
-            return ToolSpec(
-                name=tool.name,
-                description=tool.description,
-                handler=self._mcp_override_resolver.build_handler(binding, logical_tool_name=tool.name),
-                provider=f"mcp:{binding.server}",
-                target=binding.tool,
+        if self._mcp_override_resolver is None:
+            raise ToolConfigurationError(
+                f"tools.logical_tools.{tool.name} requested MCP provider, but no MCP resolver is configured"
             )
-
-        return tool
+        binding = McpToolBinding(server=str(setting.server), tool=str(setting.tool))
+        return ToolSpec(
+            name=tool.name,
+            description=tool.description,
+            handler=self._mcp_override_resolver.build_handler(binding, logical_tool_name=tool.name),
+            provider=f"mcp:{binding.server}",
+            target=binding.tool,
+        )

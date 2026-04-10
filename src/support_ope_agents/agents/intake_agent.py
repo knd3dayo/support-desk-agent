@@ -191,7 +191,7 @@ class IntakePhaseExecutor:
     def apply_pii_mask(self, state: CaseState) -> CaseState:
         update = dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
-        if raw_issue and self.config.intake.pii_mask.enabled:
+        if raw_issue and self.config.agents.IntakeAgent.pii_mask.enabled:
             update["masked_issue"] = self._invoke_tool(
                 self.pii_mask_tool,
                 raw_issue,

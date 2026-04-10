@@ -51,7 +51,7 @@ def build_runtime_context(config_path: str) -> RuntimeContext:
     instruction_loader = InstructionLoader(config, memory_store)
     mcp_override_resolver = (
         McpToolOverrideResolver.from_config(config)
-        if (config.tools.has_overrides() or config.tools.mcp_manifest_path is not None)
+        if config.tools.has_enabled_mcp_tools()
         else None
     )
     tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
