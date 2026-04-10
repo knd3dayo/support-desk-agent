@@ -63,7 +63,8 @@ DraftWriterAgent が参照する使用ツール詳細は次を参照する。
 
 - DraftWriterAgent は最終回答生成に近い責務を持つため、Supervisor の review_focus を強く反映する
 - コンプライアンス差戻し前提で、単発生成ではなく再生成しやすい入力構造を保つ
-- notice.required が true の場合は required_phrases のいずれかを含むドラフトを優先生成する
+- 注意文設定は DraftWriterAgent 側へ重複定義せず、agents.ComplianceReviewerAgent.notice.required / required_phrases を参照する
+- notice.required が true の場合は required_phrases のいずれかを含むドラフトを初回生成時から優先生成する
 
 ## 10. 未決事項
 

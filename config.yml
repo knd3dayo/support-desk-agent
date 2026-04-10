@@ -243,6 +243,8 @@ support_ope_agents:
   #     enabled: true
   #     auto_compress: true
   #     # ComplianceReviewerAgent の差戻し観点を反映しながら再生成されます。
+  #     # 注意文は DraftWriterAgent 個別設定には重複定義せず、
+  #     # ComplianceReviewerAgent.notice.required / required_phrases を参照して先に埋め込みます。
   #
   #   # コンプライアンス確認 Agent の設定です。
   #   ComplianceReviewerAgent:

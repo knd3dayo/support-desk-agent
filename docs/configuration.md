@@ -75,6 +75,8 @@ ComplianceReviewerAgent でも同様に `CompositeBackend` を使い、各 sourc
 - required_phrases: いずれか 1 つ以上を含めば通過と判定する文言候補
 - max_review_loops: DraftWriterAgent への再生成を何回まで自動で繰り返すか。既定値は 3
 
+注意文設定は ComplianceReviewerAgent 側を正本とし、DraftWriterAgent はその設定を参照して初回ドラフト生成時から required_phrases を入れる。DraftWriterAgent 側へ同等設定は重複定義しない。
+
 例:
 
 ```yaml
