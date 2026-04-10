@@ -61,6 +61,7 @@ SuperVisorAgent の処理は大きく次の 4 段階に分かれる。
 1. 調査フェーズ管理
    IntakeAgent の出力と read_shared_memory で取得した共有メモリ内容を参照し、workflow_kind を基準にしつつ、workflow_kind が ambiguous_case で intake_category がより具体的な場合はそちらを優先して、LogAnalyzerAgent と KnowledgeRetrieverAgent の起動組み合わせを決め、結果を収束させる。
    ただしその前に Intake 品質ゲートを実行し、分類、緊急度、障害時の発生時間帯など必須項目が不足していれば IntakeAgent へ差し戻す。
+   評価チェック項目の既定値は、workflow_kind または intake_category の妥当性、intake_urgency の妥当性、incident_investigation における intake_incident_timeframe の充足、intake_investigation_focus の具体性、追加入力要否、共有メモリに残す内容の秘匿性確認である。
 2. ドラフト作成フェーズ管理
    調査結果をもとに DraftWriterAgent を起動し、顧客向け回答ドラフトを生成する。
 3. レビューループ管理
@@ -106,6 +107,7 @@ shared/progress.md には次を残す。
 - 実行クラスは read_shared_memory と write_shared_memory を用いて、investigation / draft_review フェーズの共有メモリ更新経路を統一し、共有メモリ内容を子エージェント起動計画やレビュー重点の判断材料として使う
 - BackSupportEscalationAgent / BackSupportInquiryWriterAgent は、通常回答ドラフト系とは別の補助分岐として扱う
 - エスカレーション判定語彙と workflow_kind ごとの既定依頼資料は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の workflow.escalation で調整可能とする
+- Intake 出力評価のチェックリストは [src/support_ope_agents/instructions/defaults/SuperVisorAgent.md](/home/user/source/repos/support-ope-agents/src/support_ope_agents/instructions/defaults/SuperVisorAgent.md) の既定指示に置き、必要なら config_paths.instructions_path 配下の SuperVisorAgent.md で丸ごとオーバーライドする
 
 ## 10. 未決事項
 

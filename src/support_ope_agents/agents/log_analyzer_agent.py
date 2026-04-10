@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 @dataclass(slots=True)
 class LogAnalyzerPhaseExecutor:
     detect_log_format_tool: Callable[..., Any]
+    write_working_memory_tool: Callable[..., Any] | None = None
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
         result = tool(*args)
@@ -37,7 +39,7 @@ class LogAnalyzerPhaseExecutor:
     def _find_log_candidates(workspace_path: str) -> list[Path]:
         root = Path(workspace_path).expanduser().resolve()
         candidates: set[Path] = set()
-        for subdir_name in ("evidence", "artifacts"):
+        for subdir_name in (".evidence", ".artifacts", "evidence", "artifacts"):
             target_dir = root / subdir_name
             if not target_dir.exists():
                 continue
@@ -59,6 +61,7 @@ class LogAnalyzerPhaseExecutor:
 
     def execute(self, state: "CaseState") -> dict[str, Any]:
         workspace_path = str(state.get("workspace_path") or "").strip()
+        case_id = str(state.get("case_id") or "").strip()
         if not workspace_path:
             return {"summary": "workspace_path がないためログ解析をスキップしました。", "file": ""}
 
@@ -90,6 +93,17 @@ class LogAnalyzerPhaseExecutor:
             f"severity 一致 {severity_count} 件、例外一致 {exception_count} 件"
         )
         summary += "、Java スタックトレースを検出しました。" if has_java_stacktrace else "。"
+        if self.write_working_memory_tool is not None and case_id and workspace_path:
+            payload: SharedMemoryDocumentPayload = {
+                "title": "Log Analysis Result",
+                "heading_level": 2,
+                "bullets": [
+                    f"File: {selected_file}",
+                    f"Detected format: {detected_format}",
+                    f"Summary: {summary}",
+                ],
+            }
+            self._invoke_tool(self.write_working_memory_tool, case_id, workspace_path, payload, "append")
         return {
             "summary": summary,
             "file": str(selected_file),

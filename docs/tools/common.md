@@ -27,15 +27,15 @@
 
 ### 4.2 working memory / draft 系
 
-- write_working_memory: agent 個別の working.md へ作業ログを残すための論理ツール。現状は設計のみで、既定実装は未着手。
-- write_draft: 顧客向け回答や問い合わせ文案を生成するための論理ツール。現状は設計のみで、既定実装は未着手。
+- write_working_memory: agent 個別の working.md へ作業ログを残すための論理ツール。既定実装は [src/support_ope_agents/tools/default_write_working_memory.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/default_write_working_memory.py) を利用し、`.memory/agents/<Agent>/working.md` を更新する。
+- write_draft: 顧客向け回答や問い合わせ文案を生成するための論理ツール。既定実装は [src/support_ope_agents/tools/default_write_draft.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/default_write_draft.py) を利用し、`.artifacts/drafts/*.md` を更新する。
 
 ## 5. 実装状況
 
 - read_shared_memory: 実装済み
 - write_shared_memory: 実装済み
-- write_working_memory: 未実装
-- write_draft: 未実装
+- write_working_memory: 実装済み
+- write_draft: 実装済み
 
 ## 6. 実装上の接続点
 

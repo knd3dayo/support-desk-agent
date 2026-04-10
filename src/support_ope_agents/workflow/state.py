@@ -44,6 +44,8 @@ class CaseState(TypedDict, total=False):
     intake_missing_fields: list[str]
     intake_followup_questions: dict[str, str]
     customer_followup_answers: dict[str, dict[str, str]]
+    external_ticket_id: str
+    internal_ticket_id: str
     plan_summary: str
     plan_steps: list[str]
     investigation_summary: str
@@ -52,6 +54,7 @@ class CaseState(TypedDict, total=False):
     knowledge_retrieval_summary: str
     knowledge_retrieval_results: list[dict[str, object]]
     knowledge_retrieval_adopted_sources: list[str]
+    knowledge_retrieval_final_adopted_source: str
     escalation_required: bool
     escalation_reason: str
     escalation_summary: str

@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from support_ope_agents.runtime import RuntimeService, build_runtime_context
+from support_ope_agents.tools.doc_generator import export_tool_docs
 
 
 def _build_service(config_path: str) -> RuntimeService:
@@ -35,7 +36,12 @@ def _cmd_describe_agents(args: argparse.Namespace) -> int:
 
 def _cmd_plan(args: argparse.Namespace) -> int:
     service = _build_service(args.config)
-    result = service.plan(prompt=args.prompt, workspace_path=args.workspace_path)
+    result = service.plan(
+        prompt=args.prompt,
+        workspace_path=args.workspace_path,
+        external_ticket_id=args.external_ticket_id,
+        internal_ticket_id=args.internal_ticket_id,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -47,6 +53,8 @@ def _cmd_action(args: argparse.Namespace) -> int:
         workspace_path=args.workspace_path,
         trace_id=args.trace_id,
         execution_plan=args.execution_plan,
+        external_ticket_id=args.external_ticket_id,
+        internal_ticket_id=args.internal_ticket_id,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
@@ -60,8 +68,16 @@ def _cmd_resume_customer_input(args: argparse.Namespace) -> int:
         workspace_path=args.workspace_path,
         additional_input=args.additional_input,
         answer_key=args.answer_key,
+        external_ticket_id=args.external_ticket_id,
+        internal_ticket_id=args.internal_ticket_id,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_export_tool_docs(args: argparse.Namespace) -> int:
+    generated = export_tool_docs(args.config, args.output_dir)
+    print(json.dumps([str(path) for path in generated], ensure_ascii=False, indent=2))
     return 0
 
 
@@ -87,6 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan", help="Create an execution plan for a case", parents=[common])
     plan.add_argument("prompt", help="User request for planning")
     plan.add_argument("--workspace-path", required=True, help="Workspace path for the case")
+    plan.add_argument("--external-ticket-id", default=None, help="Explicit external ticket ID. If omitted, derive from trace_id")
+    plan.add_argument("--internal-ticket-id", default=None, help="Explicit internal ticket ID. If omitted, derive from trace_id")
     plan.set_defaults(func=_cmd_plan)
 
     action = subparsers.add_parser("action", help="Execute action mode for a case", parents=[common])
@@ -94,6 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument("--workspace-path", required=True, help="Workspace path for the case")
     action.add_argument("--trace-id", default=None, help="Trace identifier from plan mode")
     action.add_argument("--execution-plan", default=None, help="Optional execution plan text")
+    action.add_argument("--external-ticket-id", default=None, help="Explicit external ticket ID. If omitted, derive from trace_id")
+    action.add_argument("--internal-ticket-id", default=None, help="Explicit internal ticket ID. If omitted, derive from trace_id")
     action.set_defaults(func=_cmd_action)
 
     resume_customer_input = subparsers.add_parser(
@@ -106,7 +126,21 @@ def build_parser() -> argparse.ArgumentParser:
     resume_customer_input.add_argument("--trace-id", required=True, help="Trace identifier to resume")
     resume_customer_input.add_argument("--workspace-path", required=True, help="Workspace path for the case")
     resume_customer_input.add_argument("--answer-key", default=None, help="Field key of the follow-up question being answered")
+    resume_customer_input.add_argument("--external-ticket-id", default=None, help="Explicit external ticket ID override")
+    resume_customer_input.add_argument("--internal-ticket-id", default=None, help="Explicit internal ticket ID override")
     resume_customer_input.set_defaults(func=_cmd_resume_customer_input)
+
+    export_tool_docs = subparsers.add_parser(
+        "export-tool-docs",
+        help="Export semi-automatic tool docs drafts from ToolRegistry",
+        parents=[common],
+    )
+    export_tool_docs.add_argument(
+        "--output-dir",
+        default="docs/tools/generated",
+        help="Directory where generated markdown drafts are written",
+    )
+    export_tool_docs.set_defaults(func=_cmd_export_tool_docs)
 
     return parser
 

@@ -14,6 +14,7 @@ from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentP
 @dataclass(slots=True)
 class BackSupportInquiryWriterPhaseExecutor:
     write_shared_memory_tool: Callable[..., Any]
+    write_draft_tool: Callable[..., Any] | None = None
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
         result = tool(*args)
@@ -75,6 +76,14 @@ class BackSupportInquiryWriterPhaseExecutor:
                 None,
                 "append",
             )
+            if self.write_draft_tool is not None:
+                draft_payload: SharedMemoryDocumentPayload = {
+                    "title": "Back Support Inquiry Draft",
+                    "heading_level": 1,
+                    "summary": escalation_draft,
+                    "bullets": [f"Requested artifacts: {requested_items}"],
+                }
+                self._invoke_tool(self.write_draft_tool, case_id, workspace_path, draft_payload, "replace")
 
         return {
             "current_agent": BACK_SUPPORT_INQUIRY_WRITER_AGENT,

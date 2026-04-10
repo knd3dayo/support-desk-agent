@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, cast
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 
 @dataclass(slots=True)
@@ -16,9 +17,13 @@ class KnowledgeRetrieverPhaseExecutor:
     search_documents_tool: Callable[..., Any]
     external_ticket_tool: Callable[..., Any]
     internal_ticket_tool: Callable[..., Any]
+    write_working_memory_tool: Callable[..., Any] | None = None
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
-        result = tool(*args, **kwargs)
+        try:
+            result = tool(*args, **kwargs)
+        except TypeError:
+            result = tool(*args)
         if inspect.isawaitable(result):
             try:
                 resolved = asyncio.run(cast(Coroutine[Any, Any, Any], result))
@@ -79,16 +84,20 @@ class KnowledgeRetrieverPhaseExecutor:
 
     def execute(self, state: Mapping[str, object]) -> dict[str, object]:
         raw_issue = str(state.get("raw_issue") or "")
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        external_ticket_id = str(state.get("external_ticket_id") or "").strip()
+        internal_ticket_id = str(state.get("internal_ticket_id") or "").strip()
         document_message, document_results = self._parse_document_result(
             self._invoke_tool(self.search_documents_tool, query=raw_issue)
         )
         external_ticket_result = self._build_ticket_result(
             "external_ticket",
-            self._invoke_tool(self.external_ticket_tool),
+            self._invoke_tool(self.external_ticket_tool, ticket_id=external_ticket_id),
         )
         internal_ticket_result = self._build_ticket_result(
             "internal_ticket",
-            self._invoke_tool(self.internal_ticket_tool),
+            self._invoke_tool(self.internal_ticket_tool, ticket_id=internal_ticket_id),
         )
 
         results: list[dict[str, object]] = [*document_results, external_ticket_result, internal_ticket_result]
@@ -102,6 +111,20 @@ class KnowledgeRetrieverPhaseExecutor:
         else:
             referenced_sources = ", ".join(str(item["source_name"]) for item in document_results)
             summary = f"KnowledgeRetrieverAgent は次の document_sources を調査対象として扱います: {referenced_sources}"
+
+        if self.write_working_memory_tool is not None and case_id and workspace_path:
+            payload: SharedMemoryDocumentPayload = {
+                "title": "Knowledge Retrieval Result",
+                "heading_level": 2,
+                "bullets": [
+                    f"Query: {raw_issue or 'n/a'}",
+                    f"External ticket ID: {external_ticket_id or 'n/a'}",
+                    f"Internal ticket ID: {internal_ticket_id or 'n/a'}",
+                    f"Summary: {summary}",
+                    f"Adopted sources: {', '.join(adopted_sources) if adopted_sources else 'none'}",
+                ],
+            }
+            self._invoke_tool(self.write_working_memory_tool, case_id, workspace_path, payload, "append")
 
         return {
             "knowledge_retrieval_summary": summary,

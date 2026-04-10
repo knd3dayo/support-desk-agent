@@ -48,6 +48,24 @@ support_ope_agents:
 - mcp_tool: 呼び出す tool 名
 - description: source の説明
 
+external_ticket_id と internal_ticket_id は config.yml ではなく実行入力で与える。
+
+- CLI: `plan` / `action` / `resume-customer-input` で `--external-ticket-id` と `--internal-ticket-id` を受け付ける
+- API: 同名フィールドを request body で受け付ける
+- 未指定時は trace_id から自動生成し、外部は `EXT-TRACE-...`、内部は `INT-TRACE-...` を使う
+
+trace_id と ticket ID の関係を固定しておくことで、ケース実行単位の追跡と ticket source 照会の相関を取りやすくする。
+
+### 4.1 MCP ツール I/O 契約
+
+external_ticket / internal_ticket に対応する MCP ツールは、少なくとも次の I/O 契約を満たす前提とする。
+
+- 入力: `ticket_id` を受け取る
+- 出力: 指定 ID に対応するチケットの要約または詳細を文字列または JSON で返す
+- 未取得時: 「not configured」ではなく、取得不可または未発見である旨が分かる応答を返す
+
+既定実装は後方互換のため `ticket_id` を受け取らない handler でも動くが、MCP 側の正式契約としては `ticket_id` 入力を推奨する。
+
 ## 5. 優先順位
 
 KnowledgeRetrieverAgent の ticket source 解決は次の優先順位に従う。
@@ -72,3 +90,10 @@ KnowledgeRetrieverAgent は source ごとに次のような結果を返す方針
 - evidence
 
 Supervisor はこの結果から採用 source を選び、shared/context.md に採用した source 名を残す。
+また、最終採用した 1 件は CaseState の `knowledge_retrieval_final_adopted_source` に保持する。
+
+## 8. instruction override と tool docs 下書き
+
+- Supervisor の Intake 出力評価観点は [src/support_ope_agents/instructions/defaults/SuperVisorAgent.md](/home/user/source/repos/support-ope-agents/src/support_ope_agents/instructions/defaults/SuperVisorAgent.md) に既定値を置く
+- `config_paths.instructions_path` を設定すると、同名の SuperVisorAgent.md でこの評価観点を丸ごと上書きできる
+- docs/tools の下書きは `support-ope-agents export-tool-docs --config config.yml --output-dir docs/tools/generated` で生成できる

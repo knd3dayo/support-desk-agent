@@ -230,6 +230,32 @@ class SupervisorPhaseExecutor:
             f" 調査継続のため、{requested_items} の提供をご確認ください。"
         )
 
+    @staticmethod
+    def _select_final_knowledge_source(results: list[dict[str, object]]) -> str:
+        if not results:
+            return ""
+
+        status_priority = {"matched": 3, "fetched": 2, "configured": 1}
+        source_type_priority = {"document_source": 1, "ticket_source": 0}
+
+        def _list_length(value: object) -> int:
+            return len(value) if isinstance(value, list) else 0
+
+        ranked = sorted(
+            results,
+            key=lambda item: (
+                status_priority.get(str(item.get("status") or ""), -1),
+                source_type_priority.get(str(item.get("source_type") or ""), -1),
+                _list_length(item.get("evidence")),
+                _list_length(item.get("matched_paths")),
+            ),
+            reverse=True,
+        )
+        best = ranked[0]
+        if status_priority.get(str(best.get("status") or ""), -1) < 0:
+            return ""
+        return str(best.get("source_name") or "").strip()
+
     def execute_investigation(self, state: CaseState) -> CaseState:
         update = cast("CaseState", dict(state))
         update["status"] = "INVESTIGATING"
@@ -293,6 +319,7 @@ class SupervisorPhaseExecutor:
         knowledge_retrieval_summary = ""
         knowledge_retrieval_results: list[dict[str, object]] = []
         knowledge_retrieval_adopted_sources: list[str] = []
+        knowledge_retrieval_final_adopted_source = ""
         if self.log_analyzer_executor is not None and "LogAnalyzerAgent" in planned_child_agents:
             log_analysis = self.log_analyzer_executor.execute(update)
             log_analysis_summary = str(log_analysis.get("summary") or "")
@@ -310,11 +337,13 @@ class SupervisorPhaseExecutor:
             raw_adopted_sources = knowledge_result.get("knowledge_retrieval_adopted_sources")
             if isinstance(raw_adopted_sources, list):
                 knowledge_retrieval_adopted_sources = [str(item) for item in raw_adopted_sources if str(item).strip()]
+            knowledge_retrieval_final_adopted_source = self._select_final_knowledge_source(knowledge_retrieval_results)
             if knowledge_retrieval_summary:
                 update["knowledge_retrieval_summary"] = knowledge_retrieval_summary
             if knowledge_retrieval_results:
                 update["knowledge_retrieval_results"] = knowledge_retrieval_results
             update["knowledge_retrieval_adopted_sources"] = knowledge_retrieval_adopted_sources
+            update["knowledge_retrieval_final_adopted_source"] = knowledge_retrieval_final_adopted_source
 
         if update.get("execution_mode") == "action":
             default_summary = (
@@ -379,6 +408,7 @@ class SupervisorPhaseExecutor:
                     f"Log analysis summary: {log_analysis_summary or 'n/a'}",
                     f"Knowledge retrieval summary: {knowledge_retrieval_summary or 'n/a'}",
                     f"Adopted knowledge sources: {', '.join(knowledge_retrieval_adopted_sources) if knowledge_retrieval_adopted_sources else 'n/a'}",
+                    f"Final adopted knowledge source: {knowledge_retrieval_final_adopted_source or 'n/a'}",
                     f"Investigation summary: {str(update.get('investigation_summary') or '')}",
                     f"Escalation required: {'yes' if escalation_required else 'no'}",
                     f"Escalation reason: {escalation_reason or 'n/a'}",
@@ -394,6 +424,7 @@ class SupervisorPhaseExecutor:
                     f"Log analysis executed: {'yes' if log_analysis_summary else 'no'}",
                     f"Knowledge retrieval executed: {'yes' if knowledge_retrieval_summary or knowledge_retrieval_results else 'no'}",
                     f"Knowledge sources adopted: {', '.join(knowledge_retrieval_adopted_sources) if knowledge_retrieval_adopted_sources else 'none'}",
+                    f"Final knowledge source: {knowledge_retrieval_final_adopted_source or 'none'}",
                     f"Escalation path selected: {'yes' if escalation_required else 'no'}",
                 ],
             }

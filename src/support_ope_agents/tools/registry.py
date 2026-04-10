@@ -21,7 +21,9 @@ from .default_classify_ticket import build_default_classify_ticket_tool
 from .default_pii_mask import build_default_pii_mask_tool
 from .default_read_shared_memory import build_default_read_shared_memory_tool
 from .default_search_documents import build_default_search_documents_tool
+from .default_write_draft import build_default_write_draft_tool
 from .default_write_shared_memory import build_default_write_shared_memory_tool
+from .default_write_working_memory import build_default_write_working_memory_tool
 from .mcp_overrides import McpToolOverrideResolver, ToolConfigurationError
 
 
@@ -142,7 +144,13 @@ class ToolRegistry:
                     target="detect_log_format_and_search",
                 ),
                 ToolSpec("run_python_analysis", "Run code-based log analysis", _not_implemented_tool("run_python_analysis")),
-                ToolSpec("write_working_memory", "Write agent working memory", _not_implemented_tool("write_working_memory")),
+                ToolSpec(
+                    "write_working_memory",
+                    "Write agent working memory",
+                    build_default_write_working_memory_tool(self._config, LOG_ANALYZER_AGENT),
+                    provider="builtin",
+                    target="default-working-memory-writer",
+                ),
             ],
             KNOWLEDGE_RETRIEVER_AGENT: [
                 ToolSpec(
@@ -166,10 +174,22 @@ class ToolRegistry:
                         "internal_ticket tool is not configured. Configure an MCP override or knowledge_retrieval.internal_ticket in config.yml."
                     ),
                 ),
-                ToolSpec("write_working_memory", "Write agent working memory", _not_implemented_tool("write_working_memory")),
+                ToolSpec(
+                    "write_working_memory",
+                    "Write agent working memory",
+                    build_default_write_working_memory_tool(self._config, KNOWLEDGE_RETRIEVER_AGENT),
+                    provider="builtin",
+                    target="default-working-memory-writer",
+                ),
             ],
             DRAFT_WRITER_AGENT: [
-                ToolSpec("write_draft", "Write draft response", _not_implemented_tool("write_draft")),
+                ToolSpec(
+                    "write_draft",
+                    "Write draft response",
+                    build_default_write_draft_tool(self._config, "customer_response_draft"),
+                    provider="builtin",
+                    target="default-draft-writer",
+                ),
             ],
             COMPLIANCE_REVIEWER_AGENT: [
                 ToolSpec("check_policy", "Check compliance policy", _not_implemented_tool("check_policy")),
@@ -193,7 +213,13 @@ class ToolRegistry:
                 ),
             ],
             BACK_SUPPORT_INQUIRY_WRITER_AGENT: [
-                ToolSpec("write_draft", "Write escalation inquiry draft", _not_implemented_tool("write_draft")),
+                ToolSpec(
+                    "write_draft",
+                    "Write escalation inquiry draft",
+                    build_default_write_draft_tool(self._config, "back_support_inquiry_draft"),
+                    provider="builtin",
+                    target="default-draft-writer",
+                ),
                 ToolSpec(
                     "write_shared_memory",
                     "Write shared context/progress/summary files for a case workspace",

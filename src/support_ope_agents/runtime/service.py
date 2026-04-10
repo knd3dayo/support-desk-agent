@@ -85,11 +85,13 @@ class RuntimeService:
         )
         self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
             detect_log_format_tool=log_analyzer_tools["detect_log_format"],
+            write_working_memory_tool=log_analyzer_tools["write_working_memory"],
         )
         self._knowledge_retriever_executor = KnowledgeRetrieverPhaseExecutor(
             search_documents_tool=knowledge_retriever_tools["search_documents"],
             external_ticket_tool=knowledge_retriever_tools["external_ticket"],
             internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
+            write_working_memory_tool=knowledge_retriever_tools["write_working_memory"],
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
@@ -97,6 +99,7 @@ class RuntimeService:
         )
         self._back_support_inquiry_writer_executor = BackSupportInquiryWriterPhaseExecutor(
             write_shared_memory_tool=back_support_inquiry_writer_tools["write_shared_memory"],
+            write_draft_tool=back_support_inquiry_writer_tools["write_draft"],
         )
         self._supervisor_executor = SupervisorPhaseExecutor(
             read_shared_memory_tool=supervisor_tools["read_shared_memory"],
@@ -157,9 +160,25 @@ class RuntimeService:
                 )
         return agents
 
-    def plan(self, *, prompt: str, workspace_path: str, case_id: str | None = None) -> dict[str, object]:
+    def plan(
+        self,
+        *,
+        prompt: str,
+        workspace_path: str,
+        case_id: str | None = None,
+        external_ticket_id: str | None = None,
+        internal_ticket_id: str | None = None,
+    ) -> dict[str, object]:
         selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id, workspace_path=workspace_path)
         trace_id = self._new_trace_id()
+        resolved_external_ticket_id = self._context.case_id_resolver_service.resolve_external_ticket_id(
+            explicit_ticket_id=external_ticket_id,
+            trace_id=trace_id,
+        )
+        resolved_internal_ticket_id = self._context.case_id_resolver_service.resolve_internal_ticket_id(
+            explicit_ticket_id=internal_ticket_id,
+            trace_id=trace_id,
+        )
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
 
         workflow_kind = route_workflow(prompt)
@@ -174,6 +193,8 @@ class RuntimeService:
             "execution_mode": "plan",
             "workspace_path": workspace_path,
             "raw_issue": prompt,
+            "external_ticket_id": resolved_external_ticket_id,
+            "internal_ticket_id": resolved_internal_ticket_id,
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
         }
@@ -189,6 +210,8 @@ class RuntimeService:
             "workflow_run_id": trace_id,
             "workflow_kind": workflow_kind,
             "workflow_label": WORKFLOW_LABELS[workflow_kind],
+            "external_ticket_id": resolved_external_ticket_id,
+            "internal_ticket_id": resolved_internal_ticket_id,
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
             "requires_approval": result.get("status") == "WAITING_APPROVAL",
@@ -204,11 +227,21 @@ class RuntimeService:
         case_id: str | None = None,
         trace_id: str | None = None,
         execution_plan: str | None = None,
+        external_ticket_id: str | None = None,
+        internal_ticket_id: str | None = None,
     ) -> dict[str, object]:
         resolved_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id, workspace_path=workspace_path)
         saved_state = self._load_state(case_id=resolved_case_id, trace_id=trace_id, workspace_path=workspace_path)
         selected_case_id = str(saved_state.get("case_id") or resolved_case_id)
         current_trace_id = trace_id or str(saved_state.get("trace_id") or self._new_trace_id())
+        resolved_external_ticket_id = self._context.case_id_resolver_service.resolve_external_ticket_id(
+            explicit_ticket_id=external_ticket_id or str(saved_state.get("external_ticket_id") or "") or None,
+            trace_id=current_trace_id,
+        )
+        resolved_internal_ticket_id = self._context.case_id_resolver_service.resolve_internal_ticket_id(
+            explicit_ticket_id=internal_ticket_id or str(saved_state.get("internal_ticket_id") or "") or None,
+            trace_id=current_trace_id,
+        )
 
         if not saved_state:
             workflow_kind = route_workflow(prompt)
@@ -229,6 +262,8 @@ class RuntimeService:
             "execution_mode": "action",
             "workspace_path": workspace_path,
             "raw_issue": prompt,
+            "external_ticket_id": resolved_external_ticket_id,
+            "internal_ticket_id": resolved_internal_ticket_id,
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
             "approval_decision": "pending",
@@ -246,6 +281,8 @@ class RuntimeService:
             "workflow_kind": workflow_kind,
             "workflow_label": WORKFLOW_LABELS[workflow_kind],
             "execution_mode": "action",
+            "external_ticket_id": resolved_external_ticket_id,
+            "internal_ticket_id": resolved_internal_ticket_id,
             "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
             "state": result,
         }
@@ -258,6 +295,8 @@ class RuntimeService:
         workspace_path: str,
         additional_input: str,
         answer_key: str | None = None,
+        external_ticket_id: str | None = None,
+        internal_ticket_id: str | None = None,
     ) -> dict[str, object]:
         saved_state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
         if not saved_state:
@@ -278,6 +317,14 @@ class RuntimeService:
         resumed_state["case_id"] = case_id
         resumed_state["workspace_path"] = workspace_path
         resumed_state["raw_issue"] = merged_prompt
+        resumed_state["external_ticket_id"] = self._context.case_id_resolver_service.resolve_external_ticket_id(
+            explicit_ticket_id=external_ticket_id or str(saved_state.get("external_ticket_id") or "") or None,
+            trace_id=trace_id,
+        )
+        resumed_state["internal_ticket_id"] = self._context.case_id_resolver_service.resolve_internal_ticket_id(
+            explicit_ticket_id=internal_ticket_id or str(saved_state.get("internal_ticket_id") or "") or None,
+            trace_id=trace_id,
+        )
         resumed_state["intake_rework_required"] = False
         resumed_state["intake_rework_reason"] = ""
         resumed_state["intake_missing_fields"] = []
@@ -315,6 +362,8 @@ class RuntimeService:
             "workflow_kind": workflow_kind,
             "workflow_label": WORKFLOW_LABELS[workflow_kind],
             "execution_mode": str(result.get("execution_mode") or saved_state.get("execution_mode") or ""),
+            "external_ticket_id": str(result.get("external_ticket_id") or resumed_state.get("external_ticket_id") or ""),
+            "internal_ticket_id": str(result.get("internal_ticket_id") or resumed_state.get("internal_ticket_id") or ""),
             "plan_summary": str(result.get("plan_summary") or saved_state.get("plan_summary") or ""),
             "plan_steps": list(result.get("plan_steps") or saved_state.get("plan_steps") or []),
             "requires_approval": result.get("status") == "WAITING_APPROVAL",

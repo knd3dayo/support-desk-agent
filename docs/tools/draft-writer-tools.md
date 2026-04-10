@@ -14,4 +14,4 @@
 
 ## 4. 実装状況
 
-- write_draft: 共通ツールとして未実装
+- write_draft: 共通ツールとして実装済み。既定では `.artifacts/drafts/customer_response_draft.md` へ書き出す
