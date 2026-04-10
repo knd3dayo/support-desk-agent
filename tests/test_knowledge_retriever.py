@@ -200,6 +200,10 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertTrue(evidence)
         self.assertIn("Application層", summary)
         self.assertIn("AIガバナンス層", summary)
+        retrieval_summary = cast(str, result["knowledge_retrieval_summary"])
+        self.assertIn("検索しました", retrieval_summary)
+        self.assertIn("生成AI基盤のアーキテクチャの概要を返してください", retrieval_summary)
+        self.assertIn("採用した根拠ソース: ai-platform-poc", retrieval_summary)
 
     def test_prefers_intake_hydrated_ticket_context_over_refetch(self) -> None:
         external_calls: list[str] = []

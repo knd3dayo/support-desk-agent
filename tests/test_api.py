@@ -121,6 +121,19 @@ support_ope_agents:
         with zipfile.ZipFile(archive_path) as archive:
             self.assertIn("CASE-API-001/uploads/note.txt", archive.namelist())
 
+    def test_workspace_raw_uses_inline_markdown_media_type(self) -> None:
+        target = self.case_path / "report.md"
+        target.write_text("# heading\n", encoding="utf-8")
+
+        response = self.client.get(
+            "/cases/CASE-API-001/workspace/raw",
+            params={"workspace_path": str(self.case_path), "path": "report.md"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/markdown", response.headers.get("content-type") or "")
+        self.assertIn("inline", response.headers.get("content-disposition") or "")
+
     def test_auth_blocks_requests_without_token(self) -> None:
         response = self.secure_client.get("/cases")
 

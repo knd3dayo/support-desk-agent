@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 
 from fastapi import Depends
@@ -34,12 +35,12 @@ from .schemas import (
 )
 
 
-def create_app(config_path: str = "config.yml") -> FastAPI:
+def create_app(config_path: str = "config.yml", cases_root: str | None = None) -> FastAPI:
     context = build_runtime_context(config_path)
     service = RuntimeService(context)
     app = FastAPI(title="support-ope-agents API", version="0.1.0")
     base_dir = Path(config_path).resolve().parent
-    default_cases_root = base_dir / "work" / "cases"
+    default_cases_root = Path(cases_root).expanduser().resolve() if cases_root else base_dir / "work" / "cases"
 
     if context.config.interfaces.cors_allowed_origins:
         app.add_middleware(
@@ -77,6 +78,17 @@ def create_app(config_path: str = "config.yml") -> FastAPI:
             candidates.append(authorization[len(bearer_prefix) :])
         if expected not in candidates:
             raise HTTPException(status_code=401, detail="authentication required")
+
+    def resolve_raw_media_type(target: Path) -> str:
+        suffix = target.suffix.lower()
+        if suffix in {".md", ".markdown"}:
+            return "text/markdown"
+        guessed_mime, _ = mimetypes.guess_type(target.name)
+        if guessed_mime:
+            return guessed_mime
+        if suffix in {".yml", ".yaml"}:
+            return "application/yaml"
+        return "application/octet-stream"
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -163,7 +175,11 @@ def create_app(config_path: str = "config.yml") -> FastAPI:
             target = service.workspace_file_path(case_id=case_id, workspace_path=resolved_workspace, relative_path=path)
         except Exception as exc:
             raise map_error(exc) from exc
-        return FileResponse(path=target)
+        return FileResponse(
+            path=target,
+            media_type=resolve_raw_media_type(target),
+            headers={"Content-Disposition": f'inline; filename="{target.name}"'},
+        )
 
     @app.post("/cases/{case_id}/workspace/upload", response_model=WorkspaceUploadResponse)
     async def upload_workspace_file(

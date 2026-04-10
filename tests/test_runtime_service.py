@@ -569,6 +569,19 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         metadata = self.service.context.memory_store.read_case_metadata(str(workspace))
         self.assertEqual(str(metadata.get("case_title") or ""), "古いケースの問い合わせタイトル")
 
+    def test_list_cases_reads_workspace_root_only(self) -> None:
+        direct_workspace = self.workspace_path / "CASE-DIRECT"
+        legacy_root = self.workspace_path / "cases"
+        legacy_workspace = legacy_root / "CASE-LEGACY-SUBDIR"
+        self.service.initialize_case("CASE-DIRECT", str(direct_workspace))
+        self.service.initialize_case("CASE-LEGACY-SUBDIR", str(legacy_workspace))
+
+        cases = self.service.list_cases(str(self.workspace_path))
+
+        case_ids = {str(item["case_id"]) for item in cases}
+        self.assertIn("CASE-DIRECT", case_ids)
+        self.assertNotIn("CASE-LEGACY-SUBDIR", case_ids)
+
     def test_workspace_roundtrip_and_archive(self) -> None:
         self.service.initialize_case("CASE-TEST-015", str(self.workspace_path))
 

@@ -87,6 +87,11 @@ export function rawFileUrl(caseId: string, workspacePath: string, path: string):
   return `/cases/${caseId}/workspace/raw?${params.toString()}`;
 }
 
+export function renderedPreviewUrl(caseId: string, workspacePath: string, path: string): string {
+  const params = new URLSearchParams({ preview: '1', case_id: caseId, workspace_path: workspacePath, path });
+  return `/?${params.toString()}`;
+}
+
 export async function loadRawFileBlob(caseId: string, workspacePath: string, path: string): Promise<Blob> {
   const response = await fetch(rawFileUrl(caseId, workspacePath, path), {
     headers: getAuthHeaders(),

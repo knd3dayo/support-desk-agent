@@ -110,6 +110,32 @@ class KnowledgeRetrieverPhaseExecutor:
             "evidence": [],
         }
 
+    @staticmethod
+    def _build_document_summary(
+        raw_issue: str,
+        document_message: str,
+        document_results: list[dict[str, object]],
+        adopted_sources: list[str],
+    ) -> str:
+        if not document_results:
+            return document_message or "参照可能なドキュメントがないので回答できません。"
+
+        matched_results = [item for item in document_results if str(item.get("status") or "") == "matched"]
+        referenced_sources = ", ".join(str(item.get("source_name") or "") for item in matched_results or document_results)
+        summary = "KnowledgeRetrieverAgent は問い合わせ内容をもとに document_sources を検索しました。"
+        if raw_issue:
+            summary += f" Query: {raw_issue}"
+        summary += f" 検索対象ソース: {referenced_sources or 'n/a'}。"
+        if matched_results:
+            matched_path_count = sum(len(cast(list[str], item.get("matched_paths") or [])) for item in matched_results)
+            summary += f" 一致したソース数: {len(matched_results)}、参照候補ファイル数: {matched_path_count}。"
+            first_summary = str(matched_results[0].get("summary") or "").strip()
+            if first_summary:
+                summary += f" 代表的な根拠: {first_summary}"
+        if adopted_sources:
+            summary += f" 採用した根拠ソース: {', '.join(adopted_sources)}。"
+        return summary.strip()
+
     def execute(self, state: Mapping[str, object]) -> dict[str, object]:
         raw_issue = str(state.get("raw_issue") or "")
         case_id = str(state.get("case_id") or "").strip()
@@ -159,11 +185,7 @@ class KnowledgeRetrieverPhaseExecutor:
             for item in document_results
             if str(item.get("status") or "") in {"configured", "matched", "fetched"}
         ]
-        if not document_results:
-            summary = document_message or "参照可能なドキュメントがないので回答できません。"
-        else:
-            referenced_sources = ", ".join(str(item["source_name"]) for item in document_results)
-            summary = f"KnowledgeRetrieverAgent は次の document_sources を調査対象として扱います: {referenced_sources}"
+        summary = self._build_document_summary(raw_issue, document_message, document_results, adopted_sources)
 
         if self.write_working_memory_tool is not None and case_id and workspace_path:
             payload: SharedMemoryDocumentPayload = {

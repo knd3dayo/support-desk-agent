@@ -44,6 +44,15 @@ class _FakeKnowledgeRetrieverExecutor:
         }
 
 
+class _FakeMissingLogsAnalyzerExecutor:
+    @staticmethod
+    def execute(_state: dict[str, object]) -> dict[str, object]:
+        return {
+            "summary": "ログファイルが見つからなかったため、既知事例との照合を優先します。",
+            "file": "",
+        }
+
+
 class SupervisorAgentTests(unittest.TestCase):
     def test_supervisor_uses_back_support_escalation_settings(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -130,6 +139,44 @@ class SupervisorAgentTests(unittest.TestCase):
 
             self.assertEqual(str(result.get("knowledge_retrieval_final_adopted_source") or ""), "ai-platform-poc")
             self.assertEqual(result.get("knowledge_retrieval_adopted_sources") or [], ["ai-platform-poc"])
+
+    def test_supervisor_does_not_escalate_on_missing_logs_when_knowledge_is_actionable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+            read_shared_memory = build_default_read_shared_memory_tool(config)
+            write_shared_memory = build_default_write_shared_memory_tool(config)
+            workspace_path = Path(tmpdir)
+
+            supervisor = SupervisorPhaseExecutor(
+                read_shared_memory_tool=read_shared_memory,
+                write_shared_memory_tool=write_shared_memory,
+                log_analyzer_executor=_FakeMissingLogsAnalyzerExecutor(),
+                knowledge_retriever_executor=_FakeKnowledgeRetrieverExecutor(),
+            )
+
+            result = supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-LOG-001",
+                    "workspace_path": str(workspace_path),
+                    "execution_mode": "action",
+                    "workflow_kind": "incident_investigation",
+                    "intake_category": "incident_investigation",
+                    "intake_urgency": "medium",
+                    "intake_incident_timeframe": "2026-04-10 10:15 頃",
+                    "raw_issue": "接続断が発生したが既知事例の回避策があるか確認したい",
+                }
+            )
+
+            self.assertFalse(bool(result.get("escalation_required")))
+            self.assertEqual(str(result.get("knowledge_retrieval_final_adopted_source") or ""), "ai-platform-poc")
 
     def test_supervisor_draft_review_records_compliance_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

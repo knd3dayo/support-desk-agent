@@ -1,4 +1,6 @@
 import { startTransition, useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   browseWorkspace,
   createCase,
@@ -9,6 +11,7 @@ import {
   loadHistory,
   loadRawFileBlob,
   loadUiConfig,
+  renderedPreviewUrl,
   rawFileUrl,
   resumeCustomerInput,
   saveAuthToken,
@@ -57,7 +60,137 @@ function describeRun(result: RuntimeEnvelope): string {
   return result.workflow_label || result.plan_summary || '処理が完了しました';
 }
 
+function isMarkdownFile(name: string, mimeType?: string | null): boolean {
+  const normalizedName = name.toLowerCase();
+  const normalizedMime = (mimeType || '').toLowerCase();
+  return (
+    normalizedName.endsWith('.md') ||
+    normalizedName.endsWith('.markdown') ||
+    normalizedMime === 'text/markdown' ||
+    normalizedMime === 'text/x-markdown'
+  );
+}
+
+type StandalonePreviewParams = {
+  caseId: string;
+  workspacePath: string;
+  path: string;
+};
+
+function getStandalonePreviewParams(): StandalonePreviewParams | null {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('preview') !== '1') {
+    return null;
+  }
+
+  const caseId = params.get('case_id')?.trim() || '';
+  const workspacePath = params.get('workspace_path')?.trim() || '';
+  const path = params.get('path')?.trim() || '';
+  if (!caseId || !workspacePath || !path) {
+    return null;
+  }
+
+  return { caseId, workspacePath, path };
+}
+
+function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewParams) {
+  const [preview, setPreview] = useState<WorkspaceFileResponse | null>(null);
+  const [inlinePreviewUrl, setInlinePreviewUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState('プレビューを読み込み中です。');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      try {
+        const nextPreview = await loadFile(caseId, workspacePath, path);
+        if (cancelled) {
+          return;
+        }
+
+        if ((nextPreview.mime_type || '').startsWith('image/') || nextPreview.mime_type === 'application/pdf') {
+          const blob = await loadRawFileBlob(caseId, workspacePath, path);
+          if (cancelled) {
+            return;
+          }
+          setInlinePreviewUrl(URL.createObjectURL(blob));
+        }
+
+        setPreview(nextPreview);
+        setStatus(nextPreview.name);
+      } catch {
+        if (!cancelled) {
+          setStatus('プレビューの取得に失敗しました。');
+        }
+      }
+    }
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      if (inlinePreviewUrl) {
+        URL.revokeObjectURL(inlinePreviewUrl);
+      }
+    };
+  }, [caseId, workspacePath, path]);
+
+  return (
+    <div className="standalone-preview-page">
+      <div className="standalone-preview-card panel">
+        <div className="preview-header standalone-preview-header">
+          <div>
+            <p className="eyebrow">Rendered Preview</p>
+            <strong>{preview?.name || path}</strong>
+            <span>{preview?.mime_type || status}</span>
+          </div>
+          <a
+            className="ghost-button"
+            href={rawFileUrl(caseId, workspacePath, path)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            raw を開く
+          </a>
+        </div>
+        {preview ? (
+          preview.preview_available ? (
+            isMarkdownFile(preview.name, preview.mime_type) ? (
+              <div className="preview-markdown standalone-preview-content markdown-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.content || ''}</ReactMarkdown>
+              </div>
+            ) : (
+              <pre className="standalone-preview-content">{preview.content}</pre>
+            )
+          ) : inlinePreviewUrl && (preview.mime_type || '').startsWith('image/') ? (
+            <div className="binary-preview-frame standalone-preview-content">
+              <img src={inlinePreviewUrl} alt={preview.name} className="binary-image-preview" />
+            </div>
+          ) : inlinePreviewUrl && preview.mime_type === 'application/pdf' ? (
+            <iframe title={preview.name} src={inlinePreviewUrl} className="binary-pdf-preview standalone-preview-content" />
+          ) : (
+            <div className="empty-state compact standalone-preview-content">
+              <h3>このファイル形式はレンダリング対象外です。</h3>
+              <p>必要に応じて raw を開いて確認してください。</p>
+            </div>
+          )
+        ) : (
+          <div className="empty-state compact standalone-preview-content">
+            <h3>プレビューを準備中です。</h3>
+            <p>{status}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const standalonePreview = getStandalonePreviewParams();
+  if (standalonePreview) {
+    return <StandalonePreview {...standalonePreview} />;
+  }
+
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [selectedCase, setSelectedCase] = useState<CaseSummary | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -112,6 +245,15 @@ export default function App() {
       }
     } catch {
       setStatusLine('UI 設定の取得に失敗しました。');
+    }
+  }
+
+  async function copyRawText(content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setStatusLine('raw_text をコピーしました。');
+    } catch {
+      setStatusLine('raw_text のコピーに失敗しました。');
     }
   }
 
@@ -383,8 +525,19 @@ export default function App() {
           ) : (
             messages.map((message, index) => (
               <article key={`${message.trace_id || 'local'}-${index}`} className={`message ${message.role}`}>
-                <div className="message-role">{message.role === 'assistant' ? 'Agent' : 'You'}</div>
-                <p>{message.content}</p>
+                <div className="message-header">
+                  <div className="message-role">{message.role === 'assistant' ? 'Agent' : 'You'}</div>
+                  <button
+                    className="ghost-button message-copy-button"
+                    type="button"
+                    onClick={() => void copyRawText(message.content)}
+                  >
+                    raw_text をコピー
+                  </button>
+                </div>
+                <div className="message-body markdown-body">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                </div>
                 <span className="message-meta">{formatTimestamp(message.created_at)} {message.event ? `· ${message.event}` : ''}</span>
               </article>
             ))
@@ -510,7 +663,7 @@ export default function App() {
                     </div>
                     <a
                       className="ghost-button preview-action-button"
-                      href={selectedCase ? rawFileUrl(selectedCase.case_id, selectedCase.workspace_path, preview.path) : '#'}
+                      href={selectedCase ? renderedPreviewUrl(selectedCase.case_id, selectedCase.workspace_path, preview.path) : '#'}
                       target="_blank"
                       rel="noreferrer"
                       aria-label="別ウィンドウで表示"
@@ -522,7 +675,13 @@ export default function App() {
                     </a>
                   </div>
                   {preview.preview_available ? (
-                    <pre>{preview.content}</pre>
+                    isMarkdownFile(preview.name, preview.mime_type) ? (
+                      <div className="preview-markdown markdown-body">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.content || ''}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <pre>{preview.content}</pre>
+                    )
                   ) : inlinePreviewUrl && (preview.mime_type || '').startsWith('image/') ? (
                     <div className="binary-preview-frame">
                       <img src={inlinePreviewUrl} alt={preview.name} className="binary-image-preview" />

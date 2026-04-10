@@ -178,3 +178,10 @@ cython_debug/
 
 # Runtime-generated case artifacts
 work/
+
+# React/Vite frontend artifacts
+node_modules/
+dist/
+.vite/
+coverage/
+*.log

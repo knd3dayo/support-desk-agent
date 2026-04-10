@@ -513,10 +513,13 @@ input {
 
 .message {
   max-width: 86%;
+  min-width: 0;
   padding: 16px 18px;
   border-radius: 24px;
   font-size: 0.88rem;
   line-height: 1.7;
+  display: grid;
+  gap: 10px;
 }
 
 .message.user {
@@ -532,9 +535,95 @@ input {
   border-bottom-left-radius: 8px;
 }
 
-.message p {
-  margin: 10px 0 0;
-  white-space: pre-wrap;
+.message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message-copy-button {
+  padding: 7px 10px;
+  font-size: 0.74rem;
+  color: inherit;
+}
+
+.message-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body {
+  min-width: 0;
+}
+
+.message-body > :first-child {
+  margin-top: 0;
+}
+
+.message-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body li,
+.markdown-body pre,
+.markdown-body blockquote,
+.markdown-body table,
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 0.7em 0;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.25rem;
+}
+
+.markdown-body pre {
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(16, 33, 47, 0.12);
+}
+
+.markdown-body code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.94em;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-body :not(pre) > code {
+  display: inline;
+  padding: 0.12rem 0.38rem;
+  border-radius: 999px;
+  background: rgba(16, 33, 47, 0.08);
+}
+
+.markdown-body blockquote {
+  margin-left: 0;
+  padding-left: 12px;
+  border-left: 3px solid rgba(16, 33, 47, 0.18);
+  color: rgba(16, 33, 47, 0.72);
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(16, 33, 47, 0.1);
+  text-align: left;
 }
 
 .message-role {
@@ -800,6 +889,64 @@ input {
   font-size: 0.82rem;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.preview-markdown {
+  margin: 12px 0 0;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.92);
+  color: #10212f;
+  border-radius: 20px;
+  padding: 18px 20px;
+  min-height: 320px;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  box-shadow: inset 0 0 0 1px rgba(16, 33, 47, 0.06);
+}
+
+.standalone-preview-page {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(230, 212, 173, 0.46), transparent 34%),
+    linear-gradient(180deg, #f7f1df 0%, #e6edf2 100%);
+}
+
+.standalone-preview-card {
+  width: min(1100px, 100%);
+  min-height: calc(100vh - 56px);
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.standalone-preview-header {
+  align-items: flex-start;
+}
+
+.standalone-preview-header > div {
+  display: grid;
+  gap: 6px;
+}
+
+.standalone-preview-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-markdown h1,
+.preview-markdown h2,
+.preview-markdown h3,
+.preview-markdown h4,
+.preview-markdown p,
+.preview-markdown ul,
+.preview-markdown ol,
+.preview-markdown pre,
+.preview-markdown blockquote,
+.preview-markdown table {
+  overflow-wrap: anywhere;
 }
 
 .binary-preview-frame {

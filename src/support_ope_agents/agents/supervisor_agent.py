@@ -167,6 +167,22 @@ class SupervisorPhaseExecutor:
                 deduplicated.append(artifact)
         return deduplicated
 
+    @staticmethod
+    def _has_actionable_knowledge_evidence(
+        knowledge_retrieval_summary: str,
+        knowledge_retrieval_results: list[dict[str, object]],
+        knowledge_retrieval_adopted_sources: list[str],
+    ) -> bool:
+        if knowledge_retrieval_adopted_sources:
+            return True
+
+        actionable_statuses = {"matched", "fetched"}
+        for item in knowledge_retrieval_results:
+            if str(item.get("status") or "").strip().lower() in actionable_statuses:
+                return True
+
+        return bool(knowledge_retrieval_summary.strip())
+
     def _decide_escalation(
         self,
         state: "CaseState",
@@ -174,6 +190,9 @@ class SupervisorPhaseExecutor:
         effective_workflow_kind: str,
         investigation_summary: str,
         log_analysis_summary: str,
+        knowledge_retrieval_summary: str,
+        knowledge_retrieval_results: list[dict[str, object]],
+        knowledge_retrieval_adopted_sources: list[str],
         memory_snapshot: dict[str, str],
     ) -> tuple[bool, str, list[str]]:
         if bool(state.get("escalation_required")):
@@ -186,6 +205,14 @@ class SupervisorPhaseExecutor:
         ).lower()
         has_uncertainty = any(marker.lower() in combined_text for marker in self.escalation_settings.uncertainty_markers)
         missing_logs = any(marker in log_analysis_summary for marker in self.escalation_settings.missing_log_markers)
+        actionable_knowledge_evidence = self._has_actionable_knowledge_evidence(
+            knowledge_retrieval_summary,
+            knowledge_retrieval_results,
+            knowledge_retrieval_adopted_sources,
+        )
+
+        if effective_workflow_kind == "incident_investigation" and missing_logs and not has_uncertainty and actionable_knowledge_evidence:
+            return False, "", []
 
         if not has_uncertainty and not (effective_workflow_kind == "incident_investigation" and missing_logs):
             return False, "", []
@@ -383,6 +410,9 @@ class SupervisorPhaseExecutor:
             effective_workflow_kind=effective_workflow_kind,
             investigation_summary=investigation_summary,
             log_analysis_summary=log_analysis_summary,
+            knowledge_retrieval_summary=knowledge_retrieval_summary,
+            knowledge_retrieval_results=knowledge_retrieval_results,
+            knowledge_retrieval_adopted_sources=knowledge_retrieval_adopted_sources,
             memory_snapshot=memory_snapshot,
         )
         update["escalation_required"] = escalation_required
