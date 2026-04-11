@@ -9,9 +9,11 @@ import {
   generateReport,
   getSavedAuthToken,
   listCases,
+  loadControlCatalog,
   loadFile,
   loadHistory,
   loadRawFileBlob,
+  loadRuntimeAudit,
   loadUiConfig,
   renderedPreviewUrl,
   rawFileUrl,
@@ -23,7 +25,9 @@ import {
 import type {
   CaseSummary,
   ChatMessage,
+  ControlCatalogResponse,
   RuntimeEnvelope,
+  RuntimeAuditResponse,
   WorkspaceBrowseResponse,
   WorkspaceEntry,
   WorkspaceFileResponse,
@@ -421,6 +425,8 @@ export default function App() {
   const [inlinePreviewUrl, setInlinePreviewUrl] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false);
+  const [controlCatalog, setControlCatalog] = useState<ControlCatalogResponse | null>(null);
+  const [runtimeAudit, setRuntimeAudit] = useState<RuntimeAuditResponse | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const [uiConfig, setUiConfig] = useState<UiConfigResponse>({
     app_name: 'Support Desk',
@@ -432,6 +438,7 @@ export default function App() {
   useEffect(() => {
     void refreshUiConfig();
     void refreshCases();
+    void refreshControlCatalog();
   }, []);
 
   useEffect(() => {
@@ -468,6 +475,27 @@ export default function App() {
     }
   }
 
+  async function refreshControlCatalog() {
+    try {
+      setControlCatalog(await loadControlCatalog());
+    } catch {
+      setControlCatalog(null);
+    }
+  }
+
+  async function refreshRuntimeAudit(target: CaseSummary, traceId: string | null | undefined) {
+    const normalizedTraceId = traceId?.trim();
+    if (!normalizedTraceId) {
+      setRuntimeAudit(null);
+      return;
+    }
+    try {
+      setRuntimeAudit(await loadRuntimeAudit(target.case_id, target.workspace_path, normalizedTraceId));
+    } catch {
+      setRuntimeAudit(null);
+    }
+  }
+
   async function copyRawText(content: string) {
     try {
       await navigator.clipboard.writeText(content);
@@ -491,6 +519,7 @@ export default function App() {
       setPreview(null);
       setPendingQuestion(null);
     });
+    await refreshRuntimeAudit(target, findLatestTraceId(history.messages));
     setStatusLine(`${target.case_id} を表示しています。`);
   }
 
@@ -504,6 +533,7 @@ export default function App() {
       setPendingQuestion(null);
       setDraftPrompt('');
       setQueuedFiles([]);
+      setRuntimeAudit(null);
     });
     if (inlinePreviewUrl) {
       URL.revokeObjectURL(inlinePreviewUrl);
@@ -630,6 +660,7 @@ export default function App() {
         browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, workspaceView?.current_path || '.'),
         listCases(),
       ]);
+      await refreshRuntimeAudit(selectedCase, traceId);
 
       startTransition(() => {
         setWorkspaceView(workspace);
@@ -704,6 +735,7 @@ export default function App() {
         browseWorkspace(activeCase.case_id, activeCase.workspace_path, workspaceView?.current_path || '.'),
         listCases(),
       ]);
+      await refreshRuntimeAudit(activeCase, result.trace_id || findLatestTraceId(history.messages));
 
       startTransition(() => {
         setMessages(history.messages);
@@ -974,6 +1006,71 @@ export default function App() {
         </div>
 
         <div id="workspace-content" className={`panel-content ${workspaceCollapsed ? 'is-collapsed' : ''}`}>
+          <div className="control-inspector panel-subtle">
+            <div className="control-inspector-header">
+              <div>
+                <p className="eyebrow">Control View</p>
+                <strong>制御一覧と実行時監査</strong>
+              </div>
+              <span className="control-trace-label">{runtimeAudit?.summary.trace_id || 'trace 未選択'}</span>
+            </div>
+            <div className="control-summary-grid">
+              <div className="control-stat-card">
+                <span>Control points</span>
+                <strong>{controlCatalog?.summary.control_point_count ?? '-'}</strong>
+              </div>
+              <div className="control-stat-card">
+                <span>Workflow nodes</span>
+                <strong>{controlCatalog?.summary.workflow_node_count ?? '-'}</strong>
+              </div>
+              <div className="control-stat-card">
+                <span>Logical tools</span>
+                <strong>{controlCatalog?.summary.logical_tool_count ?? '-'}</strong>
+              </div>
+              <div className="control-stat-card">
+                <span>Used roles</span>
+                <strong>{runtimeAudit?.summary.used_role_count ?? '-'}</strong>
+              </div>
+            </div>
+            {runtimeAudit ? (
+              <div className="control-runtime-grid">
+                <div className="control-detail-block">
+                  <strong>実行結果</strong>
+                  <p>Status: {runtimeAudit.summary.status}</p>
+                  <p>Workflow: {runtimeAudit.summary.workflow_kind}</p>
+                  <p>Result: {runtimeAudit.summary.result}</p>
+                  <p>Approval: {runtimeAudit.summary.approval_route}</p>
+                </div>
+                <div className="control-detail-block">
+                  <strong>使用エージェント</strong>
+                  <div className="control-chip-list">
+                    {runtimeAudit.used_roles.map((role) => (
+                      <span key={role} className="control-chip">{role}</span>
+                    ))}
+                  </div>
+                  <p className="control-path">{runtimeAudit.workflow_path.join(' → ')}</p>
+                </div>
+                <div className="control-detail-block">
+                  <strong>発火した制御</strong>
+                  <div className="control-decision-list">
+                    {runtimeAudit.decision_log.slice(0, 6).map((item) => (
+                      <div key={`${item.control_point_id}-${item.outcome}`} className="control-decision-item">
+                        <span>{item.category}</span>
+                        <strong>{item.control_point_id}</strong>
+                        <p>{item.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state compact control-empty-state">
+                <h3>実行時監査はまだありません。</h3>
+                <p>ケースを実行すると、直近 trace の分岐と制御がここに表示されます。</p>
+              </div>
+            )}
+          </div>
+
           <div className="breadcrumbs">
             <button type="button" onClick={() => void openDirectory('.')} disabled={!selectedCase}>
               root

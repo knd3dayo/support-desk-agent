@@ -1,8 +1,10 @@
 import type {
   CaseSummary,
   ChatHistoryResponse,
+  ControlCatalogResponse,
   GenerateReportResponse,
   InitCaseResponse,
+  RuntimeAuditResponse,
   RuntimeEnvelope,
   UiConfigResponse,
   WorkspaceBrowseResponse,
@@ -59,6 +61,10 @@ export function listCases(): Promise<CaseSummary[]> {
 
 export function loadUiConfig(): Promise<UiConfigResponse> {
   return requestJson<UiConfigResponse>('/ui-config');
+}
+
+export function loadControlCatalog(): Promise<ControlCatalogResponse> {
+  return requestJson<ControlCatalogResponse>('/control-catalog');
 }
 
 export function createCase(prompt: string): Promise<InitCaseResponse> {
@@ -148,6 +154,11 @@ export function generateReport(
       checklist,
     }),
   });
+}
+
+export function loadRuntimeAudit(caseId: string, workspacePath: string, traceId: string): Promise<RuntimeAuditResponse> {
+  const params = new URLSearchParams({ workspace_path: workspacePath, trace_id: traceId });
+  return requestJson<RuntimeAuditResponse>(`/cases/${caseId}/runtime-audit?${params.toString()}`);
 }
 
 export function sendAction(prompt: string, workspacePath: string, caseId: string): Promise<RuntimeEnvelope> {

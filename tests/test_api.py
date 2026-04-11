@@ -231,7 +231,40 @@ class ApiWorkspaceTests(unittest.TestCase):
         report_path = Path(payload["report_path"])
         self.assertTrue(report_path.exists())
         self.assertEqual(report_path.parent.name, ".report")
-        self.assertIn("sequenceDiagram", report_path.read_text(encoding="utf-8"))
+        content = report_path.read_text(encoding="utf-8")
+        self.assertIn("sequenceDiagram", content)
+        self.assertIn("## 制御一覧", content)
+        self.assertIn("[defined] workflow.approval_node", content)
+
+    def test_control_catalog_endpoint_returns_summary(self) -> None:
+        response = self.client.get("/control-catalog")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertGreaterEqual(int(payload["summary"]["control_point_count"]), 8)
+
+    def test_runtime_audit_endpoint_returns_trace_audit(self) -> None:
+        trace_id = "TRACE-API-AUDIT"
+        self.client.post(
+            "/action",
+            json={
+                "prompt": "生成AI基盤のアーキテクチャ概要を教えてください。",
+                "workspace_path": str(self.case_path),
+                "case_id": "CASE-API-001",
+                "trace_id": trace_id,
+            },
+        )
+
+        response = self.client.get(
+            "/cases/CASE-API-001/runtime-audit",
+            params={"workspace_path": str(self.case_path), "trace_id": trace_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["summary"]["trace_id"], trace_id)
+        self.assertTrue(payload["workflow_path"])
+        self.assertTrue(payload["decision_log"])
 
     def test_generate_report_endpoint_requires_auth_when_enabled(self) -> None:
         response = self.secure_client.post(

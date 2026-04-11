@@ -632,6 +632,82 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn(".artifacts/intake/external_attachments/external-log.log", selected_file)
         self.assertNotEqual(selected_file, str(lower_priority_log.resolve()))
 
+    def test_describe_control_catalog_lists_core_controls(self) -> None:
+        catalog = self.service.describe_control_catalog()
+
+        summary = cast(dict[str, object], catalog["summary"])
+        self.assertGreaterEqual(int(summary["control_point_count"]), 8)
+
+        workflow = cast(dict[str, object], catalog["workflow"])
+        edges = cast(list[dict[str, object]], workflow["edges"])
+        self.assertTrue(
+            any(edge.get("control_point_id") == "workflow.route_after_approval.approved" for edge in edges)
+        )
+        self.assertTrue(any(str(edge.get("to") or "") == "wait_for_customer_input" for edge in edges))
+
+        agents = cast(list[dict[str, object]], catalog["agents"])
+        intake_entry = next(item for item in agents if str(item.get("role") or "") == INTAKE_AGENT)
+        intake_tools = cast(list[dict[str, object]], intake_entry["tools"])
+        self.assertIn("pii_mask", [str(tool.get("name") or "") for tool in intake_tools])
+
+        instruction_catalog = cast(dict[str, object], catalog["instructions"])
+        role_entries = cast(list[dict[str, object]], instruction_catalog["roles"])
+        supervisor_entry = next(item for item in role_entries if str(item.get("role") or "") == SUPERVISOR_AGENT)
+        self.assertTrue(bool(supervisor_entry.get("default_exists")))
+
+    def test_describe_control_catalog_detects_instruction_overrides(self) -> None:
+        override_dir = self.workspace_path / "instruction-overrides"
+        override_dir.mkdir(parents=True, exist_ok=True)
+        (override_dir / "common.md").write_text("# common override\n", encoding="utf-8")
+        (override_dir / f"{INTAKE_AGENT}.md").write_text("# intake override\n", encoding="utf-8")
+
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {"instructions_path": str(override_dir)},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+        service = self._build_service(config)
+
+        catalog = service.describe_control_catalog()
+        instruction_catalog = cast(dict[str, object], catalog["instructions"])
+        common_entry = cast(dict[str, object], instruction_catalog["common"])
+        self.assertTrue(bool(common_entry.get("override_exists")))
+
+        role_entries = cast(list[dict[str, object]], instruction_catalog["roles"])
+        intake_entry = next(item for item in role_entries if str(item.get("role") or "") == INTAKE_AGENT)
+        self.assertTrue(bool(intake_entry.get("override_exists")))
+        resolved_sources = cast(list[str], intake_entry["resolved_sources"])
+        self.assertIn(str(override_dir / "common.md"), resolved_sources)
+        self.assertIn(str(override_dir / f"{INTAKE_AGENT}.md"), resolved_sources)
+
+    def test_describe_runtime_audit_reflects_trace_decisions(self) -> None:
+        result = self.service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-RUNTIME-AUDIT",
+        )
+
+        audit = self.service.describe_runtime_audit(
+            case_id="CASE-TEST-RUNTIME-AUDIT",
+            trace_id=str(result["trace_id"]),
+            workspace_path=str(self.workspace_path),
+        )
+
+        summary = cast(dict[str, object], audit["summary"])
+        self.assertEqual(str(summary["status"]), "WAITING_APPROVAL")
+        self.assertEqual(str(summary["workflow_kind"]), "specification_inquiry")
+
+        used_roles = cast(list[str], audit["used_roles"])
+        self.assertIn(KNOWLEDGE_RETRIEVER_AGENT, used_roles)
+        self.assertIn(DRAFT_WRITER_AGENT, used_roles)
+
+        decision_log = cast(list[dict[str, object]], audit["decision_log"])
+        self.assertTrue(any(str(item.get("control_point_id") or "") == "workflow.route_after_investigation.draft_review" for item in decision_log))
+
     def test_generate_support_improvement_report_writes_report_folder(self) -> None:
         result = self.service.action(
             prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
@@ -651,6 +727,10 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(report_path.parent.name, ".report")
         content = report_path.read_text(encoding="utf-8")
         self.assertIn("# Support Improvement Report: CASE-TEST-011", content)
+        self.assertIn("## 制御サマリー", content)
+        self.assertIn("## 制御一覧", content)
+        self.assertIn("### 発火した制御", content)
+        self.assertIn("[defined] workflow.approval_node", content)
         self.assertIn("sequenceDiagram", content)
         self.assertIn("KnowledgeRetrieverAgent", content)
         self.assertIn("ユーザー指定チェックリスト", content)

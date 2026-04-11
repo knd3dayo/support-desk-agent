@@ -34,6 +34,12 @@ def _cmd_describe_agents(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_describe_control_catalog(args: argparse.Namespace) -> int:
+    service = _build_service(args.config)
+    print(json.dumps(service.describe_control_catalog(), ensure_ascii=False, indent=2))
+    return 0
+
+
 def _cmd_plan(args: argparse.Namespace) -> int:
     service = _build_service(args.config)
     result = service.plan(
@@ -123,6 +129,13 @@ def build_parser() -> argparse.ArgumentParser:
     describe_agents = subparsers.add_parser("describe-agents", help="Describe default agent layout", parents=[common])
     describe_agents.add_argument("--prompt", required=True, help="User input used to resolve case_id")
     describe_agents.set_defaults(func=_cmd_describe_agents)
+
+    describe_control_catalog = subparsers.add_parser(
+        "describe-control-catalog",
+        help="Describe static control points, instruction sources, and workflow branches",
+        parents=[common],
+    )
+    describe_control_catalog.set_defaults(func=_cmd_describe_control_catalog)
 
     plan = subparsers.add_parser("plan", help="Create an execution plan for a case", parents=[common])
     plan.add_argument("prompt", help="User request for planning")

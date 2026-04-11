@@ -76,6 +76,8 @@ def build_support_improvement_report(
     memory_store: CaseMemoryStore,
     instruction_loader: InstructionLoader,
     config: AppConfig,
+    control_catalog: dict[str, object] | None = None,
+    runtime_audit: dict[str, object] | None = None,
     checklist: list[str] | None = None,
 ) -> EvaluationReportResult:
     case_paths = memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
@@ -111,6 +113,8 @@ def build_support_improvement_report(
         pass_score=config.agents.ObjectiveEvaluationAgent.pass_score,
     )
     checklist_section = _render_checklist(checklist or [], state, context_text, progress_text, summary_text)
+    control_summary_section = _render_control_summary(control_catalog or {}, runtime_audit or {})
+    control_catalog_section = _render_control_catalog_section(control_catalog or {}, runtime_audit or {})
 
     report_lines = [
         f"# Support Improvement Report: {case_id}",
@@ -140,6 +144,14 @@ def build_support_improvement_report(
         *_report_item("調査要約", str(state.get("investigation_summary") or "n/a"), "ログ解析やナレッジ確認を踏まえた調査結果の要約です。"),
         *_report_item("コンプライアンス要約", str(state.get("compliance_review_summary") or "n/a"), "回答案に対するレビュー観点と判定結果の要約です。"),
         *_report_item("エスカレーション理由", str(state.get("escalation_reason") or "n/a"), "追加確認や上位支援が必要と判断した根拠です。"),
+        "",
+        "## 制御サマリー",
+        "定義済みの制御点と、この trace で実際に発火した制御をまとめます。",
+        *control_summary_section,
+        "",
+        "## 制御一覧",
+        "定義済みの制御点を一覧化します。active はこの trace で発火した制御です。",
+        *control_catalog_section,
         "",
         "## コンプライアンスレビュー履歴",
         "各レビュー周回での指摘内容と、その時点の対応内容を時系列で示します。",
@@ -202,6 +214,106 @@ def build_support_improvement_report(
     report_path = case_paths.report_dir / f"support-improvement-{trace_id}.md"
     report_path.write_text(content, encoding="utf-8")
     return EvaluationReportResult(report_path=report_path, sequence_diagram=evaluation.sequence_diagram, content=content)
+
+
+def _render_control_summary(control_catalog: dict[str, object], runtime_audit: dict[str, object]) -> list[str]:
+    if not control_catalog and not runtime_audit:
+        return ["- なし"]
+
+    lines: list[str] = []
+    summary = control_catalog.get("summary") if isinstance(control_catalog, dict) else None
+    if isinstance(summary, dict):
+        lines.extend(
+            [
+                "### 定義済み制御の規模",
+                f"- Control points: {summary.get('control_point_count', 0)}",
+                f"- Agents: {summary.get('agent_count', 0)}",
+                f"- Workflow nodes: {summary.get('workflow_node_count', 0)}",
+                f"- Logical tools: {summary.get('logical_tool_count', 0)}",
+                "",
+            ]
+        )
+
+    audit_summary = runtime_audit.get("summary") if isinstance(runtime_audit, dict) else None
+    if isinstance(audit_summary, dict):
+        lines.extend(
+            [
+                "### 実行時監査",
+                f"- Trace ID: {audit_summary.get('trace_id', 'n/a')}",
+                f"- Status: {audit_summary.get('status', 'n/a')}",
+                f"- Workflow kind: {audit_summary.get('workflow_kind', 'n/a')}",
+                f"- Result: {audit_summary.get('result', 'n/a')}",
+                f"- Approval route: {audit_summary.get('approval_route', 'n/a')}",
+            ]
+        )
+    workflow_path = runtime_audit.get("workflow_path") if isinstance(runtime_audit, dict) else None
+    if isinstance(workflow_path, list):
+        lines.append(f"- Workflow path: {' -> '.join(str(item) for item in workflow_path)}")
+
+    used_roles = runtime_audit.get("used_roles") if isinstance(runtime_audit, dict) else None
+    if isinstance(used_roles, list):
+        lines.append(f"- Used roles: {', '.join(str(item) for item in used_roles) if used_roles else 'なし'}")
+
+    decision_log = runtime_audit.get("decision_log") if isinstance(runtime_audit, dict) else None
+    if isinstance(decision_log, list):
+        lines.extend(["", "### 発火した制御"])
+        if not decision_log:
+            lines.append("- なし")
+        else:
+            for item in decision_log:
+                if not isinstance(item, dict):
+                    continue
+                lines.append(
+                    f"- [{str(item.get('category') or 'unknown')}] {str(item.get('control_point_id') or 'n/a')}: {str(item.get('detail') or '')}"
+                )
+
+    instruction_resolution = runtime_audit.get("instruction_resolution") if isinstance(runtime_audit, dict) else None
+    if isinstance(instruction_resolution, list):
+        lines.extend(["", "### 解決された instruction"])
+        if not instruction_resolution:
+            lines.append("- なし")
+        else:
+            for item in instruction_resolution:
+                if not isinstance(item, dict):
+                    continue
+                sources = item.get("resolved_sources")
+                source_count = len(sources) if isinstance(sources, list) else 0
+                lines.append(
+                    f"- {str(item.get('role') or 'unknown')}: {source_count} source(s) resolved"
+                )
+    return lines or ["- なし"]
+
+
+def _render_control_catalog_section(control_catalog: dict[str, object], runtime_audit: dict[str, object]) -> list[str]:
+    control_points = control_catalog.get("control_points") if isinstance(control_catalog, dict) else None
+    if not isinstance(control_points, list) or not control_points:
+        return ["- なし"]
+
+    active_ids_raw = runtime_audit.get("active_control_point_ids") if isinstance(runtime_audit, dict) else None
+    active_ids = {
+        str(item).strip()
+        for item in active_ids_raw
+        if str(item).strip()
+    } if isinstance(active_ids_raw, list) else set()
+
+    lines: list[str] = []
+    for item in control_points:
+        if not isinstance(item, dict):
+            continue
+        control_point_id = str(item.get("id") or "n/a")
+        marker = "active" if control_point_id in active_ids else "defined"
+        category = str(item.get("category") or "unknown")
+        owner = str(item.get("owner") or "unknown")
+        origin = str(item.get("origin") or "unknown")
+        condition = str(item.get("condition") or "always")
+        effect = str(item.get("effect") or "")
+        lines.append(f"- [{marker}] {control_point_id} ({category})")
+        lines.append(f"  owner: {owner}")
+        lines.append(f"  origin: {origin}")
+        lines.append(f"  condition: {condition}")
+        if effect:
+            lines.append(f"  effect: {effect}")
+    return lines or ["- なし"]
 
 
 def _build_objective_evaluation_evidence(

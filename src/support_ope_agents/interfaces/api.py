@@ -242,6 +242,26 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
         case_id = service.resolve_case_id(prompt=request.prompt)
         return service.describe_agents(case_id)
 
+    @app.get("/control-catalog")
+    def describe_control_catalog(_: None = Depends(require_auth)) -> dict[str, object]:
+        return service.describe_control_catalog()
+
+    @app.get("/cases/{case_id}/runtime-audit")
+    def describe_runtime_audit(
+        case_id: str,
+        workspace_path: str | None = None,
+        trace_id: str = Query(...),
+        _: None = Depends(require_auth),
+    ) -> dict[str, object]:
+        try:
+            return service.describe_runtime_audit(
+                case_id=case_id,
+                trace_id=trace_id,
+                workspace_path=resolve_workspace_path(case_id, workspace_path),
+            )
+        except Exception as exc:
+            raise map_error(exc) from exc
+
     @app.post("/plan", response_model=RuntimeEnvelope)
     def plan(request: PlanRequest, _: None = Depends(require_auth)) -> RuntimeEnvelope:
         result = service.plan(

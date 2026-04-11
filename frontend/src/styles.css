@@ -160,6 +160,132 @@ input {
   gap: 12px;
 }
 
+.control-inspector {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 22px;
+}
+
+.control-inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.control-inspector-header strong {
+  display: block;
+  margin-top: 4px;
+  font-family: "Space Grotesk", "IBM Plex Sans JP", sans-serif;
+  font-size: 1rem;
+}
+
+.control-trace-label {
+  font-size: 0.78rem;
+  color: rgba(16, 33, 47, 0.58);
+}
+
+.control-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.control-stat-card,
+.control-detail-block,
+.control-decision-item {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(16, 33, 47, 0.06);
+}
+
+.control-stat-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.control-stat-card span {
+  font-size: 0.74rem;
+  color: rgba(16, 33, 47, 0.62);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.control-stat-card strong {
+  font-family: "Space Grotesk", "IBM Plex Sans JP", sans-serif;
+  font-size: 1.35rem;
+}
+
+.control-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.control-detail-block {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.control-detail-block strong {
+  font-size: 0.92rem;
+}
+
+.control-detail-block p,
+.control-decision-item p {
+  margin: 0;
+  color: rgba(16, 33, 47, 0.72);
+  line-height: 1.55;
+}
+
+.control-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.control-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(16, 50, 77, 0.1);
+  font-size: 0.78rem;
+}
+
+.control-path {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.control-decision-list {
+  display: grid;
+  gap: 10px;
+}
+
+.control-decision-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.control-decision-item span {
+  font-size: 0.72rem;
+  color: #7a5f2d;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.control-decision-item strong {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.control-empty-state {
+  padding: 8px 0 0;
+}
+
 .panel-title-block {
   min-width: 0;
 }

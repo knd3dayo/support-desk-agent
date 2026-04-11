@@ -80,6 +80,42 @@ export type GenerateReportResponse = {
   sequence_diagram: string;
 };
 
+export type ControlCatalogResponse = {
+  summary: {
+    agent_count: number;
+    workflow_node_count: number;
+    workflow_edge_count: number;
+    logical_tool_count: number;
+    instruction_role_count: number;
+    control_point_count: number;
+  };
+};
+
+export type RuntimeAuditDecision = {
+  control_point_id: string;
+  category: string;
+  outcome: string;
+  detail: string;
+};
+
+export type RuntimeAuditResponse = {
+  summary: {
+    case_id: string;
+    trace_id: string;
+    status: string;
+    execution_mode: string;
+    workflow_kind: string;
+    result: string;
+    approval_route: string;
+    used_role_count: number;
+    decision_count: number;
+    draft_review_iterations: number;
+  };
+  workflow_path: string[];
+  used_roles: string[];
+  decision_log: RuntimeAuditDecision[];
+};
+
 export type InitCaseResponse = {
   case_id: string;
   case_title: string;

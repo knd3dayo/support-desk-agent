@@ -1,0 +1,573 @@
+from __future__ import annotations
+
+from importlib.resources import files
+from pathlib import Path
+from typing import Any
+
+from support_ope_agents.agents.agent_definition import AgentDefinition
+from support_ope_agents.config.models import AppConfig
+from support_ope_agents.instructions.loader import InstructionLoader
+from support_ope_agents.tools.registry import ToolRegistry
+from support_ope_agents.workflow.case_workflow import reconstruct_main_workflow_path
+
+
+def build_control_catalog(
+    *,
+    config: AppConfig,
+    tool_registry: ToolRegistry,
+    agent_definitions: list[AgentDefinition],
+) -> dict[str, object]:
+    workflow_nodes = [
+        "receive_case",
+        "intake_prepare",
+        "intake_mask",
+        "intake_hydrate_tickets",
+        "intake_classify",
+        "intake_finalize",
+        "investigation",
+        "draft_review",
+        "escalation_review",
+        "wait_for_customer_input",
+        "wait_for_approval",
+        "ticket_update_prepare",
+        "ticket_update_execute",
+    ]
+    workflow_edges = [
+        {"from": "START", "to": "receive_case", "type": "direct"},
+        {"from": "receive_case", "to": "intake_prepare", "type": "direct"},
+        {"from": "intake_prepare", "to": "intake_mask", "type": "direct"},
+        {"from": "intake_mask", "to": "intake_hydrate_tickets", "type": "direct"},
+        {"from": "intake_hydrate_tickets", "to": "intake_classify", "type": "direct"},
+        {"from": "intake_classify", "to": "intake_finalize", "type": "direct"},
+        {
+            "from": "intake_finalize",
+            "to": "wait_for_customer_input",
+            "type": "conditional",
+            "condition": "state.status == 'WAITING_CUSTOMER_INPUT'",
+            "control_point_id": "workflow.route_after_intake.wait_for_customer_input",
+        },
+        {
+            "from": "intake_finalize",
+            "to": "investigation",
+            "type": "conditional",
+            "condition": "otherwise",
+            "control_point_id": "workflow.route_after_intake.investigation",
+        },
+        {
+            "from": "investigation",
+            "to": "intake_prepare",
+            "type": "conditional",
+            "condition": "state.intake_rework_required is true",
+            "control_point_id": "workflow.route_after_investigation.intake_rework",
+        },
+        {
+            "from": "investigation",
+            "to": "escalation_review",
+            "type": "conditional",
+            "condition": "state.escalation_required is true",
+            "control_point_id": "workflow.route_after_investigation.escalation_review",
+        },
+        {
+            "from": "investigation",
+            "to": "draft_review",
+            "type": "conditional",
+            "condition": "otherwise",
+            "control_point_id": "workflow.route_after_investigation.draft_review",
+        },
+        {"from": "escalation_review", "to": "wait_for_approval", "type": "direct"},
+        {"from": "draft_review", "to": "wait_for_approval", "type": "direct"},
+        {
+            "from": "wait_for_approval",
+            "to": "ticket_update_prepare",
+            "type": "conditional",
+            "condition": "state.approval_decision in {'approved', 'approve'}",
+            "control_point_id": "workflow.route_after_approval.approved",
+        },
+        {
+            "from": "wait_for_approval",
+            "to": "draft_review",
+            "type": "conditional",
+            "condition": "state.approval_decision in {'rejected', 'reject'}",
+            "control_point_id": "workflow.route_after_approval.rejected",
+        },
+        {
+            "from": "wait_for_approval",
+            "to": "investigation",
+            "type": "conditional",
+            "condition": "state.approval_decision == 'reinvestigate'",
+            "control_point_id": "workflow.route_after_approval.reinvestigate",
+        },
+        {
+            "from": "wait_for_approval",
+            "to": "END",
+            "type": "conditional",
+            "condition": "otherwise",
+            "control_point_id": "workflow.route_after_approval.end",
+        },
+        {"from": "ticket_update_prepare", "to": "ticket_update_execute", "type": "direct"},
+        {"from": "ticket_update_execute", "to": "END", "type": "direct"},
+    ]
+
+    instructions = _build_instruction_catalog(config, agent_definitions)
+    agents = [_build_agent_entry(config, tool_registry, definition, instructions) for definition in agent_definitions]
+    logical_tools = _build_logical_tool_catalog(config)
+    control_points = _build_control_points(config, instructions)
+
+    return {
+        "summary": {
+            "agent_count": len(agents),
+            "workflow_node_count": len(workflow_nodes),
+            "workflow_edge_count": len(workflow_edges),
+            "logical_tool_count": len(logical_tools),
+            "instruction_role_count": len(instructions["roles"]),
+            "control_point_count": len(control_points),
+        },
+        "workflow": {
+            "settings": {
+                "approval_node": config.workflow.approval_node,
+                "auto_compress": config.workflow.auto_compress,
+                "max_context_chars": config.workflow.max_context_chars,
+                "compress_threshold_chars": config.workflow.compress_threshold_chars,
+                "max_summary_chars": config.workflow.max_summary_chars,
+            },
+            "nodes": workflow_nodes,
+            "edges": workflow_edges,
+        },
+        "instructions": instructions,
+        "logical_tools": logical_tools,
+        "agents": agents,
+        "control_points": control_points,
+    }
+
+
+def build_runtime_audit(
+    *,
+    case_id: str,
+    state: dict[str, object],
+    config: AppConfig,
+    instruction_loader: InstructionLoader,
+) -> dict[str, object]:
+    workflow_path = list(reconstruct_main_workflow_path(state))
+    workflow_kind = _effective_workflow_kind(state)
+    used_roles = _resolve_used_roles(workflow_path, workflow_kind)
+    instruction_resolution = [
+        {
+            "role": role,
+            "resolved_sources": _resolve_instruction_sources(config, role),
+            "instruction_excerpt": _instruction_excerpt(instruction_loader.load(case_id, role)),
+        }
+        for role in used_roles
+    ]
+    decision_log = _build_runtime_decision_log(state, workflow_path, config)
+
+    return {
+        "summary": {
+            "case_id": case_id,
+            "trace_id": str(state.get("trace_id") or ""),
+            "status": str(state.get("status") or "unknown"),
+            "execution_mode": str(state.get("execution_mode") or ""),
+            "workflow_kind": workflow_kind,
+            "result": _result_label(state),
+            "approval_route": _approval_route(state),
+            "used_role_count": len(used_roles),
+            "decision_count": len(decision_log),
+            "draft_review_iterations": int(state.get("draft_review_iterations") or 0),
+        },
+        "workflow_path": workflow_path,
+        "used_roles": used_roles,
+        "instruction_resolution": instruction_resolution,
+        "decision_log": decision_log,
+        "active_control_point_ids": [
+            str(item.get("control_point_id") or "")
+            for item in decision_log
+            if str(item.get("control_point_id") or "")
+        ],
+    }
+
+
+def _build_instruction_catalog(config: AppConfig, agent_definitions: list[AgentDefinition]) -> dict[str, object]:
+    default_root = files("support_ope_agents.instructions.defaults")
+    override_root = config.config_paths.instructions_path
+    common_default = default_root / "common.md"
+    common_override = override_root / "common.md" if override_root is not None else None
+
+    return {
+        "default_root": str(default_root),
+        "override_root": str(override_root) if override_root is not None else None,
+        "common": {
+            "default_path": str(common_default),
+            "default_exists": common_default.exists(),
+            "override_path": str(common_override) if common_override is not None else None,
+            "override_exists": common_override.exists() if common_override is not None else False,
+        },
+        "roles": [_build_instruction_role_entry(default_root, override_root, definition.role) for definition in agent_definitions],
+    }
+
+
+def _build_instruction_role_entry(default_root: Any, override_root: Path | None, role: str) -> dict[str, object]:
+    default_path = default_root / f"{role}.md"
+    override_path = override_root / f"{role}.md" if override_root is not None else None
+    sources = []
+    if default_root.joinpath("common.md").exists():
+        sources.append(str(default_root / "common.md"))
+    if default_path.exists():
+        sources.append(str(default_path))
+    if override_root is not None:
+        common_override = override_root / "common.md"
+        if common_override.exists():
+            sources.append(str(common_override))
+        if override_path is not None and override_path.exists():
+            sources.append(str(override_path))
+    return {
+        "role": role,
+        "default_path": str(default_path),
+        "default_exists": default_path.exists(),
+        "override_path": str(override_path) if override_path is not None else None,
+        "override_exists": override_path.exists() if override_path is not None else False,
+        "resolved_sources": sources,
+    }
+
+
+def _build_logical_tool_catalog(config: AppConfig) -> list[dict[str, object]]:
+    logical_tools: list[dict[str, object]] = []
+    for name in sorted(config.tools.logical_tools):
+        settings = config.tools.logical_tools[name]
+        logical_tools.append(
+            {
+                "name": name,
+                "enabled": settings.enabled,
+                "provider": settings.provider,
+                "description": settings.description,
+                "builtin_tool": settings.builtin_tool,
+                "server": settings.server,
+                "tool": settings.tool,
+            }
+        )
+    return logical_tools
+
+
+def _resolve_instruction_sources(config: AppConfig, role: str) -> list[str]:
+    default_root = files("support_ope_agents.instructions.defaults")
+    default_common = default_root / "common.md"
+    default_role = default_root / f"{role}.md"
+    sources: list[str] = []
+    if default_common.exists():
+        sources.append(str(default_common))
+    if default_role.exists():
+        sources.append(str(default_role))
+
+    override_root = config.config_paths.instructions_path
+    if override_root is not None:
+        common_override = override_root / "common.md"
+        role_override = override_root / f"{role}.md"
+        if common_override.exists():
+            sources.append(str(common_override))
+        if role_override.exists():
+            sources.append(str(role_override))
+    return sources
+
+
+def _build_agent_entry(
+    config: AppConfig,
+    tool_registry: ToolRegistry,
+    definition: AgentDefinition,
+    instructions: dict[str, object],
+) -> dict[str, object]:
+    settings = config.agents.get(definition.role)
+    instruction_entry = next(
+        (item for item in instructions["roles"] if isinstance(item, dict) and item.get("role") == definition.role),
+        None,
+    )
+    return {
+        "role": definition.role,
+        "description": definition.description,
+        "kind": definition.kind,
+        "parent_role": definition.parent_role,
+        "enabled": bool(getattr(settings, "enabled", True)) if settings is not None else True,
+        "settings": settings.model_dump() if settings is not None else {},
+        "tools": [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "provider": tool.provider,
+                "target": tool.target,
+            }
+            for tool in tool_registry.get_tools(definition.role)
+        ],
+        "instruction": instruction_entry,
+    }
+
+
+def _build_control_points(config: AppConfig, instructions: dict[str, object]) -> list[dict[str, object]]:
+    override_root = config.config_paths.instructions_path
+    control_points = [
+        {
+            "id": "workflow.approval_node",
+            "category": "configuration",
+            "owner": "workflow",
+            "origin": "config.workflow.approval_node",
+            "condition": "always",
+            "effect": f"approval gate node is '{config.workflow.approval_node}'",
+            "overrideable": True,
+        },
+        {
+            "id": "workflow.auto_compress",
+            "category": "configuration",
+            "owner": "workflow",
+            "origin": "config.workflow.auto_compress",
+            "condition": "always",
+            "effect": f"workflow-level auto compression is {'enabled' if config.workflow.auto_compress else 'disabled'}",
+            "overrideable": True,
+        },
+        {
+            "id": "agent.supervisor.auto_generate_report",
+            "category": "configuration",
+            "owner": "SuperVisorAgent",
+            "origin": "config.agents.SuperVisorAgent.auto_generate_report",
+            "condition": "state.status reaches configured report_on target",
+            "effect": f"auto report generation is {'enabled' if config.agents.SuperVisorAgent.auto_generate_report else 'disabled'}",
+            "overrideable": True,
+        },
+        {
+            "id": "agent.intake.pii_mask",
+            "category": "configuration",
+            "owner": "IntakeAgent",
+            "origin": "config.agents.IntakeAgent.pii_mask.enabled",
+            "condition": "IntakeAgent prepare/mask phase",
+            "effect": f"PII mask is {'enabled' if config.agents.IntakeAgent.pii_mask.enabled else 'disabled'} by default",
+            "overrideable": True,
+        },
+        {
+            "id": "agent.compliance.max_review_loops",
+            "category": "configuration",
+            "owner": "ComplianceReviewerAgent",
+            "origin": "config.agents.ComplianceReviewerAgent.max_review_loops",
+            "condition": "draft review loop",
+            "effect": f"maximum automatic review loops = {config.agents.ComplianceReviewerAgent.max_review_loops}",
+            "overrideable": True,
+        },
+        {
+            "id": "agent.escalation.rules",
+            "category": "configuration",
+            "owner": "BackSupportEscalationAgent",
+            "origin": "config.agents.BackSupportEscalationAgent.escalation",
+            "condition": "investigation phase decides escalation_required",
+            "effect": "uncertainty markers and missing artifacts influence escalation branching",
+            "overrideable": True,
+        },
+        {
+            "id": "instruction.default_stack",
+            "category": "instruction",
+            "owner": "all-agents",
+            "origin": "support_ope_agents.instructions.defaults",
+            "condition": "instruction resolution",
+            "effect": "default common and role instructions are concatenated first",
+            "overrideable": True,
+        },
+        {
+            "id": "instruction.override_stack",
+            "category": "instruction",
+            "owner": "all-agents",
+            "origin": "config.config_paths.instructions_path",
+            "condition": "override root exists",
+            "effect": f"override instruction root is {str(override_root) if override_root is not None else 'not configured'}",
+            "overrideable": True,
+        },
+        {
+            "id": "workflow.route_after_intake",
+            "category": "workflow",
+            "owner": "case_workflow",
+            "origin": "workflow._route_after_intake",
+            "condition": "state.status after intake",
+            "effect": "routes to wait_for_customer_input or investigation",
+            "overrideable": False,
+        },
+        {
+            "id": "workflow.route_after_investigation",
+            "category": "workflow",
+            "owner": "case_workflow",
+            "origin": "workflow._route_after_investigation",
+            "condition": "state.intake_rework_required or state.escalation_required",
+            "effect": "routes to intake, escalation_review, or draft_review",
+            "overrideable": False,
+        },
+        {
+            "id": "workflow.route_after_approval",
+            "category": "workflow",
+            "owner": "case_workflow",
+            "origin": "workflow._route_after_approval",
+            "condition": "state.approval_decision",
+            "effect": "routes to ticket update, draft review, reinvestigation, or end",
+            "overrideable": False,
+        },
+    ]
+
+    for role_entry in instructions["roles"]:
+        if not isinstance(role_entry, dict):
+            continue
+        control_points.append(
+            {
+                "id": f"instruction.role.{role_entry['role']}",
+                "category": "instruction",
+                "owner": role_entry["role"],
+                "origin": role_entry["default_path"],
+                "condition": "agent instruction resolution",
+                "effect": "resolved instruction stack is available for this role",
+                "overrideable": True,
+            }
+        )
+    return control_points
+
+
+def _effective_workflow_kind(state: dict[str, object]) -> str:
+    workflow_kind = str(state.get("workflow_kind") or "").strip()
+    intake_category = str(state.get("intake_category") or "").strip()
+    valid_values = {"specification_inquiry", "incident_investigation", "ambiguous_case"}
+    if workflow_kind not in valid_values:
+        return intake_category if intake_category in valid_values else "ambiguous_case"
+    if workflow_kind == "ambiguous_case" and intake_category in {"specification_inquiry", "incident_investigation"}:
+        return intake_category
+    return workflow_kind
+
+
+def _approval_route(state: dict[str, object]) -> str:
+    if str(state.get("status") or "") == "CLOSED" or str(state.get("ticket_update_result") or "").strip():
+        return "ticket_update_prepare"
+    decision = str(state.get("approval_decision") or "").strip().lower()
+    if decision in {"approved", "approve"}:
+        return "ticket_update_prepare"
+    if decision in {"rejected", "reject"}:
+        return "draft_review"
+    if decision == "reinvestigate":
+        return "investigation"
+    return "__end__"
+
+
+def _resolve_used_roles(workflow_path: list[str], workflow_kind: str) -> list[str]:
+    ordered_roles: list[str] = ["IntakeAgent", "SuperVisorAgent"]
+    if "wait_for_customer_input" in workflow_path:
+        return ordered_roles
+    if "investigation" in workflow_path and workflow_kind in {"incident_investigation", "ambiguous_case"}:
+        ordered_roles.append("LogAnalyzerAgent")
+    if "investigation" in workflow_path:
+        ordered_roles.append("KnowledgeRetrieverAgent")
+    if "escalation_review" in workflow_path:
+        ordered_roles.extend(["BackSupportEscalationAgent", "BackSupportInquiryWriterAgent", "ApprovalAgent"])
+    elif "draft_review" in workflow_path:
+        ordered_roles.extend(["DraftWriterAgent", "ComplianceReviewerAgent", "ApprovalAgent"])
+    if "ticket_update_execute" in workflow_path:
+        ordered_roles.append("TicketUpdateAgent")
+    return ordered_roles
+
+
+def _build_runtime_decision_log(
+    state: dict[str, object],
+    workflow_path: list[str],
+    config: AppConfig,
+) -> list[dict[str, object]]:
+    decisions: list[dict[str, object]] = [
+        {
+            "control_point_id": f"execution_mode.{str(state.get('execution_mode') or 'unknown')}",
+            "category": "execution",
+            "outcome": str(state.get("execution_mode") or "unknown"),
+            "detail": "実行モードに応じて plan/action の分岐を行いました。",
+        },
+        {
+            "control_point_id": "agent.intake.pii_mask",
+            "category": "configuration",
+            "outcome": "enabled" if config.agents.IntakeAgent.pii_mask.enabled else "disabled",
+            "detail": f"IntakeAgent の PII マスク既定値は {'有効' if config.agents.IntakeAgent.pii_mask.enabled else '無効'}です。",
+        },
+    ]
+
+    if "wait_for_customer_input" in workflow_path:
+        decisions.append(
+            {
+                "control_point_id": "workflow.route_after_intake.wait_for_customer_input",
+                "category": "workflow",
+                "outcome": "taken",
+                "detail": "Intake 結果により顧客への追加確認へ遷移しました。",
+            }
+        )
+        return decisions
+
+    decisions.append(
+        {
+            "control_point_id": "workflow.route_after_intake.investigation",
+            "category": "workflow",
+            "outcome": "taken",
+            "detail": "Intake 完了後に investigation へ遷移しました。",
+        }
+    )
+
+    if bool(state.get("intake_rework_required")):
+        decisions.append(
+            {
+                "control_point_id": "workflow.route_after_investigation.intake_rework",
+                "category": "workflow",
+                "outcome": "taken",
+                "detail": "調査結果を受けて Intake の再実行が必要と判断しました。",
+            }
+        )
+    elif bool(state.get("escalation_required")):
+        decisions.append(
+            {
+                "control_point_id": "workflow.route_after_investigation.escalation_review",
+                "category": "workflow",
+                "outcome": "taken",
+                "detail": "追加支援が必要と判断し escalation_review に進みました。",
+            }
+        )
+        decisions.append(
+            {
+                "control_point_id": "agent.escalation.rules",
+                "category": "configuration",
+                "outcome": "escalated",
+                "detail": str(state.get("escalation_reason") or "エスカレーション判定ルールにより追加支援が必要とされました。"),
+            }
+        )
+    else:
+        decisions.append(
+            {
+                "control_point_id": "workflow.route_after_investigation.draft_review",
+                "category": "workflow",
+                "outcome": "taken",
+                "detail": "調査結果から draft_review へ進みました。",
+            }
+        )
+        decisions.append(
+            {
+                "control_point_id": "agent.compliance.max_review_loops",
+                "category": "configuration",
+                "outcome": f"{int(state.get('draft_review_iterations') or 0)}/{config.agents.ComplianceReviewerAgent.max_review_loops}",
+                "detail": "レビュー周回数と最大自動レビュー回数の比較です。",
+            }
+        )
+
+    if "wait_for_approval" in workflow_path:
+        approval_route = _approval_route(state)
+        decisions.append(
+            {
+                "control_point_id": f"workflow.route_after_approval.{approval_route}",
+                "category": "workflow",
+                "outcome": approval_route,
+                "detail": f"承認判定により {approval_route} へ遷移しました。",
+            }
+        )
+
+    return decisions
+
+
+def _result_label(state: dict[str, object]) -> str:
+    if bool(state.get("escalation_required")):
+        return "エスカレーションが必要だった"
+    if bool(state.get("compliance_review_passed")):
+        return "確実な回答が得られた"
+    if str(state.get("status") or "") == "WAITING_CUSTOMER_INPUT":
+        return "追加の顧客入力が必要"
+    return "回答ドラフトは作成されたが追加確認が必要"
+
+
+def _instruction_excerpt(text: str) -> str:
+    normalized = " ".join(line.strip() for line in text.splitlines() if line.strip())
+    return normalized[:160] + ("..." if len(normalized) > 160 else "")

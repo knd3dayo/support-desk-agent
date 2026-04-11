@@ -32,6 +32,7 @@ from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.case_titles import derive_case_title
+from support_ope_agents.runtime.control_catalog import build_control_catalog, build_runtime_audit
 from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
@@ -222,6 +223,27 @@ class RuntimeService:
                     }
                 )
         return agents
+
+    def describe_control_catalog(self) -> dict[str, object]:
+        return build_control_catalog(
+            config=self._context.config,
+            tool_registry=self._context.tool_registry,
+            agent_definitions=self._context.agent_factory.build_default_definitions(),
+        )
+
+    def describe_runtime_audit(self, *, case_id: str, trace_id: str, workspace_path: str) -> dict[str, object]:
+        state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
+        if not state:
+            raise ValueError("指定された trace_id の保存 state が見つかりません")
+        return self._build_runtime_audit_for_state(case_id=case_id, state=state)
+
+    def _build_runtime_audit_for_state(self, *, case_id: str, state: CaseState) -> dict[str, object]:
+        return build_runtime_audit(
+            case_id=case_id,
+            state=state,
+            config=self._context.config,
+            instruction_loader=self._context.instruction_loader,
+        )
 
     def list_cases(self, cases_root: str) -> list[dict[str, object]]:
         root = Path(cases_root).expanduser().resolve()
@@ -806,6 +828,8 @@ class RuntimeService:
             memory_store=self._context.memory_store,
             instruction_loader=self._context.instruction_loader,
             config=self._context.config,
+            control_catalog=self.describe_control_catalog(),
+            runtime_audit=self._build_runtime_audit_for_state(case_id=case_id, state=state),
             checklist=checklist,
         )
         return {
@@ -844,6 +868,8 @@ class RuntimeService:
             memory_store=self._context.memory_store,
             instruction_loader=self._context.instruction_loader,
             config=self._context.config,
+            control_catalog=self.describe_control_catalog(),
+            runtime_audit=self._build_runtime_audit_for_state(case_id=case_id, state=state),
             checklist=None,
         )
         return str(result.report_path)
