@@ -48,6 +48,22 @@ class ReportingEvaluationTests(unittest.TestCase):
         self.assertIn("Approval->>Supervisor: 再調査を依頼", diagram)
         self.assertNotIn("Approval->>TicketUpdate", diagram)
 
+    def test_sequence_diagram_reflects_escalation_reject_route_via_supervisor(self) -> None:
+        state: CaseState = {
+            "workflow_kind": "incident_investigation",
+            "intake_category": "incident_investigation",
+            "escalation_required": True,
+            "approval_decision": "reject",
+        }
+
+        diagram = _build_sequence_diagram(state)
+
+        self.assertIn("Escalation-->>Supervisor: エスカレーション要約を返却", diagram)
+        self.assertIn("Supervisor->>Inquiry: 問い合わせ文案作成を依頼", diagram)
+        self.assertIn("Approval->>Supervisor: 差戻しを依頼", diagram)
+        self.assertIn("Supervisor->>Inquiry: 問い合わせ文案の修正を依頼", diagram)
+        self.assertNotIn("Escalation->>Inquiry", diagram)
+
     def test_subgraph_sequence_diagrams_use_customer_input_branch(self) -> None:
         state: CaseState = {
             "workflow_kind": "ambiguous_case",

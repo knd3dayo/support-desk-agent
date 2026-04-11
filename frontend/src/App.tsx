@@ -41,6 +41,7 @@ type PendingQuestion = {
 };
 
 type SubmissionStage = 'creating-case' | 'uploading-files' | 'running-workflow' | 'syncing-results';
+type SidebarView = 'sessions' | 'control' | 'files';
 
 const submissionStageCopy: Record<SubmissionStage, { title: string; detail: string }> = {
   'creating-case': {
@@ -423,8 +424,9 @@ export default function App() {
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [authToken, setAuthToken] = useState(() => getSavedAuthToken());
   const [inlinePreviewUrl, setInlinePreviewUrl] = useState<string | null>(null);
+  const [activeSidebarView, setActiveSidebarView] = useState<SidebarView>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false);
+  const [workspaceCollapsed, setWorkspaceCollapsed] = useState(true);
   const [controlCatalog, setControlCatalog] = useState<ControlCatalogResponse | null>(null);
   const [runtimeAudit, setRuntimeAudit] = useState<RuntimeAuditResponse | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -546,6 +548,8 @@ export default function App() {
     if (!selectedCase) {
       return;
     }
+    setActiveSidebarView('files');
+    setWorkspaceCollapsed(false);
     const workspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, path);
     setWorkspaceView(workspace);
     setPreview(null);
@@ -560,6 +564,8 @@ export default function App() {
     if (!selectedCase) {
       return;
     }
+    setActiveSidebarView('files');
+    setWorkspaceCollapsed(false);
     setSelectedEntry(entry);
     if (entry.kind === 'directory') {
       await openDirectory(entry.path);
@@ -583,6 +589,8 @@ export default function App() {
     }
 
     try {
+      setActiveSidebarView('files');
+      setWorkspaceCollapsed(false);
       const nextPreview = await loadFile(selectedCase.case_id, selectedCase.workspace_path, path);
       const containerPath = dirname(path);
       const nextWorkspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, containerPath);
@@ -779,6 +787,24 @@ export default function App() {
     sidebarCollapsed ? 'shell-sidebar-collapsed' : '',
     workspaceCollapsed ? 'shell-workspace-collapsed' : '',
   ].filter(Boolean).join(' ');
+  const activeSidebarMeta: Record<SidebarView, { label: string; title: string; description: string }> = {
+    sessions: {
+      label: 'Session Index',
+      title: 'ケース一覧',
+      description: 'ケースごとの会話履歴をここで切り替えます。',
+    },
+    control: {
+      label: 'Control View',
+      title: '制御一覧と実行時監査',
+      description: '直近 trace の制御ポイントと使用ロールを確認します。',
+    },
+    files: {
+      label: 'Workspace',
+      title: selectedCase ? 'ファイルツリー' : 'ケース未選択',
+      description: 'ファイルを選択すると右側のプレビューに内容を表示します。',
+    },
+  };
+  const sidebarMeta = activeSidebarMeta[activeSidebarView];
 
   return (
     <div className="app-frame">
@@ -814,54 +840,243 @@ export default function App() {
 
       <div className={shellClassName}>
       <aside className="sidebar panel">
-        <div className="panel-header sidebar-header">
-          <div className="panel-title-block">
-            <div className="panel-label-row">
-              <button
-                className="ghost-button panel-toggle icon-only panel-toggle-compact"
-                type="button"
-                onClick={() => setSidebarCollapsed((current) => !current)}
-                aria-expanded={!sidebarCollapsed}
-                aria-controls="session-index-content"
-                aria-label={sidebarCollapsed ? 'Session Index を展開' : 'Session Index を折りたたむ'}
-              >
-                <span className="hamburger-icon" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              </button>
-              <p className="eyebrow">Session Index</p>
-            </div>
-          </div>
+        <div className="sidebar-rail" aria-label="左側ナビゲーション">
+          <button
+            className="ghost-button panel-toggle icon-only sidebar-rail-toggle"
+            type="button"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="sidebar-panel-content"
+            aria-label={sidebarCollapsed ? '左パネルを展開' : '左パネルを折りたたむ'}
+          >
+            <span className="hamburger-icon" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          </button>
+          <button
+            className={`sidebar-tab ${activeSidebarView === 'sessions' ? 'active' : ''}`}
+            type="button"
+            onClick={() => {
+              setSidebarCollapsed(false);
+              setActiveSidebarView('sessions');
+              setWorkspaceCollapsed(true);
+            }}
+            aria-label="Session Index を表示"
+            aria-pressed={activeSidebarView === 'sessions'}
+            title="Session Index"
+          >
+            <span className="sidebar-tab-icon sidebar-tab-icon-sessions" aria-hidden="true" />
+            <span className="sidebar-tab-text">履歴</span>
+          </button>
+          <button
+            className={`sidebar-tab ${activeSidebarView === 'control' ? 'active' : ''}`}
+            type="button"
+            onClick={() => {
+              setSidebarCollapsed(false);
+              setActiveSidebarView('control');
+              setWorkspaceCollapsed(true);
+            }}
+            aria-label="Control View を表示"
+            aria-pressed={activeSidebarView === 'control'}
+            title="Control View"
+          >
+            <span className="sidebar-tab-icon sidebar-tab-icon-control" aria-hidden="true" />
+            <span className="sidebar-tab-text">監査</span>
+          </button>
+          <button
+            className={`sidebar-tab ${activeSidebarView === 'files' ? 'active' : ''}`}
+            type="button"
+            onClick={() => {
+              setSidebarCollapsed(false);
+              setActiveSidebarView('files');
+              setWorkspaceCollapsed(false);
+            }}
+            aria-label="ファイルツリーを表示"
+            aria-pressed={activeSidebarView === 'files'}
+            title="ファイルツリー"
+          >
+            <span className="sidebar-tab-icon sidebar-tab-icon-files" aria-hidden="true" />
+            <span className="sidebar-tab-text">ファイル</span>
+          </button>
         </div>
-        <div id="session-index-content" className={`panel-content ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
-          {uiConfig.target_label ? (
-            <div className="target-chip-block panel-subtle">
-              <span className="target-chip">{uiConfig.target_label}</span>
-              {uiConfig.target_description ? <p>{uiConfig.target_description}</p> : null}
+
+        <div id="sidebar-panel-content" className={`sidebar-panel ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+          <div className="panel-header sidebar-header with-border">
+            <div className="panel-title-block">
+              <div className="panel-label-row">
+                <p className="eyebrow">{sidebarMeta.label}</p>
+              </div>
+              <h2>{sidebarMeta.title}</h2>
+              <p className="panel-copy">{sidebarMeta.description}</p>
             </div>
-          ) : null}
-          <div className="sidebar-actions">
-            <button className="ghost-button" onClick={startNewCase} type="button">
-              新規ケース
-            </button>
           </div>
-          <p className="panel-copy">ケースごとの会話履歴を左側で切り替えます。</p>
-          <div className="case-list">
-            {cases.map((item) => (
-              <button
-                key={item.case_id}
-                type="button"
-                className={`case-card ${selectedCase?.case_id === item.case_id ? 'active' : ''}`}
-                onClick={() => void selectCase(item)}
-              >
-                <span className="case-title">{item.case_title || item.case_id}</span>
-                <span className="case-id">{item.case_id}</span>
-                <span className="case-meta">{item.message_count} messages</span>
-                <span className="case-meta">{formatTimestamp(item.updated_at)}</span>
-              </button>
-            ))}
+
+          <div className="panel-content sidebar-panel-content">
+            {activeSidebarView === 'sessions' ? (
+              <>
+                {uiConfig.target_label ? (
+                  <div className="target-chip-block panel-subtle">
+                    <span className="target-chip">{uiConfig.target_label}</span>
+                    {uiConfig.target_description ? <p>{uiConfig.target_description}</p> : null}
+                  </div>
+                ) : null}
+                <div className="sidebar-actions">
+                  <button className="ghost-button" onClick={startNewCase} type="button">
+                    新規ケース
+                  </button>
+                </div>
+                <div className="case-list">
+                  {cases.map((item) => (
+                    <button
+                      key={item.case_id}
+                      type="button"
+                      className={`case-card ${selectedCase?.case_id === item.case_id ? 'active' : ''}`}
+                      onClick={() => void selectCase(item)}
+                    >
+                      <span className="case-title">{item.case_title || item.case_id}</span>
+                      <span className="case-id">{item.case_id}</span>
+                      <span className="case-meta">{item.message_count} messages</span>
+                      <span className="case-meta">{formatTimestamp(item.updated_at)}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {activeSidebarView === 'control' ? (
+              <div className="control-inspector panel-subtle">
+                <div className="panel-actions sidebar-panel-actions">
+                  {selectedCase ? (
+                    <>
+                      <button className="ghost-button panel-action-secondary" type="button" onClick={() => void createLatestReport()} disabled={busy}>
+                        レポート生成
+                      </button>
+                      <button className="ghost-button panel-action-secondary" type="button" onClick={() => void openLatestReport()}>
+                        レポート表示
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+                <div className="control-inspector-header">
+                  <div>
+                    <p className="eyebrow">Control View</p>
+                    <strong>制御一覧と実行時監査</strong>
+                  </div>
+                  <span className="control-trace-label">{runtimeAudit?.summary.trace_id || 'trace 未選択'}</span>
+                </div>
+                <div className="control-summary-grid">
+                  <div className="control-stat-card">
+                    <span>Control points</span>
+                    <strong>{controlCatalog?.summary.control_point_count ?? '-'}</strong>
+                  </div>
+                  <div className="control-stat-card">
+                    <span>Workflow nodes</span>
+                    <strong>{controlCatalog?.summary.workflow_node_count ?? '-'}</strong>
+                  </div>
+                  <div className="control-stat-card">
+                    <span>Logical tools</span>
+                    <strong>{controlCatalog?.summary.logical_tool_count ?? '-'}</strong>
+                  </div>
+                  <div className="control-stat-card">
+                    <span>Used roles</span>
+                    <strong>{runtimeAudit?.summary.used_role_count ?? '-'}</strong>
+                  </div>
+                </div>
+                {runtimeAudit ? (
+                  <div className="control-runtime-grid">
+                    <div className="control-detail-block">
+                      <strong>実行結果</strong>
+                      <p>Status: {runtimeAudit.summary.status}</p>
+                      <p>Workflow: {runtimeAudit.summary.workflow_kind}</p>
+                      <p>Result: {runtimeAudit.summary.result}</p>
+                      <p>Approval: {runtimeAudit.summary.approval_route}</p>
+                    </div>
+                    <div className="control-detail-block">
+                      <strong>使用エージェント</strong>
+                      <div className="control-chip-list">
+                        {runtimeAudit.used_roles.map((role) => (
+                          <span key={role} className="control-chip">{role}</span>
+                        ))}
+                      </div>
+                      <p className="control-path">{runtimeAudit.workflow_path.join(' → ')}</p>
+                    </div>
+                    <div className="control-detail-block">
+                      <strong>発火した制御</strong>
+                      <div className="control-decision-list">
+                        {runtimeAudit.decision_log.slice(0, 6).map((item) => (
+                          <div key={`${item.control_point_id}-${item.outcome}`} className="control-decision-item">
+                            <span>{item.category}</span>
+                            <strong>{item.control_point_id}</strong>
+                            <p>{item.detail}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="empty-state compact control-empty-state">
+                    <h3>実行時監査はまだありません。</h3>
+                    <p>ケースを実行すると、直近 trace の分岐と制御がここに表示されます。</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {activeSidebarView === 'files' ? (
+              <>
+                <div className="panel-actions sidebar-panel-actions">
+                  {selectedCase ? (
+                    <>
+                      <a className="ghost-button panel-action-secondary" href={downloadWorkspaceUrl(selectedCase.case_id, selectedCase.workspace_path)}>
+                        ZIPを取得
+                      </a>
+                    </>
+                  ) : null}
+                </div>
+
+                <div className="breadcrumbs">
+                  <button type="button" onClick={() => void openDirectory('.')} disabled={!selectedCase}>
+                    root
+                  </button>
+                  {breadcrumbs.map((crumb, index) => (
+                    <span key={`${crumb}-${index}`}>{crumb}</span>
+                  ))}
+                </div>
+
+                <div className="tree-view sidebar-tree-view">
+                  {parentPath !== null ? (
+                    <button
+                      key="__parent__"
+                      type="button"
+                      className="tree-node tree-node-parent"
+                      onClick={() => void openDirectory(parentPath)}
+                    >
+                      <span className="tree-entry-icon parent" aria-hidden="true" />
+                      <div className="tree-entry-copy">
+                        <strong>..</strong>
+                        <span className="tree-entry-kind">親ディレクトリ</span>
+                      </div>
+                    </button>
+                  ) : null}
+                  {(workspaceView?.entries || []).map((entry) => (
+                    <button
+                      key={entry.path}
+                      type="button"
+                      className={`tree-node ${selectedEntry?.path === entry.path ? 'active' : ''}`}
+                      onClick={() => void openEntry(entry)}
+                    >
+                      <span className={`tree-entry-icon ${entry.kind === 'directory' ? 'directory' : 'file'}`} aria-hidden="true" />
+                      <div className="tree-entry-copy">
+                        <strong>{entry.name}</strong>
+                        <span className="tree-entry-kind">{entry.kind === 'directory' ? 'フォルダ' : 'ファイル'}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       </aside>
@@ -966,7 +1181,7 @@ export default function App() {
         </div>
       </main>
 
-      <section className="workspace panel">
+      <section className="workspace panel preview-workspace">
         <div className="panel-header with-border">
           <div className="panel-title-block">
             <div className="panel-label-row">
@@ -976,7 +1191,7 @@ export default function App() {
                 onClick={() => setWorkspaceCollapsed((current) => !current)}
                 aria-expanded={!workspaceCollapsed}
                 aria-controls="workspace-content"
-                aria-label={workspaceCollapsed ? 'Workspace を展開' : 'Workspace を折りたたむ'}
+                aria-label={workspaceCollapsed ? 'プレビューを展開' : 'プレビューを折りたたむ'}
               >
                 <span className="hamburger-icon" aria-hidden="true">
                   <span />
@@ -984,183 +1199,62 @@ export default function App() {
                   <span />
                 </span>
               </button>
-              <p className="eyebrow">Workspace</p>
+              <p className="eyebrow">Preview</p>
             </div>
-            <h2>{selectedCase ? 'ファイルツリー' : 'ケース未選択'}</h2>
-          </div>
-          <div className="panel-actions">
-            {selectedCase ? (
-              <>
-                <button className="ghost-button panel-action-secondary" type="button" onClick={() => void createLatestReport()} disabled={busy}>
-                  レポート生成
-                </button>
-                <button className="ghost-button panel-action-secondary" type="button" onClick={() => void openLatestReport()}>
-                  レポート表示
-                </button>
-                <a className="ghost-button panel-action-secondary" href={downloadWorkspaceUrl(selectedCase.case_id, selectedCase.workspace_path)}>
-                  ZIPを取得
-                </a>
-              </>
-            ) : null}
+            <h2>{preview?.name || 'プレビュー'}</h2>
+            <p className="panel-copy">選択したファイルの内容をここに表示します。</p>
           </div>
         </div>
 
         <div id="workspace-content" className={`panel-content ${workspaceCollapsed ? 'is-collapsed' : ''}`}>
-          <div className="control-inspector panel-subtle">
-            <div className="control-inspector-header">
-              <div>
-                <p className="eyebrow">Control View</p>
-                <strong>制御一覧と実行時監査</strong>
-              </div>
-              <span className="control-trace-label">{runtimeAudit?.summary.trace_id || 'trace 未選択'}</span>
-            </div>
-            <div className="control-summary-grid">
-              <div className="control-stat-card">
-                <span>Control points</span>
-                <strong>{controlCatalog?.summary.control_point_count ?? '-'}</strong>
-              </div>
-              <div className="control-stat-card">
-                <span>Workflow nodes</span>
-                <strong>{controlCatalog?.summary.workflow_node_count ?? '-'}</strong>
-              </div>
-              <div className="control-stat-card">
-                <span>Logical tools</span>
-                <strong>{controlCatalog?.summary.logical_tool_count ?? '-'}</strong>
-              </div>
-              <div className="control-stat-card">
-                <span>Used roles</span>
-                <strong>{runtimeAudit?.summary.used_role_count ?? '-'}</strong>
-              </div>
-            </div>
-            {runtimeAudit ? (
-              <div className="control-runtime-grid">
-                <div className="control-detail-block">
-                  <strong>実行結果</strong>
-                  <p>Status: {runtimeAudit.summary.status}</p>
-                  <p>Workflow: {runtimeAudit.summary.workflow_kind}</p>
-                  <p>Result: {runtimeAudit.summary.result}</p>
-                  <p>Approval: {runtimeAudit.summary.approval_route}</p>
-                </div>
-                <div className="control-detail-block">
-                  <strong>使用エージェント</strong>
-                  <div className="control-chip-list">
-                    {runtimeAudit.used_roles.map((role) => (
-                      <span key={role} className="control-chip">{role}</span>
-                    ))}
+          <div className="preview-pane panel-subtle preview-pane-standalone">
+            {preview ? (
+              <>
+                <div className="preview-header">
+                  <div>
+                    <strong>{preview.name}</strong>
+                    <span>{preview.mime_type || 'unknown'}</span>
                   </div>
-                  <p className="control-path">{runtimeAudit.workflow_path.join(' → ')}</p>
+                  <a
+                    className="ghost-button preview-action-button"
+                    href={selectedCase ? renderedPreviewUrl(selectedCase.case_id, selectedCase.workspace_path, preview.path) : '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="別ウィンドウで表示"
+                    title="別ウィンドウで表示"
+                  >
+                    <span className="external-link-icon" aria-hidden="true">
+                      <span />
+                    </span>
+                  </a>
                 </div>
-                <div className="control-detail-block">
-                  <strong>発火した制御</strong>
-                  <div className="control-decision-list">
-                    {runtimeAudit.decision_log.slice(0, 6).map((item) => (
-                      <div key={`${item.control_point_id}-${item.outcome}`} className="control-decision-item">
-                        <span>{item.category}</span>
-                        <strong>{item.control_point_id}</strong>
-                        <p>{item.detail}</p>
-                      </div>
-                    ))}
+                {preview.preview_available ? (
+                  isMarkdownFile(preview.name, preview.mime_type) ? (
+                    <div className="preview-markdown markdown-body">
+                      <MarkdownContent content={preview.content || ''} basePath={preview.path} onWorkspaceLinkClick={openWorkspaceFileFromLink} />
+                    </div>
+                  ) : (
+                    <pre>{preview.content}</pre>
+                  )
+                ) : inlinePreviewUrl && (preview.mime_type || '').startsWith('image/') ? (
+                  <div className="binary-preview-frame">
+                    <img src={inlinePreviewUrl} alt={preview.name} className="binary-image-preview" />
                   </div>
-                </div>
-              </div>
+                ) : inlinePreviewUrl && preview.mime_type === 'application/pdf' ? (
+                  <iframe title={preview.name} src={inlinePreviewUrl} className="binary-pdf-preview" />
+                ) : (
+                  <div className="empty-state compact">
+                    <h3>このファイル形式はプレビュー対象外です。</h3>
+                    <p>別ウィンドウ表示で開いて確認してください。</p>
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="empty-state compact control-empty-state">
-                <h3>実行時監査はまだありません。</h3>
-                <p>ケースを実行すると、直近 trace の分岐と制御がここに表示されます。</p>
+              <div className="empty-state empty-preview compact">
+                <h3>プレビュー</h3>
+                <p>左側のファイルツリーからファイルを選択すると内容を表示します。</p>
               </div>
             )}
-          </div>
-
-          <div className="breadcrumbs">
-            <button type="button" onClick={() => void openDirectory('.')} disabled={!selectedCase}>
-              root
-            </button>
-            {breadcrumbs.map((crumb, index) => (
-              <span key={`${crumb}-${index}`}>{crumb}</span>
-            ))}
-          </div>
-
-          <div className="workspace-grid">
-            <div className="tree-view">
-              {parentPath !== null ? (
-                <button
-                  key="__parent__"
-                  type="button"
-                  className="tree-node tree-node-parent"
-                  onClick={() => void openDirectory(parentPath)}
-                >
-                  <span className="tree-entry-icon parent" aria-hidden="true" />
-                  <div className="tree-entry-copy">
-                    <strong>..</strong>
-                    <span className="tree-entry-kind">親ディレクトリ</span>
-                  </div>
-                </button>
-              ) : null}
-              {(workspaceView?.entries || []).map((entry) => (
-                <button
-                  key={entry.path}
-                  type="button"
-                  className={`tree-node ${selectedEntry?.path === entry.path ? 'active' : ''}`}
-                  onClick={() => void openEntry(entry)}
-                >
-                  <span className={`tree-entry-icon ${entry.kind === 'directory' ? 'directory' : 'file'}`} aria-hidden="true" />
-                  <div className="tree-entry-copy">
-                    <strong>{entry.name}</strong>
-                    <span className="tree-entry-kind">{entry.kind === 'directory' ? 'フォルダ' : 'ファイル'}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <div className="preview-pane panel-subtle">
-              {preview ? (
-                <>
-                  <div className="preview-header">
-                    <div>
-                      <strong>{preview.name}</strong>
-                      <span>{preview.mime_type || 'unknown'}</span>
-                    </div>
-                    <a
-                      className="ghost-button preview-action-button"
-                      href={selectedCase ? renderedPreviewUrl(selectedCase.case_id, selectedCase.workspace_path, preview.path) : '#'}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="別ウィンドウで表示"
-                      title="別ウィンドウで表示"
-                    >
-                      <span className="external-link-icon" aria-hidden="true">
-                        <span />
-                      </span>
-                    </a>
-                  </div>
-                  {preview.preview_available ? (
-                    isMarkdownFile(preview.name, preview.mime_type) ? (
-                      <div className="preview-markdown markdown-body">
-                        <MarkdownContent content={preview.content || ''} basePath={preview.path} onWorkspaceLinkClick={openWorkspaceFileFromLink} />
-                      </div>
-                    ) : (
-                      <pre>{preview.content}</pre>
-                    )
-                  ) : inlinePreviewUrl && (preview.mime_type || '').startsWith('image/') ? (
-                    <div className="binary-preview-frame">
-                      <img src={inlinePreviewUrl} alt={preview.name} className="binary-image-preview" />
-                    </div>
-                  ) : inlinePreviewUrl && preview.mime_type === 'application/pdf' ? (
-                    <iframe title={preview.name} src={inlinePreviewUrl} className="binary-pdf-preview" />
-                  ) : (
-                    <div className="empty-state compact">
-                      <h3>このファイル形式はプレビュー対象外です。</h3>
-                      <p>別ウィンドウ表示で開いて確認してください。</p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="empty-state empty-preview compact">
-                  <h3>プレビュー</h3>
-                  <p>右側のツリーからファイルを選択すると内容を表示します。</p>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </section>

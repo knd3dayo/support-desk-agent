@@ -51,6 +51,7 @@ class CriterionEvaluation:
     viewpoint: str
     result: str
     score: int
+    related_checklist_items: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -94,6 +95,7 @@ def build_support_improvement_report(
     }
     agent_memories = _load_agent_memories(case_paths, memory_store)
     memory_findings = _audit_memory_consistency(state, shared_memory, agent_memories)
+    normalized_checklist = _normalize_checklist(checklist or [])
     structured_evaluation = ObjectiveEvaluationAgent(config=config, instruction_text=evaluator_instruction).evaluate(
         evidence=_build_objective_evaluation_evidence(
             case_id=case_id,
@@ -103,6 +105,7 @@ def build_support_improvement_report(
             agent_memories=agent_memories,
             memory_findings=memory_findings,
             artifact_paths=artifact_paths,
+            checklist=normalized_checklist,
         )
     )
     evaluation = _build_objective_evaluation(
@@ -111,8 +114,16 @@ def build_support_improvement_report(
         memory_findings=memory_findings,
         structured_evaluation=structured_evaluation,
         pass_score=config.agents.ObjectiveEvaluationAgent.pass_score,
+        checklist=normalized_checklist,
+        checklist_assessments=_assess_checklist_items(
+            normalized_checklist,
+            state,
+            context_text,
+            progress_text,
+            summary_text,
+        ),
     )
-    checklist_section = _render_checklist(checklist or [], state, context_text, progress_text, summary_text)
+    checklist_section = _render_checklist(evaluation.criterion_evaluations, normalized_checklist)
     control_summary_section = _render_control_summary(control_catalog or {}, runtime_audit or {})
     control_catalog_section = _render_control_catalog_section(control_catalog or {}, runtime_audit or {})
 
@@ -338,6 +349,7 @@ def _build_objective_evaluation_evidence(
     agent_memories: dict[str, str],
     memory_findings: list[MemoryConsistencyFinding],
     artifact_paths: list[str],
+    checklist: list[str],
 ) -> dict[str, Any]:
     return {
         "case_id": case_id,
@@ -361,6 +373,7 @@ def _build_objective_evaluation_evidence(
             for item in memory_findings
         ],
         "artifact_paths": artifact_paths,
+        "user_checklist": checklist,
         "agent_errors": list(state.get("agent_errors") or []),
     }
 
@@ -372,6 +385,8 @@ def _build_objective_evaluation(
     memory_findings: list[MemoryConsistencyFinding],
     structured_evaluation: Any,
     pass_score: int,
+    checklist: list[str],
+    checklist_assessments: list[tuple[str, str]],
 ) -> ObjectiveEvaluation:
     criterion_evaluations = [
         CriterionEvaluation(
@@ -379,9 +394,11 @@ def _build_objective_evaluation(
             viewpoint=item.viewpoint,
             result=item.result,
             score=item.score,
+            related_checklist_items=list(getattr(item, "related_checklist_items", []) or []),
         )
         for item in structured_evaluation.criterion_evaluations
     ]
+    criterion_evaluations = _merge_missing_checklist_criteria(criterion_evaluations, checklist_assessments)
     agent_evaluations = [
         AgentEvaluation(
             agent_name=item.agent_name,
@@ -400,7 +417,10 @@ def _build_objective_evaluation(
         agent_evaluations=agent_evaluations,
         memory_findings=memory_findings,
         overall_summary=structured_evaluation.overall_summary,
-        improvement_points=list(structured_evaluation.improvement_points),
+        improvement_points=_merge_checklist_improvement_points(
+            list(structured_evaluation.improvement_points),
+            checklist_assessments,
+        ),
         score=structured_evaluation.overall_score,
     )
 
@@ -457,13 +477,15 @@ def _build_sequence_diagram(state: CaseState) -> str:
 
     if "escalation_review" in path:
         lines.append("    Supervisor->>Escalation: エスカレーション判断と要約を依頼")
-        lines.append("    Escalation->>Inquiry: 問い合わせ文案作成を依頼")
+        lines.append("    Escalation-->>Supervisor: エスカレーション要約を返却")
+        lines.append("    Supervisor->>Inquiry: 問い合わせ文案作成を依頼")
         lines.append("    Inquiry-->>Supervisor: エスカレーション文案を返却")
         lines.append("    Supervisor->>Approval: 承認依頼を送信")
         if approval_route == "investigation":
             lines.append("    Approval->>Supervisor: 再調査を依頼")
         elif approval_route == "draft_review":
-            lines.append("    Approval->>Inquiry: 問い合わせ文案の差戻しを依頼")
+            lines.append("    Approval->>Supervisor: 差戻しを依頼")
+            lines.append("    Supervisor->>Inquiry: 問い合わせ文案の修正を依頼")
         elif "ticket_update_prepare" in path:
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
@@ -478,7 +500,8 @@ def _build_sequence_diagram(state: CaseState) -> str:
         if approval_route == "investigation":
             lines.append("    Approval->>Supervisor: 再調査を依頼")
         elif approval_route == "draft_review":
-            lines.append("    Approval->>DraftWriter: 差戻しを依頼")
+            lines.append("    Approval->>Supervisor: 差戻しを依頼")
+            lines.append("    Supervisor->>DraftWriter: 修正版ドラフト作成を依頼")
         elif "ticket_update_prepare" in path:
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
@@ -595,33 +618,129 @@ def _build_subgraph_sequence_diagrams(state: CaseState) -> list[SubgraphSequence
     return diagrams
 
 
-def _render_checklist(
+def _normalize_checklist(checklist: list[str]) -> list[str]:
+    normalized_items: list[str] = []
+    seen: set[str] = set()
+    for item in checklist:
+        normalized = item.strip()
+        if not normalized:
+            continue
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized_items.append(normalized)
+    return normalized_items
+
+
+def _assess_checklist_items(
     checklist: list[str],
     state: CaseState,
     context_text: str,
     progress_text: str,
     summary_text: str,
-) -> list[str]:
+) -> list[tuple[str, str]]:
     if not checklist:
-        return ["- なし"]
+        return []
     corpus = "\n".join([
         str(state.get("raw_issue") or ""),
         str(state.get("investigation_summary") or ""),
-        str(state.get("draft_response") or ""),
+        str(state.get("draft_response") or state.get("escalation_draft") or ""),
         context_text,
         progress_text,
         summary_text,
     ])
+    assessments: list[tuple[str, str]] = []
+    for item in checklist:
+        status = "manual review required"
+        if item in corpus:
+            status = "matched"
+        assessments.append((item, status))
+    return assessments
+
+
+def _render_checklist(criteria: list[CriterionEvaluation], checklist: list[str]) -> list[str]:
+    if not checklist:
+        return ["- なし"]
+    checklist_map = _index_checklist_criteria(criteria)
     lines: list[str] = []
     for item in checklist:
-        normalized = item.strip()
-        if not normalized:
+        criterion = checklist_map.get(item.casefold())
+        if criterion is None:
+            lines.append(f"- [missing in evaluation] {item}")
             continue
-        status = "manual review required"
-        if normalized in corpus:
-            status = "matched"
-        lines.append(f"- [{status}] {normalized}")
+        lines.append(f"- [{_checklist_badge(criterion.score)}] {item}: {criterion.result}")
     return lines or ["- なし"]
+
+
+def _index_checklist_criteria(criteria: list[CriterionEvaluation]) -> dict[str, CriterionEvaluation]:
+    index: dict[str, CriterionEvaluation] = {}
+    for criterion in criteria:
+        for item in criterion.related_checklist_items:
+            key = item.strip().casefold()
+            if key and key not in index:
+                index[key] = criterion
+    return index
+
+
+def _checklist_badge(score: int) -> str:
+    if score >= 80:
+        return "good"
+    if score >= 50:
+        return "needs attention"
+    return "needs improvement"
+
+
+def _merge_missing_checklist_criteria(
+    criteria: list[CriterionEvaluation],
+    checklist_assessments: list[tuple[str, str]],
+) -> list[CriterionEvaluation]:
+    if not checklist_assessments:
+        return criteria
+    present = {
+        item.casefold()
+        for criterion in criteria
+        for item in criterion.related_checklist_items
+        if item.strip()
+    }
+    merged = list(criteria)
+    for checklist_item, status in checklist_assessments:
+        key = checklist_item.casefold()
+        if key in present:
+            continue
+        score = 100 if status == "matched" else 40
+        merged.append(
+            CriterionEvaluation(
+                name=f"ユーザー指定観点: {checklist_item}",
+                viewpoint=f"インタラクションで指定された評価項目「{checklist_item}」が、回答本文・調査要約・共有メモリに反映されているかを確認する。",
+                result=(
+                    "関連記述を成果物と共有メモリから直接確認できました。"
+                    if status == "matched"
+                    else "関連記述を成果物または共有メモリから十分に確認できず、追加の明示が必要です。"
+                ),
+                score=score,
+                related_checklist_items=[checklist_item],
+            )
+        )
+    return merged
+
+
+def _merge_checklist_improvement_points(
+    improvement_points: list[str],
+    checklist_assessments: list[tuple[str, str]],
+) -> list[str]:
+    merged = list(improvement_points)
+    existing_text = "\n".join(improvement_points).casefold()
+    for checklist_item, status in checklist_assessments:
+        if status == "matched":
+            continue
+        candidate = (
+            f"ユーザー指定観点「{checklist_item}」を満たしたことが分かる根拠を、回答本文または shared memory に明示的に残してください。"
+        )
+        if candidate.casefold() in existing_text:
+            continue
+        merged.append(candidate)
+    return merged
 
 
 def _render_compliance_review_history(history: list[dict[str, object]]) -> list[str]:
@@ -717,11 +836,15 @@ def _render_criterion_evaluations(criteria: list[CriterionEvaluation]) -> list[s
         return ["- なし"]
     lines: list[str] = []
     for item in criteria:
+        checklist_line = ""
+        if item.related_checklist_items:
+            checklist_line = f"- 対応するユーザー指定観点: {', '.join(item.related_checklist_items)}"
         lines.extend([
             f"### {item.name}",
             f"- 評価観点: {item.viewpoint}",
             f"- 評価結果: {item.result}",
             f"- 点数: {item.score} / 100",
+            *( [checklist_line] if checklist_line else [] ),
             "",
         ])
     if lines and not lines[-1].strip():

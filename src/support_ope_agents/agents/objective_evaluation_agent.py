@@ -18,6 +18,7 @@ class StructuredCriterionEvaluation(BaseModel):
     viewpoint: str
     result: str
     score: int = Field(ge=0, le=100)
+    related_checklist_items: list[str] = Field(default_factory=list)
 
 
 class StructuredAgentEvaluation(BaseModel):
