@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 SUPERVISOR_AGENT = "SuperVisorAgent"
+OBJECTIVE_EVALUATION_AGENT = "ObjectiveEvaluationAgent"
 INTAKE_AGENT = "IntakeAgent"
 LOG_ANALYZER_AGENT = "LogAnalyzerAgent"
 KNOWLEDGE_RETRIEVER_AGENT = "KnowledgeRetrieverAgent"
@@ -13,6 +14,7 @@ TICKET_UPDATE_AGENT = "TicketUpdateAgent"
 
 DEFAULT_AGENT_ROLES: tuple[str, ...] = (
     SUPERVISOR_AGENT,
+    OBJECTIVE_EVALUATION_AGENT,
     INTAKE_AGENT,
     LOG_ANALYZER_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,

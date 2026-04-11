@@ -18,6 +18,7 @@ from support_ope_agents.agents.roles import (
     INTAKE_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,
     LOG_ANALYZER_AGENT,
+    OBJECTIVE_EVALUATION_AGENT,
     SUPERVISOR_AGENT,
 )
 from support_ope_agents.config.models import AppConfig
@@ -248,6 +249,7 @@ class _FakeAgentFactory:
     def build_default_definitions() -> list[AgentDefinition]:
         return [
             AgentDefinition(SUPERVISOR_AGENT, ""),
+            AgentDefinition(OBJECTIVE_EVALUATION_AGENT, ""),
             AgentDefinition(INTAKE_AGENT, ""),
             AgentDefinition(LOG_ANALYZER_AGENT, ""),
             AgentDefinition(KNOWLEDGE_RETRIEVER_AGENT, ""),
@@ -525,6 +527,38 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("各エージェントや処理全体の課題、改善点を一覧化します。", content)
         self.assertIn("### 点数", content)
         self.assertRegex(content, r"\n\d{1,3} / 100\n")
+        self.assertIn("ObjectiveEvaluationAgent", content)
+        self.assertIn("## サブグラフ詳細シーケンス", content)
+        self.assertIn("### IntakeAgent サブグラフ", content)
+        self.assertIn("### Draft Review ループ", content)
+        self.assertIn("## 情報伝達監査", content)
+        self.assertIn("Evaluation rubric", content)
+        self.assertRegex(content, r"- IntakeAgent: \d{1,3} / 100 - ")
+
+    def test_initialize_case_creates_objective_evaluator_working_memory(self) -> None:
+        self.service.initialize_case("CASE-TEST-017", str(self.workspace_path))
+
+        working_memory = self.workspace_path / ".memory" / "agents" / OBJECTIVE_EVALUATION_AGENT / "working.md"
+        self.assertTrue(working_memory.exists())
+
+    def test_objective_evaluator_settings_are_loaded(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "ObjectiveEvaluationAgent": {
+                        "pass_score": 85,
+                        "missing_shared_memory_penalty": 20,
+                    }
+                },
+            }
+        )
+
+        self.assertEqual(config.agents.ObjectiveEvaluationAgent.pass_score, 85)
+        self.assertEqual(config.agents.ObjectiveEvaluationAgent.missing_shared_memory_penalty, 20)
 
     def test_action_does_not_write_legacy_json_state_file(self) -> None:
         result = self.service.action(

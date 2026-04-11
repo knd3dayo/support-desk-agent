@@ -802,6 +802,8 @@ class RuntimeService:
             workspace_path=workspace_path,
             state=state,
             memory_store=self._context.memory_store,
+            instruction_loader=self._context.instruction_loader,
+            config=self._context.config,
             checklist=checklist,
         )
         return {
@@ -838,6 +840,8 @@ class RuntimeService:
             workspace_path=workspace_path,
             state=state,
             memory_store=self._context.memory_store,
+            instruction_loader=self._context.instruction_loader,
+            config=self._context.config,
             checklist=None,
         )
         return str(result.report_path)

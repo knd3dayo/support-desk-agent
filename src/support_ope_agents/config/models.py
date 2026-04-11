@@ -179,8 +179,18 @@ class BackSupportEscalationAgentSettings(AgentSettings):
     escalation: EscalationSettings = Field(default_factory=EscalationSettings)
 
 
+class ObjectiveEvaluationAgentSettings(AgentSettings):
+    pass_score: int = 80
+    missing_shared_memory_penalty: int = 12
+    missing_agent_memory_penalty: int = 8
+    private_memory_penalty: int = 5
+    agent_error_penalty: int = 15
+    primary_failure_penalty: int = 35
+
+
 class AgentCatalogSettings(StrictConfigModel):
     SuperVisorAgent: SupervisorAgentSettings = Field(default_factory=SupervisorAgentSettings)
+    ObjectiveEvaluationAgent: ObjectiveEvaluationAgentSettings = Field(default_factory=ObjectiveEvaluationAgentSettings)
     IntakeAgent: IntakeAgentSettings = Field(default_factory=IntakeAgentSettings)
     LogAnalyzerAgent: AgentSettings = Field(default_factory=AgentSettings)
     KnowledgeRetrieverAgent: KnowledgeRetrieverAgentSettings = Field(default_factory=KnowledgeRetrieverAgentSettings)
@@ -193,7 +203,7 @@ class AgentCatalogSettings(StrictConfigModel):
 
     def get(
         self, role: str
-    ) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | None:
+    ) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | ObjectiveEvaluationAgentSettings | None:
         return getattr(self, role, None)
 
 
