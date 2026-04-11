@@ -1,6 +1,7 @@
 import type {
   CaseSummary,
   ChatHistoryResponse,
+  GenerateReportResponse,
   InitCaseResponse,
   RuntimeEnvelope,
   UiConfigResponse,
@@ -131,6 +132,22 @@ export async function uploadWorkspaceFile(
 export function downloadWorkspaceUrl(caseId: string, workspacePath: string): string {
   const params = new URLSearchParams({ workspace_path: workspacePath });
   return `/cases/${caseId}/workspace/download?${params.toString()}`;
+}
+
+export function generateReport(
+  caseId: string,
+  workspacePath: string,
+  traceId: string,
+  checklist: string[] = []
+): Promise<GenerateReportResponse> {
+  return requestJson<GenerateReportResponse>(`/cases/${caseId}/report`, {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace_path: workspacePath,
+      trace_id: traceId,
+      checklist,
+    }),
+  });
 }
 
 export function sendAction(prompt: string, workspacePath: string, caseId: string): Promise<RuntimeEnvelope> {

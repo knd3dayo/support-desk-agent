@@ -1,10 +1,12 @@
-import { startTransition, useEffect, useState } from 'react';
+import { startTransition, useEffect, useId, useRef, useState } from 'react';
+import mermaid from 'mermaid';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   browseWorkspace,
   createCase,
   downloadWorkspaceUrl,
+  generateReport,
   getSavedAuthToken,
   listCases,
   loadFile,
@@ -33,6 +35,109 @@ type PendingQuestion = {
   answerKey?: string;
   questionText: string;
 };
+
+type SubmissionStage = 'creating-case' | 'uploading-files' | 'running-workflow' | 'syncing-results';
+
+const submissionStageCopy: Record<SubmissionStage, { title: string; detail: string }> = {
+  'creating-case': {
+    title: 'ケースを作成しています',
+    detail: '会話履歴と作業領域の準備を進めています。',
+  },
+  'uploading-files': {
+    title: '添付ファイルをアップロードしています',
+    detail: '調査に必要な証跡をワークスペースへ取り込んでいます。',
+  },
+  'running-workflow': {
+    title: '回答を準備しています',
+    detail: 'ログやナレッジ、添付ファイルを確認しています。',
+  },
+  'syncing-results': {
+    title: '結果を反映しています',
+    detail: '会話履歴とワークスペースの最新状態を読み込んでいます。',
+  },
+};
+
+let mermaidInitialized = false;
+
+function ensureMermaidInitialized() {
+  if (mermaidInitialized) {
+    return;
+  }
+
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'loose',
+    theme: 'neutral',
+  });
+  mermaidInitialized = true;
+}
+
+function MermaidBlock({ chart }: { chart: string }) {
+  const [svg, setSvg] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const blockId = useId().replace(/:/g, '-');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function renderChart() {
+      try {
+        ensureMermaidInitialized();
+        const { svg: nextSvg } = await mermaid.render(`mermaid-${blockId}`, chart);
+        if (!cancelled) {
+          setSvg(nextSvg);
+          setError(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setSvg('');
+          setError('Mermaid の描画に失敗しました。');
+        }
+      }
+    }
+
+    void renderChart();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [blockId, chart]);
+
+  if (error) {
+    return (
+      <div className="mermaid-fallback">
+        <p>{error}</p>
+        <pre>{chart}</pre>
+      </div>
+    );
+  }
+
+  return <div className="mermaid-diagram" dangerouslySetInnerHTML={{ __html: svg }} />;
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code({ className, children, ...props }) {
+          const language = /language-([\w-]+)/.exec(className || '')?.[1]?.toLowerCase();
+          if (language === 'mermaid') {
+            return <MermaidBlock chart={String(children).replace(/\n$/, '')} />;
+          }
+
+          return (
+            <code className={className} {...props}>
+              {children}
+            </code>
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
 
 function formatTimestamp(value?: string | null): string {
   if (!value) {
@@ -69,6 +174,28 @@ function isMarkdownFile(name: string, mimeType?: string | null): boolean {
     normalizedMime === 'text/markdown' ||
     normalizedMime === 'text/x-markdown'
   );
+}
+
+function isReportMarkdown(entry: WorkspaceEntry): boolean {
+  return entry.kind === 'file' && isMarkdownFile(entry.name);
+}
+
+function findLatestTraceId(messages: ChatMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const traceId = messages[index]?.trace_id?.trim();
+    if (traceId) {
+      return traceId;
+    }
+  }
+  return '';
+}
+
+function sortCasesByUpdatedAt(cases: CaseSummary[]): CaseSummary[] {
+  return [...cases].sort((left, right) => {
+    const leftTime = new Date(left.updated_at || 0).getTime();
+    const rightTime = new Date(right.updated_at || 0).getTime();
+    return rightTime - leftTime;
+  });
 }
 
 type StandalonePreviewParams = {
@@ -157,7 +284,7 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
           preview.preview_available ? (
             isMarkdownFile(preview.name, preview.mime_type) ? (
               <div className="preview-markdown standalone-preview-content markdown-body">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.content || ''}</ReactMarkdown>
+                <MarkdownContent content={preview.content || ''} />
               </div>
             ) : (
               <pre className="standalone-preview-content">{preview.content}</pre>
@@ -200,12 +327,15 @@ export default function App() {
   const [draftPrompt, setDraftPrompt] = useState('');
   const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
+  const [submissionStage, setSubmissionStage] = useState<SubmissionStage>('running-workflow');
   const [statusLine, setStatusLine] = useState('ケースを選択するか、そのまま最初のメッセージを送信してください。');
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [authToken, setAuthToken] = useState(() => getSavedAuthToken());
   const [inlinePreviewUrl, setInlinePreviewUrl] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(false);
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
   const [uiConfig, setUiConfig] = useState<UiConfigResponse>({
     app_name: 'Support Desk',
     target_label: null,
@@ -226,8 +356,12 @@ export default function App() {
     };
   }, [inlinePreviewUrl]);
 
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, isAwaitingResponse, submissionStage, pendingQuestion]);
+
   async function refreshCases() {
-    const nextCases = await listCases();
+    const nextCases = sortCasesByUpdatedAt(await listCases());
     startTransition(() => {
       setCases(nextCases);
     });
@@ -327,6 +461,72 @@ export default function App() {
     setPreview(nextPreview);
   }
 
+  async function openLatestReport() {
+    if (!selectedCase) {
+      return;
+    }
+
+    setStatusLine('最新レポートを確認しています。');
+
+    try {
+      const reportWorkspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, 'report');
+      const latestReport = reportWorkspace.entries
+        .filter(isReportMarkdown)
+        .sort((left, right) => {
+          const leftTime = new Date(left.updated_at || 0).getTime();
+          const rightTime = new Date(right.updated_at || 0).getTime();
+          return rightTime - leftTime;
+        })[0];
+
+      if (!latestReport) {
+        setStatusLine('report フォルダに表示可能な Markdown レポートが見つかりません。');
+        return;
+      }
+
+      window.open(
+        renderedPreviewUrl(selectedCase.case_id, selectedCase.workspace_path, latestReport.path),
+        '_blank',
+        'noopener,noreferrer'
+      );
+      setStatusLine(`${latestReport.name} を別ウィンドウで開きました。`);
+    } catch {
+      setStatusLine('最新レポートの取得に失敗しました。');
+    }
+  }
+
+  async function createLatestReport() {
+    if (!selectedCase) {
+      return;
+    }
+
+    const traceId = findLatestTraceId(messages);
+    if (!traceId) {
+      setStatusLine('レポート生成対象の trace_id が見つかりません。先に会話を実行してください。');
+      return;
+    }
+
+    setBusy(true);
+    setStatusLine('レポートを生成しています。');
+
+    try {
+      const result = await generateReport(selectedCase.case_id, selectedCase.workspace_path, traceId);
+      const [workspace, nextCases] = await Promise.all([
+        browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, workspaceView?.current_path || '.'),
+        listCases(),
+      ]);
+
+      startTransition(() => {
+        setWorkspaceView(workspace);
+        setCases(sortCasesByUpdatedAt(nextCases));
+      });
+      setStatusLine(`${result.report_path.split('/').pop() || 'レポート'} を生成しました。`);
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : 'レポート生成に失敗しました。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function persistAuthToken() {
     saveAuthToken(authToken);
     setStatusLine(authToken.trim() ? '認証トークンを保存しました。' : '認証トークンをクリアしました。');
@@ -342,11 +542,14 @@ export default function App() {
     }
 
     setBusy(true);
-    setStatusLine('送信中です。');
+    setIsAwaitingResponse(true);
+    setSubmissionStage(selectedCase ? 'running-workflow' : 'creating-case');
+    setStatusLine('回答を生成しています。');
 
     try {
       let activeCase = selectedCase;
       if (!activeCase) {
+        setSubmissionStage('creating-case');
         const created = await createCase(trimmedPrompt || '新規ケース');
         activeCase = {
           case_id: created.case_id,
@@ -358,10 +561,14 @@ export default function App() {
         setSelectedCase(activeCase);
       }
 
+      if (queuedFiles.length > 0) {
+        setSubmissionStage('uploading-files');
+      }
       for (const file of queuedFiles) {
         await uploadWorkspaceFile(activeCase.case_id, activeCase.workspace_path, '.evidence', file);
       }
 
+      setSubmissionStage('running-workflow');
       let result: RuntimeEnvelope;
       if (pendingQuestion && trimmedPrompt) {
         result = await resumeCustomerInput(
@@ -375,6 +582,7 @@ export default function App() {
         result = await sendAction(trimmedPrompt || '添付ファイルを確認してください。', activeCase.workspace_path, activeCase.case_id);
       }
 
+      setSubmissionStage('syncing-results');
       const [history, workspace, nextCases] = await Promise.all([
         loadHistory(activeCase.case_id, activeCase.workspace_path),
         browseWorkspace(activeCase.case_id, activeCase.workspace_path, workspaceView?.current_path || '.'),
@@ -384,7 +592,7 @@ export default function App() {
       startTransition(() => {
         setMessages(history.messages);
         setWorkspaceView(workspace);
-        setCases(nextCases);
+        setCases(sortCasesByUpdatedAt(nextCases));
       });
 
       const questions = (result.state.intake_followup_questions as Record<string, string> | undefined) ?? {};
@@ -405,6 +613,8 @@ export default function App() {
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : '送信中にエラーが発生しました。');
     } finally {
+      setIsAwaitingResponse(false);
+      setSubmissionStage('running-workflow');
       setBusy(false);
     }
   }
@@ -415,6 +625,7 @@ export default function App() {
   const isAuthenticated = Boolean(authToken.trim());
   const userLabel = uiConfig.auth_required ? (isAuthenticated ? '認証済み' : '未認証') : 'ゲスト';
   const userMeta = uiConfig.auth_required ? (isAuthenticated ? 'サインイン済み' : 'サインインが必要です') : '認証不要';
+  const submissionCopy = submissionStageCopy[submissionStage];
   const shellClassName = [
     'shell',
     sidebarCollapsed ? 'shell-sidebar-collapsed' : '',
@@ -528,20 +739,45 @@ export default function App() {
                 <div className="message-header">
                   <div className="message-role">{message.role === 'assistant' ? 'Agent' : 'You'}</div>
                   <button
-                    className="ghost-button message-copy-button"
+                    className="ghost-button message-copy-button icon-only"
                     type="button"
                     onClick={() => void copyRawText(message.content)}
+                    aria-label="raw_text をコピー"
+                    title="raw_text をコピー"
                   >
-                    raw_text をコピー
+                    <span className="copy-icon" aria-hidden="true" />
                   </button>
                 </div>
                 <div className="message-body markdown-body">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                  <MarkdownContent content={message.content} />
                 </div>
                 <span className="message-meta">{formatTimestamp(message.created_at)} {message.event ? `· ${message.event}` : ''}</span>
               </article>
             ))
           )}
+          {isAwaitingResponse ? (
+            <article className="message assistant message-pending" aria-live="polite" aria-busy="true">
+              <div className="message-header">
+                <div className="message-role">Agent</div>
+              </div>
+              <div className="message-body">
+                <div className="progress-bubble">
+                  <span className="progress-spinner" aria-hidden="true" />
+                  <div>
+                    <strong>{submissionCopy.title}</strong>
+                    <p>{submissionCopy.detail}</p>
+                  </div>
+                </div>
+                <div className="progress-steps" aria-hidden="true">
+                  <span className={submissionStage === 'creating-case' ? 'is-current' : ''}>ケース作成</span>
+                  <span className={submissionStage === 'uploading-files' ? 'is-current' : ''}>添付取込</span>
+                  <span className={submissionStage === 'running-workflow' ? 'is-current' : ''}>回答生成</span>
+                  <span className={submissionStage === 'syncing-results' ? 'is-current' : ''}>結果反映</span>
+                </div>
+              </div>
+            </article>
+          ) : null}
+          <div ref={messageEndRef} aria-hidden="true" />
         </div>
 
         {pendingQuestion ? (
@@ -557,15 +793,17 @@ export default function App() {
             onChange={(event) => setDraftPrompt(event.target.value)}
             placeholder={pendingQuestion ? '追加情報を入力してください' : '問い合わせ内容を入力してください'}
             rows={4}
+            disabled={busy}
           />
           <div className="composer-row">
-            <label className="upload-chip" htmlFor="file-upload">
+            <label className={`upload-chip ${busy ? 'is-disabled' : ''}`} htmlFor="file-upload">
               ファイルを追加
             </label>
             <input
               id="file-upload"
               type="file"
               multiple
+              disabled={busy}
               onChange={(event) => setQueuedFiles(Array.from(event.target.files || []))}
             />
             <div className="queued-files">
@@ -604,9 +842,17 @@ export default function App() {
           </div>
           <div className="panel-actions">
             {selectedCase ? (
-              <a className="ghost-button panel-action-secondary" href={downloadWorkspaceUrl(selectedCase.case_id, selectedCase.workspace_path)}>
-                ZIPを取得
-              </a>
+              <>
+                <button className="ghost-button panel-action-secondary" type="button" onClick={() => void createLatestReport()} disabled={busy}>
+                  レポート生成
+                </button>
+                <button className="ghost-button panel-action-secondary" type="button" onClick={() => void openLatestReport()}>
+                  レポート表示
+                </button>
+                <a className="ghost-button panel-action-secondary" href={downloadWorkspaceUrl(selectedCase.case_id, selectedCase.workspace_path)}>
+                  ZIPを取得
+                </a>
+              </>
             ) : null}
           </div>
         </div>
@@ -677,7 +923,7 @@ export default function App() {
                   {preview.preview_available ? (
                     isMarkdownFile(preview.name, preview.mime_type) ? (
                       <div className="preview-markdown markdown-body">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.content || ''}</ReactMarkdown>
+                        <MarkdownContent content={preview.content || ''} />
                       </div>
                     ) : (
                       <pre>{preview.content}</pre>

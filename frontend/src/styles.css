@@ -507,8 +507,11 @@ input {
 }
 
 .messages {
+  display: flex;
+  flex-direction: column;
   padding: 18px 0;
   flex: 0 0 auto;
+  gap: 14px;
 }
 
 .message {
@@ -524,6 +527,7 @@ input {
 
 .message.user {
   align-self: flex-end;
+  margin-left: auto;
   background: linear-gradient(135deg, #d56a31, #f4b35d);
   color: white;
   border-bottom-right-radius: 8px;
@@ -531,8 +535,13 @@ input {
 
 .message.assistant {
   align-self: flex-start;
+  margin-right: auto;
   background: rgba(255, 255, 255, 0.86);
   border-bottom-left-radius: 8px;
+}
+
+.message-pending {
+  min-width: min(100%, 340px);
 }
 
 .message-header {
@@ -546,6 +555,42 @@ input {
   padding: 7px 10px;
   font-size: 0.74rem;
   color: inherit;
+}
+
+.message-copy-button.icon-only {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.copy-icon {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+}
+
+.copy-icon::before,
+.copy-icon::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1.6px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+}
+
+.copy-icon::before {
+  top: 0;
+  left: 3px;
+}
+
+.copy-icon::after {
+  top: 3px;
+  left: 0;
 }
 
 .message-body {
@@ -655,6 +700,11 @@ input {
   background: rgba(255, 255, 255, 0.9);
 }
 
+.composer textarea:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .composer-row {
   display: grid;
   grid-template-columns: auto 1fr minmax(96px, auto);
@@ -679,11 +729,69 @@ input {
   font-size: 0.84rem;
 }
 
+.upload-chip.is-disabled,
+.send-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .send-button {
   padding: 10px 16px;
   background: rgba(16, 33, 47, 0.06);
   color: #10212f;
   font-size: 0.84rem;
+}
+
+.progress-bubble {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.progress-bubble strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.progress-bubble p {
+  margin: 0;
+  color: rgba(16, 33, 47, 0.64);
+}
+
+.progress-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.progress-steps span {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(16, 33, 47, 0.08);
+  color: rgba(16, 33, 47, 0.62);
+  font-size: 0.76rem;
+}
+
+.progress-steps span.is-current {
+  background: linear-gradient(135deg, rgba(16, 50, 77, 0.94), rgba(19, 96, 142, 0.92));
+  color: #f4efe4;
+}
+
+.progress-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2.5px solid rgba(16, 50, 77, 0.16);
+  border-top-color: #13608e;
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .followup-banner {
@@ -947,6 +1055,23 @@ input {
 .preview-markdown blockquote,
 .preview-markdown table {
   overflow-wrap: anywhere;
+}
+
+.mermaid-diagram {
+  margin: 16px 0;
+  overflow-x: auto;
+}
+
+.mermaid-diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-fallback p {
+  margin-bottom: 8px;
+  color: #8a2f2f;
+  font-weight: 700;
 }
 
 .binary-preview-frame {

@@ -25,6 +25,7 @@ export type WorkspaceEntry = {
   path: string;
   kind: 'file' | 'directory' | string;
   size?: number | null;
+  updated_at?: string | null;
 };
 
 export type WorkspaceBrowseResponse = {
@@ -70,6 +71,13 @@ export type RuntimeEnvelope = {
   requires_approval?: boolean | null;
   requires_customer_input?: boolean | null;
   state: Record<string, unknown>;
+};
+
+export type GenerateReportResponse = {
+  case_id: string;
+  trace_id: string;
+  report_path: string;
+  sequence_diagram: string;
 };
 
 export type InitCaseResponse = {
