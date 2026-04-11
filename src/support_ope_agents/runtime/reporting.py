@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+import re
+from typing import Any, cast
 
 from support_ope_agents.agents.objective_evaluation_agent import ObjectiveEvaluationAgent
 from support_ope_agents.agents.roles import OBJECTIVE_EVALUATION_AGENT
@@ -91,7 +92,7 @@ def build_support_improvement_report(
     }
     agent_memories = _load_agent_memories(case_paths, memory_store)
     memory_findings = _audit_memory_consistency(state, shared_memory, agent_memories)
-    structured_evaluation = ObjectiveEvaluationAgent(config, evaluator_instruction).evaluate(
+    structured_evaluation = ObjectiveEvaluationAgent(config=config, instruction_text=evaluator_instruction).evaluate(
         evidence=_build_objective_evaluation_evidence(
             case_id=case_id,
             trace_id=trace_id,
@@ -139,6 +140,10 @@ def build_support_improvement_report(
         *_report_item("調査要約", str(state.get("investigation_summary") or "n/a"), "ログ解析やナレッジ確認を踏まえた調査結果の要約です。"),
         *_report_item("コンプライアンス要約", str(state.get("compliance_review_summary") or "n/a"), "回答案に対するレビュー観点と判定結果の要約です。"),
         *_report_item("エスカレーション理由", str(state.get("escalation_reason") or "n/a"), "追加確認や上位支援が必要と判断した根拠です。"),
+        "",
+        "## コンプライアンスレビュー履歴",
+        "各レビュー周回での指摘内容と、その時点の対応内容を時系列で示します。",
+        *_render_compliance_review_history(cast(list[dict[str, object]], state.get("compliance_review_history") or [])),
         "",
         "## Evaluator 評価観点一覧",
         "ObjectiveEvaluationAgent が instruction に基づいて出力した評価観点一覧と、その結果です。",
@@ -218,6 +223,7 @@ def _build_objective_evaluation_evidence(
         "draft_response": str(state.get("draft_response") or ""),
         "investigation_summary": str(state.get("investigation_summary") or ""),
         "compliance_review_summary": str(state.get("compliance_review_summary") or ""),
+        "compliance_review_history": list(state.get("compliance_review_history") or []),
         "escalation_reason": str(state.get("escalation_reason") or ""),
         "escalation_summary": str(state.get("escalation_summary") or ""),
         "escalation_draft": str(state.get("escalation_draft") or ""),
@@ -491,6 +497,82 @@ def _render_checklist(
             status = "matched"
         lines.append(f"- [{status}] {normalized}")
     return lines or ["- なし"]
+
+
+def _render_compliance_review_history(history: list[dict[str, object]]) -> list[str]:
+    normalized = [item for item in history if isinstance(item, dict)]
+    if not normalized:
+        return ["- なし"]
+
+    lines: list[str] = []
+    for entry in normalized:
+        iteration = str(entry.get("iteration") or "?")
+        passed = bool(entry.get("passed"))
+        raw_issues = entry.get("compliance_review_issues")
+        issues_source = raw_issues if isinstance(raw_issues, list) else []
+        issues = [str(item).strip() for item in issues_source if str(item).strip()]
+        addressed_revision_request = str(entry.get("addressed_revision_request") or "").strip()
+        revision_request = str(entry.get("compliance_revision_request") or "").strip()
+        review_focus = str(entry.get("review_focus") or "").strip()
+        draft_excerpt = str(entry.get("draft_excerpt") or "").strip()
+        review_summary = str(entry.get("compliance_review_summary") or "").strip()
+        raw_adopted_sources = entry.get("adopted_sources")
+        adopted_source_values = raw_adopted_sources if isinstance(raw_adopted_sources, list) else []
+        adopted_sources = [str(item).strip() for item in adopted_source_values if str(item).strip()]
+        response_summary = _summarize_compliance_response(
+            addressed_revision_request=addressed_revision_request,
+            draft_excerpt=draft_excerpt,
+            passed=passed,
+            review_summary=review_summary,
+        )
+        lines.extend(
+            [
+                f"### Review Iteration {iteration}",
+                f"- 判定: {'passed' if passed else 'revision required'}",
+                f"- Review focus: {review_focus or 'n/a'}",
+                f"- 対応対象の指摘: {addressed_revision_request or '初回ドラフトのレビュー'}",
+                f"- 指摘内容: {' | '.join(issues) if issues else 'なし'}",
+                f"- 修正依頼: {revision_request or 'なし'}",
+                f"- 対応内容: {response_summary}",
+                f"- レビュー要約: {review_summary or 'なし'}",
+                f"- 採用した根拠ソース: {', '.join(adopted_sources) if adopted_sources else 'なし'}",
+                "",
+            ]
+        )
+    if lines and not lines[-1].strip():
+        lines.pop()
+    return lines
+
+
+def _summarize_compliance_response(
+    *,
+    addressed_revision_request: str,
+    draft_excerpt: str,
+    passed: bool,
+    review_summary: str,
+) -> str:
+    normalized_request = re.sub(r"\s+", " ", addressed_revision_request.strip())
+    normalized_draft = re.sub(r"\s+", " ", draft_excerpt.strip())
+    normalized_review_summary = re.sub(r"\s+", " ", review_summary.strip())
+
+    if not normalized_request and "継続可能と判断" in normalized_review_summary:
+        result = "具体的な文面修正は行わず、レビュー結果を踏まえて顧客向けの直接回答として継続可能と判断しました。"
+        if normalized_draft:
+            result += f" 対象ドラフト: 「{normalized_draft}」"
+        return result
+
+    if normalized_request and normalized_draft:
+        result = f"前回の修正依頼「{normalized_request}」に対応し、ドラフトを「{normalized_draft}」へ更新しました。"
+    elif normalized_request:
+        result = f"前回の修正依頼「{normalized_request}」に対応して再レビューしました。"
+    elif normalized_draft:
+        result = f"初回ドラフトとして「{normalized_draft}」を作成しました。"
+    else:
+        result = "対応内容の記録はありません。"
+
+    if passed and normalized_review_summary:
+        result += f" 最終的に {normalized_review_summary}"
+    return result
 
 
 def _format_agent_evaluation(evaluation: AgentEvaluation) -> str:

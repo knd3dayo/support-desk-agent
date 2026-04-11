@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -78,6 +79,59 @@ class LogAnalyzerPhaseExecutor:
                 terms.append(lowered)
         return terms
 
+    @staticmethod
+    def _normalize_match_entries(value: object) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+
+        normalized: list[dict[str, str]] = []
+        for item in value:
+            if isinstance(item, dict):
+                line_number = str(item.get("line_number") or "").strip()
+                line = str(item.get("line") or "").strip()
+                if line_number or line:
+                    normalized.append({"line_number": line_number, "line": line})
+                continue
+            text = str(item).strip()
+            if text:
+                normalized.append({"line_number": "", "line": text})
+        return normalized
+
+    @staticmethod
+    def _extract_exception_names(matches: list[dict[str, str]], limit: int = 3) -> list[str]:
+        found: list[str] = []
+        for match in matches:
+            line = str(match.get("line") or "")
+            for candidate in re.findall(r"\b[\w.$]+(?:Exception|Error)\b", line):
+                if candidate not in found:
+                    found.append(candidate)
+                if len(found) >= limit:
+                    return found
+        return found
+
+    @staticmethod
+    def _extract_severity_levels(matches: list[dict[str, str]], limit: int = 3) -> list[str]:
+        found: list[str] = []
+        for match in matches:
+            line = str(match.get("line") or "")
+            for level in ("FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"):
+                if level in line and level not in found:
+                    found.append(level)
+                if len(found) >= limit:
+                    return found
+        return found
+
+    @staticmethod
+    def _format_representative_matches(matches: list[dict[str, str]], limit: int = 2) -> str:
+        snippets: list[str] = []
+        for match in matches[:limit]:
+            line = " ".join(str(match.get("line") or "").split())
+            if not line:
+                continue
+            line_number = str(match.get("line_number") or "").strip()
+            snippets.append(f"L{line_number}: {line}" if line_number else line)
+        return " / ".join(snippets)
+
     def execute(self, state: "CaseState") -> dict[str, Any]:
         workspace_path = str(state.get("workspace_path") or "").strip()
         case_id = str(state.get("case_id") or "").strip()
@@ -112,13 +166,27 @@ class LogAnalyzerPhaseExecutor:
         detected_format = str(parsed.get("detected_format") or "unknown")
         has_java_stacktrace = bool(parsed.get("has_java_stacktrace"))
         search_results = parsed.get("search_results") if isinstance(parsed.get("search_results"), dict) else {}
-        severity_count = len(search_results.get("severity") or [])
-        exception_count = len(search_results.get("java_exception") or [])
+        severity_matches = self._normalize_match_entries(search_results.get("severity"))
+        exception_matches = self._normalize_match_entries(search_results.get("java_exception"))
+        severity_count = len(severity_matches)
+        exception_count = len(exception_matches)
+        severity_levels = self._extract_severity_levels(severity_matches)
+        exception_names = self._extract_exception_names(exception_matches)
+        representative_severity = self._format_representative_matches(severity_matches)
+        representative_exception = self._format_representative_matches(exception_matches, limit=1)
         summary = (
             f"{selected_file.name} を解析し、形式は {detected_format} と判定しました。"
             f"severity 一致 {severity_count} 件、例外一致 {exception_count} 件"
         )
-        summary += "、Java スタックトレースを検出しました。" if has_java_stacktrace else "。"
+        if severity_levels:
+            summary += f"。主な severity: {', '.join(severity_levels)}"
+        if exception_names:
+            summary += f"。検出した例外候補: {', '.join(exception_names)}"
+        if representative_severity:
+            summary += f"。代表的な異常行: {representative_severity}"
+        if representative_exception:
+            summary += f"。代表的な例外行: {representative_exception}"
+        summary += "。Java スタックトレースを検出しました。" if has_java_stacktrace else "。"
         if self.write_working_memory_tool is not None and case_id and workspace_path:
             payload: SharedMemoryDocumentPayload = {
                 "title": "Log Analysis Result",

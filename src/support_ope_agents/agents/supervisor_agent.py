@@ -255,6 +255,176 @@ class SupervisorPhaseExecutor:
         )
 
     @staticmethod
+    def _sanitize_customer_facing_text(text: str) -> str:
+        sanitized = str(text or "").strip()
+        replacements = {
+            "KnowledgeRetrieverAgent は問い合わせ内容をもとに document_sources を検索しました。": "関連資料も確認しました。",
+            "KnowledgeRetrieverAgent": "関連資料",
+            "LogAnalyzerAgent": "ログ解析",
+            "SuperVisorAgent": "今回の調査",
+            "document_sources": "関連資料",
+            "共有メモリ": "調査メモ",
+            "ナレッジ照会結果": "関連資料の確認結果",
+            "ログ解析結果": "ログ確認結果",
+        }
+        for source, target in replacements.items():
+            sanitized = sanitized.replace(source, target)
+        sanitized = re.sub(r"\s+", " ", sanitized).strip()
+        return sanitized
+
+    @classmethod
+    def _extract_customer_facing_knowledge_summary(
+        cls,
+        *,
+        raw_issue: str,
+        knowledge_retrieval_results: list[dict[str, object]],
+        knowledge_retrieval_summary: str,
+        final_source: str,
+        workflow_kind: str,
+    ) -> str:
+        if not knowledge_retrieval_results:
+            return ""
+
+        normalized_query = cls._normalize_query_text(raw_issue)
+        prioritized: list[dict[str, object]] = []
+        if final_source:
+            prioritized.extend(item for item in knowledge_retrieval_results if str(item.get("source_name") or "") == final_source)
+        prioritized.extend(item for item in knowledge_retrieval_results if item not in prioritized)
+
+        for item in prioritized:
+            source_name = str(item.get("source_name") or "").strip()
+            source_type = str(item.get("source_type") or "").strip()
+            status = str(item.get("status") or "").strip()
+            if status not in {"matched", "fetched", "hydrated"}:
+                continue
+
+            normalized_source = cls._normalize_query_text(source_name)
+            explicit_match = bool(normalized_query and normalized_source and normalized_source in normalized_query)
+            if workflow_kind == "incident_investigation" and source_type == "document_source" and not explicit_match:
+                continue
+
+            summary = cls._sanitize_customer_facing_text(str(item.get("summary") or ""))
+            evidence = item.get("evidence") if isinstance(item.get("evidence"), list) else []
+            highlight = next((str(entry).strip() for entry in evidence if str(entry).strip()), "")
+            if summary:
+                return summary
+            if highlight:
+                prefix = f"{source_name} では" if source_name else "関連資料では"
+                return f"{prefix}{highlight} を確認しました。"
+
+        if workflow_kind != "incident_investigation":
+            return cls._sanitize_customer_facing_text(knowledge_retrieval_summary)
+        return ""
+
+    @classmethod
+    def _build_customer_facing_investigation_summary(
+        cls,
+        *,
+        raw_issue: str,
+        workflow_kind: str,
+        log_analysis_summary: str,
+        knowledge_retrieval_summary: str,
+        knowledge_retrieval_results: list[dict[str, object]],
+        final_source: str,
+    ) -> str:
+        fragments: list[str] = []
+        if log_analysis_summary:
+            fragments.append(cls._sanitize_customer_facing_text(log_analysis_summary))
+
+        knowledge_summary = cls._extract_customer_facing_knowledge_summary(
+            raw_issue=raw_issue,
+            knowledge_retrieval_results=knowledge_retrieval_results,
+            knowledge_retrieval_summary=knowledge_retrieval_summary,
+            final_source=final_source,
+            workflow_kind=workflow_kind,
+        )
+        if knowledge_summary:
+            fragments.append(knowledge_summary)
+
+        if fragments:
+            return " ".join(fragment for fragment in fragments if fragment).strip()
+
+        if workflow_kind == "incident_investigation":
+            return "添付ログと関連情報を確認し、現時点で把握できる異常内容を整理しました。"
+        if workflow_kind == "specification_inquiry":
+            return "関連資料を確認し、ご質問に対して回答可能な仕様情報を整理しました。"
+        return "問い合わせ内容に関連する資料とログを確認し、回答に必要な情報を整理しました。"
+
+    @staticmethod
+    def _is_non_actionable_compliance_feedback(
+        summary: str,
+        issues: list[str],
+        revision_request: str,
+    ) -> bool:
+        combined = "\n".join([summary, *issues, revision_request]).lower()
+        if not combined.strip():
+            return False
+        blocking_markers = ["ポリシー文書を取得できませんでした", "document_sources", "確認根拠となるポリシー文書"]
+        return any(marker.lower() in combined for marker in blocking_markers)
+
+    @staticmethod
+    def _summarize_text(text: str, limit: int = 220) -> str:
+        normalized = re.sub(r"\s+", " ", str(text or "").strip())
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[: limit - 1].rstrip() + "…"
+
+    @classmethod
+    def _append_compliance_review_history(
+        cls,
+        state: "CaseState",
+        *,
+        iteration: int,
+        review_focus: str,
+        addressed_revision_request: str,
+        draft_response: str,
+        compliance_review_summary: str,
+        compliance_review_issues: list[str],
+        compliance_revision_request: str,
+        compliance_review_passed: bool,
+        compliance_review_adopted_sources: list[str],
+        compliance_notice_present: bool,
+    ) -> None:
+        history = [item for item in cast(list[dict[str, object]], state.get("compliance_review_history") or []) if isinstance(item, dict)]
+        history.append(
+            {
+                "iteration": iteration,
+                "review_focus": review_focus,
+                "addressed_revision_request": addressed_revision_request,
+                "draft_response": draft_response,
+                "draft_excerpt": cls._summarize_text(draft_response),
+                "compliance_review_summary": compliance_review_summary,
+                "compliance_review_issues": list(compliance_review_issues),
+                "compliance_revision_request": compliance_revision_request,
+                "passed": compliance_review_passed,
+                "adopted_sources": list(compliance_review_adopted_sources),
+                "notice_present": compliance_notice_present,
+            }
+        )
+        state["compliance_review_history"] = history
+
+    @classmethod
+    def _latest_compliance_history_bullets(cls, state: "CaseState") -> list[str]:
+        history = [item for item in cast(list[dict[str, object]], state.get("compliance_review_history") or []) if isinstance(item, dict)]
+        if not history:
+            return []
+        latest = history[-1]
+        issues = [str(item).strip() for item in cast(list[object], latest.get("compliance_review_issues") or []) if str(item).strip()]
+        latest_revision_request = str(latest.get("compliance_revision_request") or "").strip()
+        addressed_revision_request = str(latest.get("addressed_revision_request") or "").strip()
+        draft_excerpt = str(latest.get("draft_excerpt") or "").strip()
+        bullets = [f"Compliance review history entries: {len(history)}"]
+        if addressed_revision_request:
+            bullets.append(f"Latest compliance addressed request: {cls._summarize_text(addressed_revision_request)}")
+        if issues:
+            bullets.append(f"Latest compliance issues: {' | '.join(issues)}")
+        if latest_revision_request:
+            bullets.append(f"Latest compliance revision request: {cls._summarize_text(latest_revision_request)}")
+        if draft_excerpt:
+            bullets.append(f"Latest compliance response draft: {draft_excerpt}")
+        return bullets
+
+    @staticmethod
     def _normalize_query_text(text: str) -> str:
         return re.sub(r"[^0-9a-z\u3040-\u30ff\u4e00-\u9fff]+", " ", text.lower()).strip()
 
@@ -383,14 +553,14 @@ class SupervisorPhaseExecutor:
             update["knowledge_retrieval_final_adopted_source"] = knowledge_retrieval_final_adopted_source
 
         if update.get("execution_mode") == "action":
-            default_summary = (
-                "SuperVisorAgent は共有メモリを参照し、"
-                f"{', '.join(planned_child_agents)} を使って調査を進めます。"
+            default_summary = self._build_customer_facing_investigation_summary(
+                raw_issue=str(update.get("raw_issue") or ""),
+                workflow_kind=effective_workflow_kind,
+                log_analysis_summary=log_analysis_summary,
+                knowledge_retrieval_summary=knowledge_retrieval_summary,
+                knowledge_retrieval_results=knowledge_retrieval_results,
+                final_source=knowledge_retrieval_final_adopted_source,
             )
-            if log_analysis_summary:
-                default_summary += f" ログ解析結果: {log_analysis_summary}"
-            if knowledge_retrieval_summary:
-                default_summary += f" ナレッジ照会結果: {knowledge_retrieval_summary}"
             update["investigation_summary"] = str(update.get("investigation_summary") or default_summary)
         else:
             if not update.get("investigation_summary"):
@@ -517,6 +687,7 @@ class SupervisorPhaseExecutor:
         update = cast("CaseState", dict(state))
         update["status"] = "DRAFT_READY"
         update["current_agent"] = SUPERVISOR_AGENT
+        update.setdefault("compliance_review_history", [])
 
         case_id = str(update.get("case_id") or "").strip()
         workspace_path = str(update.get("workspace_path") or "").strip()
@@ -545,13 +716,28 @@ class SupervisorPhaseExecutor:
             update["draft_review_max_loops"] = max_review_loops
             update["draft_review_iterations"] = 0
             if self.draft_writer_executor is not None:
+                pending_revision_request = str(update.get("compliance_revision_request") or "").strip()
                 for attempt in range(1, max_review_loops + 1):
                     update["draft_review_iterations"] = attempt
+                    addressed_revision_request = pending_revision_request
                     draft_result = self.draft_writer_executor.execute(cast(dict[str, object], update))
                     update["draft_response"] = str(draft_result.get("draft_response") or update.get("draft_response") or "")
 
                     if self.compliance_reviewer_executor is None:
                         update["compliance_review_passed"] = True
+                        self._append_compliance_review_history(
+                            update,
+                            iteration=attempt,
+                            review_focus=review_focus,
+                            addressed_revision_request=addressed_revision_request,
+                            draft_response=str(update.get("draft_response") or ""),
+                            compliance_review_summary="コンプライアンスレビューは未実施です。",
+                            compliance_review_issues=[],
+                            compliance_revision_request="",
+                            compliance_review_passed=True,
+                            compliance_review_adopted_sources=[],
+                            compliance_notice_present=bool(update.get("compliance_notice_present")),
+                        )
                         update["next_action"] = "ApprovalAgent へドラフトを回付する"
                         break
 
@@ -564,6 +750,44 @@ class SupervisorPhaseExecutor:
                     update["compliance_notice_matched_phrase"] = str(compliance_review.get("compliance_notice_matched_phrase") or "")
                     update["compliance_revision_request"] = str(compliance_review.get("compliance_revision_request") or "")
                     update["compliance_review_passed"] = bool(compliance_review.get("compliance_review_passed"))
+                    if (
+                        not bool(update.get("compliance_review_passed"))
+                        and self._is_non_actionable_compliance_feedback(
+                            str(update.get("compliance_review_summary") or ""),
+                            cast(list[str], update.get("compliance_review_issues") or []),
+                            str(update.get("compliance_revision_request") or ""),
+                        )
+                        and str(update.get("draft_response") or "").strip()
+                    ):
+                        update["compliance_review_passed"] = True
+                        update["compliance_review_summary"] = (
+                            str(update.get("compliance_review_summary") or "")
+                            + " ポリシー根拠の取得は未完了ですが、顧客向けの直接回答としては継続可能と判断しました。"
+                        ).strip()
+                    self._append_compliance_review_history(
+                        update,
+                        iteration=attempt,
+                        review_focus=review_focus,
+                        addressed_revision_request=addressed_revision_request,
+                        draft_response=str(update.get("draft_response") or ""),
+                        compliance_review_summary=str(update.get("compliance_review_summary") or ""),
+                        compliance_review_issues=cast(list[str], update.get("compliance_review_issues") or []),
+                        compliance_revision_request=str(update.get("compliance_revision_request") or ""),
+                        compliance_review_passed=bool(update.get("compliance_review_passed")),
+                        compliance_review_adopted_sources=cast(list[str], update.get("compliance_review_adopted_sources") or []),
+                        compliance_notice_present=bool(update.get("compliance_notice_present")),
+                    )
+                    pending_revision_request = str(update.get("compliance_revision_request") or "").strip()
+                    if (
+                        bool(update.get("compliance_review_passed"))
+                        and self._is_non_actionable_compliance_feedback(
+                            str(update.get("compliance_review_summary") or ""),
+                            cast(list[str], update.get("compliance_review_issues") or []),
+                            str(update.get("compliance_revision_request") or ""),
+                        )
+                    ):
+                        update["next_action"] = "ApprovalAgent へドラフトを回付する"
+                        break
                     if bool(update.get("compliance_review_passed")):
                         update["next_action"] = "ApprovalAgent へドラフトを回付する"
                         break
@@ -607,6 +831,7 @@ class SupervisorPhaseExecutor:
                     f"Compliance notice present: {'yes' if bool(update.get('compliance_notice_present')) else 'no'}",
                     f"Compliance adopted sources: {', '.join(cast(list[str], update.get('compliance_review_adopted_sources') or [])) or 'n/a'}",
                     "Managed child agents: DraftWriterAgent, ComplianceReviewerAgent",
+                    *self._latest_compliance_history_bullets(update),
                 ],
             }
             progress_payload: SharedMemoryDocumentPayload = {
@@ -618,6 +843,7 @@ class SupervisorPhaseExecutor:
                     f"Review loop count: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or self.compliance_max_review_loops)}",
                     f"Compliance review passed: {'yes' if bool(update.get('compliance_review_passed')) else 'no'}",
                     f"Next transition: {str(update.get('next_action') or 'wait_for_approval')}",
+                    *self._latest_compliance_history_bullets(update),
                 ],
             }
             compliance_review_issues = [
