@@ -342,3 +342,14 @@ class AppConfig(StrictConfigModel):
     tools: ToolSettings = Field(default_factory=ToolSettings)
     interfaces: InterfaceSettings = Field(default_factory=InterfaceSettings)
     agents: AgentCatalogSettings = Field(default_factory=AgentCatalogSettings)
+
+    @model_validator(mode="after")
+    def _validate_llm_requirement(self) -> "AppConfig":
+        if self.llm.provider.lower() != "openai":
+            raise ValueError("llm.provider must be 'openai'")
+        api_key = str(self.llm.api_key or "").strip()
+        if not api_key:
+            raise ValueError("llm.api_key is required and must not be empty")
+        if api_key.lower() in {"dummy", "test", "placeholder"}:
+            raise ValueError("llm.api_key must not use placeholder values such as dummy, test, or placeholder")
+        return self

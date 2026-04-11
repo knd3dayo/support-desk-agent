@@ -4,6 +4,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from langchain_core.messages import AIMessage
 
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
@@ -80,12 +83,32 @@ class _FakeMissingLogsAnalyzerExecutor:
         }
 
 
+class _FakeDraftModel:
+    async def ainvoke(self, _messages):
+        return AIMessage(content="生成AIは誤った回答をすることがあります。現時点では仕様上の動作と判断します。")
+
+
+class _FakeComplianceModel:
+    async def ainvoke(self, _messages):
+        return AIMessage(content='{"summary":"mocked compliance review","issues":[]}')
+
+
 class SupervisorAgentTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._compliance_model_patcher = patch(
+            "support_ope_agents.tools.default_check_policy._get_chat_model",
+            return_value=_FakeComplianceModel(),
+        )
+        self._compliance_model_patcher.start()
+
+    def tearDown(self) -> None:
+        self._compliance_model_patcher.stop()
+
     def test_supervisor_uses_back_support_escalation_settings(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -135,7 +158,7 @@ class SupervisorAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -171,7 +194,7 @@ class SupervisorAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -209,7 +232,7 @@ class SupervisorAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -251,7 +274,7 @@ class SupervisorAgentTests(unittest.TestCase):
             )
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -316,7 +339,7 @@ class SupervisorAgentTests(unittest.TestCase):
             )
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -354,18 +377,19 @@ class SupervisorAgentTests(unittest.TestCase):
                 compliance_max_review_loops=3,
             )
 
-            result = supervisor.execute_draft_review(
-                {
-                    "case_id": "CASE-TEST-007",
-                    "workspace_path": str(workspace_path),
-                    "execution_mode": "action",
-                    "workflow_kind": "incident_investigation",
-                    "intake_category": "incident_investigation",
-                    "intake_urgency": "high",
-                    "investigation_summary": "現時点では再現条件を確認中であり、仕様逸脱は断定していません。",
-                    "draft_response": "必ず復旧します。",
-                }
-            )
+            with patch("support_ope_agents.agents.draft_writer_agent._get_chat_model", return_value=_FakeDraftModel()):
+                result = supervisor.execute_draft_review(
+                    {
+                        "case_id": "CASE-TEST-007",
+                        "workspace_path": str(workspace_path),
+                        "execution_mode": "action",
+                        "workflow_kind": "incident_investigation",
+                        "intake_category": "incident_investigation",
+                        "intake_urgency": "high",
+                        "investigation_summary": "現時点では再現条件を確認中であり、仕様逸脱は断定していません。",
+                        "draft_response": "必ず復旧します。",
+                    }
+                )
 
             self.assertTrue(bool(result.get("compliance_review_passed")))
             self.assertGreaterEqual(int(result.get("draft_review_iterations") or 0), 1)

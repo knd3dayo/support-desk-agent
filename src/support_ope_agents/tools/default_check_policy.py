@@ -30,13 +30,7 @@ RISKY_EXPRESSIONS = [
 ]
 
 
-def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
-    if config.llm.provider.lower() != "openai":
-        return None
-    if not config.llm.api_key:
-        return None
-    if str(config.llm.api_key).strip().lower() in {"dummy", "test", "placeholder"}:
-        return None
+def _get_chat_model(config: AppConfig) -> ChatOpenAI:
     return ChatOpenAI(
         model=config.llm.model,
         api_key=cast(Any, config.llm.api_key),
@@ -80,8 +74,8 @@ def _normalize_keywords(values: list[str], limit: int) -> list[str]:
     return normalized
 
 
-async def _expand_policy_keywords(model: ChatOpenAI | None, query: str, limit: int) -> list[str]:
-    if model is None or not query.strip() or limit <= 0:
+async def _expand_policy_keywords(model: ChatOpenAI, query: str, limit: int) -> list[str]:
+    if not query.strip() or limit <= 0:
         return []
 
     prompt = {
@@ -90,17 +84,14 @@ async def _expand_policy_keywords(model: ChatOpenAI | None, query: str, limit: i
         "max_keywords": limit,
         "output_format": {"keywords": ["string"]},
     }
-    try:
-        response = await model.ainvoke(
-            [HumanMessage(content="Return JSON only. Generate concise policy search keywords.\n" + json.dumps(prompt, ensure_ascii=False))]
-        )
-        content = _stringify_response_content(response.content)
-        parsed = json.loads(content)
-        if isinstance(parsed, dict):
-            return _normalize_keywords(list(parsed.get("keywords") or []), limit)
-    except Exception:
-        return []
-    return []
+    response = await model.ainvoke(
+        [HumanMessage(content="Return JSON only. Generate concise policy search keywords.\n" + json.dumps(prompt, ensure_ascii=False))]
+    )
+    content = _stringify_response_content(response.content)
+    parsed = json.loads(content)
+    if isinstance(parsed, dict):
+        return _normalize_keywords(list(parsed.get("keywords") or []), limit)
+    raise ValueError("policy keyword expansion returned an invalid payload")
 
 
 def build_default_check_policy_tool(config: AppConfig):

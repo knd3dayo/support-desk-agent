@@ -2,7 +2,7 @@ support_ope_agents:
   llm:
     provider: openai
     model: poc-chat-model
-    api_key: os.environ/OPENAI_API_KEY
+    api_key: os.environ/LLM_API_KEY
     base_url: http://localhost:4000
 
   tools:

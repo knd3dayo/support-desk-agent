@@ -23,7 +23,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "dummy", "base_url": "http://localhost:4000"},
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "sk-test-value", "base_url": "http://localhost:4000"},
                     "config_paths": {},
                     "data_paths": {},
                     "knowledge_retrieval": {
@@ -42,7 +42,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "dummy", "base_url": "http://localhost:4000"},
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "sk-test-value", "base_url": "http://localhost:4000"},
                     "config_paths": {},
                     "data_paths": {},
                     "knowledge_retrieval": {
@@ -59,7 +59,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "dummy", "base_url": "http://localhost:4000"},
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "sk-test-value", "base_url": "http://localhost:4000"},
                     "config_paths": {},
                     "data_paths": {},
                     "tools": {
@@ -80,7 +80,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
     def test_registry_keeps_ticket_tools_available_without_logical_tool_config(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "dummy", "base_url": "http://localhost:4000"},
+                "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "sk-test-value", "base_url": "http://localhost:4000"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -97,7 +97,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
     def test_returns_unavailable_when_document_sources_are_missing(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -123,7 +123,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
 
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "docs", "description": "test docs", "path": str(root)}]}},
@@ -149,7 +149,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
 
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "docs", "description": "test docs", "path": str(root)}], "ignore_patterns_file": str(ignore_file)}},
@@ -168,7 +168,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
 
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "ai-platform-poc", "description": "生成AI基盤のアーキテクチャ検討資料", "path": str(source_path)}]}},
@@ -287,7 +287,8 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertEqual(document_results[0]["source_name"], "ai-chat-util")
         self.assertEqual(cast(list[str], result["knowledge_retrieval_adopted_sources"])[0], "ai-chat-util")
         retrieval_summary = cast(str, result["knowledge_retrieval_summary"])
-        self.assertIn("代表的な抜粋: ai-chat-util は利用可能な機能と API をまとめた資料です。", retrieval_summary)
+        self.assertIn("代表ソース: ai-chat-util。", retrieval_summary)
+        self.assertIn("要点: 機能一覧", retrieval_summary)
 
     def test_extracts_feature_bullets_for_feature_list_query(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -300,7 +301,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
 
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "sample", "description": "sample docs", "path": str(root)}]}},
@@ -334,7 +335,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
             )
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "sample", "description": "sample docs", "path": str(source_root)}]}},
@@ -373,7 +374,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
 
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "agents": {
@@ -405,7 +406,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
 
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "agents": {

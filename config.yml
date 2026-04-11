@@ -8,8 +8,8 @@ support_ope_agents:
     # 使用するモデル名です。
     model: gpt-4.1
 
-    # 環境変数参照です。実際の値は OPENAI_API_KEY から読み込みます。
-    api_key: os.environ/OPENAI_API_KEY
+    # 環境変数参照です。実際の値は LLM_API_KEY から読み込みます。
+    api_key: os.environ/LLM_API_KEY
 
   # 静的な設定ファイルや指示ファイルの場所です。
   # 既定値のままでよければ未指定で構いません。

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 import inspect
 import json
 import re
-from collections.abc import Coroutine
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
@@ -13,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
@@ -36,14 +35,7 @@ class IntakePhaseExecutor:
         except TypeError:
             result = tool(*args)
         if inspect.isawaitable(result):
-            try:
-                resolved = asyncio.run(cast(Coroutine[Any, Any, Any], result))
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                try:
-                    resolved = loop.run_until_complete(result)
-                finally:
-                    loop.close()
+            resolved = run_awaitable_sync(cast(Any, result))
             return str(resolved)
         return str(result)
 

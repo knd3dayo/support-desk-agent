@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 import re
-from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import EscalationSettings
+from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
@@ -39,14 +38,7 @@ class SupervisorPhaseExecutor:
     def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
         result = tool(*args)
         if inspect.isawaitable(result):
-            try:
-                resolved = asyncio.run(cast(Coroutine[Any, Any, Any], result))
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                try:
-                    resolved = loop.run_until_complete(result)
-                finally:
-                    loop.close()
+            resolved = run_awaitable_sync(cast(Any, result))
             return str(resolved)
         return str(result)
 

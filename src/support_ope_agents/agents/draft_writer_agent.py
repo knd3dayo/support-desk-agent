@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
-from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, cast
 
@@ -13,16 +11,11 @@ from langchain_openai import ChatOpenAI
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import DRAFT_WRITER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.tools.document_source_backend import extract_feature_bullets_with_options, extract_relevant_snippet_with_limit
 
 
-def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
-    if config.llm.provider.lower() != "openai":
-        return None
-    if not config.llm.api_key:
-        return None
-    if str(config.llm.api_key).strip().lower() in {"dummy", "test", "placeholder"}:
-        return None
+def _get_chat_model(config: AppConfig) -> ChatOpenAI:
     return ChatOpenAI(
         model=config.llm.model,
         api_key=cast(Any, config.llm.api_key),
@@ -69,14 +62,7 @@ class DraftWriterPhaseExecutor:
         except TypeError:
             result = tool(*args)
         if inspect.isawaitable(result):
-            try:
-                resolved = asyncio.run(cast(Coroutine[Any, Any, Any], result))
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                try:
-                    resolved = loop.run_until_complete(result)
-                finally:
-                    loop.close()
+            resolved = run_awaitable_sync(cast(Any, result))
             return str(resolved)
         return str(result)
 
@@ -230,35 +216,6 @@ class DraftWriterPhaseExecutor:
                 return normalized + "。"
         return ""
 
-    def _fallback_draft(self, state: dict[str, object]) -> str:
-        effective_workflow_kind = self._resolve_effective_workflow_kind(state)
-        revision_request = str(state.get("compliance_revision_request") or "")
-        if effective_workflow_kind == "specification_inquiry":
-            specification_response = self._build_specification_response(state)
-            if specification_response:
-                if "注意文" in revision_request:
-                    notice_phrase = self._required_notice_phrase()
-                    if notice_phrase and notice_phrase not in specification_response:
-                        specification_response = specification_response + "\n\n" + notice_phrase
-                return specification_response
-
-        investigation_summary = self._sanitize_customer_summary(
-            str(state.get("investigation_summary") or "調査結果を整理中です。").strip()
-        )
-        source_hint = str(state.get("knowledge_retrieval_final_adopted_source") or "").strip()
-
-        lines: list[str] = []
-        lines.append("お問い合わせありがとうございます。")
-        lines.append(f"現時点の確認結果では、{investigation_summary}")
-        if source_hint:
-            lines.append(f"関連情報は {source_hint} を根拠候補として確認しています。")
-        if "注意文" in revision_request:
-            notice_phrase = self._required_notice_phrase()
-            if notice_phrase:
-                lines.append(notice_phrase)
-        lines.append("追加で確認が必要な点があれば、確認結果が揃い次第ご案内します。")
-        return "\n\n".join(line for line in lines if line.strip())
-
     def _strip_internal_review_content(self, draft: str, revision_request: str) -> str:
         normalized = draft.strip()
         if not normalized:
@@ -292,9 +249,6 @@ class DraftWriterPhaseExecutor:
 
     async def _generate_with_llm(self, state: dict[str, object]) -> str:
         model = _get_chat_model(self.config)
-        if model is None:
-            return self._fallback_draft(state)
-
         prompt = {
             "task": "Write a customer-facing support response draft in Japanese.",
             "investigation_summary": str(state.get("investigation_summary") or ""),
@@ -309,15 +263,16 @@ class DraftWriterPhaseExecutor:
             ],
             "internal_revision_guidance": str(state.get("compliance_revision_request") or ""),
         }
-        try:
-            response = await model.ainvoke(
-                [HumanMessage(content="Return only the final draft text.\n" + json.dumps(prompt, ensure_ascii=False))]
-            )
-            content = _stringify_response_content(response.content)
-            sanitized = self._strip_internal_review_content(content or self._fallback_draft(state), str(state.get("compliance_revision_request") or ""))
-            return sanitized or self._fallback_draft(state)
-        except Exception:
-            return self._fallback_draft(state)
+        response = await model.ainvoke(
+            [HumanMessage(content="Return only the final draft text.\n" + json.dumps(prompt, ensure_ascii=False))]
+        )
+        content = _stringify_response_content(response.content)
+        if not content:
+            raise ValueError("draft_writer returned an empty response")
+        sanitized = self._strip_internal_review_content(content, str(state.get("compliance_revision_request") or ""))
+        if not sanitized:
+            raise ValueError("draft_writer returned an empty sanitized response")
+        return sanitized
 
     def execute(self, state: dict[str, object]) -> dict[str, object]:
         existing_draft = str(state.get("draft_response") or "").strip()

@@ -18,7 +18,7 @@ class MemoryToolTests(unittest.IsolatedAsyncioTestCase):
         self.workspace_path = Path(self._tmpdir.name)
         self.config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},

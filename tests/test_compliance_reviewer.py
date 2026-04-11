@@ -15,7 +15,25 @@ from support_ope_agents.tools.default_request_revision import build_default_requ
 from support_ope_agents.tools.registry import ToolRegistry
 
 
+class _FakeComplianceModel:
+    async def ainvoke(self, messages):
+        prompt = str(messages[0].content)
+        if "Expand the review query" in prompt:
+            return type("_FakeResponse", (), {"content": '{"keywords": ["独自注記"]}'})()
+        return type("_FakeResponse", (), {"content": '{"summary": "reviewed", "issues": []}'})()
+
+
 class ComplianceReviewerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._compliance_model_patcher = patch(
+            "support_ope_agents.tools.default_check_policy._get_chat_model",
+            return_value=_FakeComplianceModel(),
+        )
+        self._compliance_model_patcher.start()
+
+    def tearDown(self) -> None:
+        self._compliance_model_patcher.stop()
+
     def test_check_policy_finds_policy_sources_and_missing_notice(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             policy_root = Path(tmpdir) / "policy"
@@ -26,7 +44,7 @@ class ComplianceReviewerTests(unittest.TestCase):
             )
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -62,23 +80,23 @@ class ComplianceReviewerTests(unittest.TestCase):
             policy_root.mkdir()
             config_path = root / "config.yml"
             config_path.write_text(
-                """
-support_ope_agents:
-  llm:
-    provider: openai
-    model: gpt-4.1
-    api_key: dummy
-  config_paths: {}
-  data_paths: {}
-  interfaces: {}
-  agents:
-    ComplianceReviewerAgent:
-      document_sources:
-        - name: government_guideline
-          description: 行政ガイドライン
-          path: ./policy-docs
-      ignore_patterns_file: ./.policy-ignore
-""".strip(),
+                                "\n".join([
+                                        "support_ope_agents:",
+                                        "  llm:",
+                                        "    provider: openai",
+                                        "    model: gpt-4.1",
+                                        "    api_key: sk-test-value",
+                                        "  config_paths: {}",
+                                        "  data_paths: {}",
+                                        "  interfaces: {}",
+                                        "  agents:",
+                                        "    ComplianceReviewerAgent:",
+                                        "      document_sources:",
+                                        "        - name: government_guideline",
+                                        "          description: 行政ガイドライン",
+                                        "          path: ./policy-docs",
+                                        "      ignore_patterns_file: ./.policy-ignore",
+                                ]),
                 encoding="utf-8",
             )
             (root / ".policy-ignore").write_text("*.tmp\n", encoding="utf-8")
@@ -104,7 +122,7 @@ support_ope_agents:
             )
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -149,7 +167,7 @@ support_ope_agents:
             )
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -191,7 +209,7 @@ support_ope_agents:
     def test_max_review_loops_defaults_to_three(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -204,7 +222,7 @@ support_ope_agents:
     def test_notice_is_optional_by_default(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -224,7 +242,7 @@ support_ope_agents:
             )
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
@@ -260,7 +278,7 @@ support_ope_agents:
             )
             config = AppConfig.model_validate(
                 {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},

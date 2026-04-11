@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
-from collections.abc import Coroutine
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
@@ -26,14 +25,7 @@ class LogAnalyzerPhaseExecutor:
     def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
         result = tool(*args)
         if inspect.isawaitable(result):
-            try:
-                resolved = asyncio.run(result)  # type: ignore[arg-type]
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                try:
-                    resolved = loop.run_until_complete(result)  # type: ignore[arg-type]
-                finally:
-                    loop.close()
+            resolved = run_awaitable_sync(result)  # type: ignore[arg-type]
             return str(resolved)
         return str(result)
 

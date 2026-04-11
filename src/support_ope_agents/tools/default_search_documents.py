@@ -21,13 +21,7 @@ from .document_source_backend import (
 )
 
 
-def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
-    if config.llm.provider.lower() != "openai":
-        return None
-    if not config.llm.api_key:
-        return None
-    if str(config.llm.api_key).strip().lower() in {"dummy", "test", "placeholder"}:
-        return None
+def _get_chat_model(config: AppConfig) -> ChatOpenAI:
     return ChatOpenAI(
         model=config.llm.model,
         api_key=config.llm.api_key,
@@ -72,9 +66,9 @@ def _normalize_keywords(values: list[str], limit: int) -> list[str]:
 
 
 def _expand_search_keywords(config: AppConfig, query: str, limit: int) -> list[str]:
-    model = _get_chat_model(config)
-    if model is None or not query.strip() or limit <= 0:
+    if not query.strip() or limit <= 0:
         return []
+    model = _get_chat_model(config)
 
     prompt = {
         "task": "Expand the user query into related search keywords for documentation retrieval.",
@@ -82,17 +76,14 @@ def _expand_search_keywords(config: AppConfig, query: str, limit: int) -> list[s
         "max_keywords": limit,
         "output_format": {"keywords": ["string"]},
     }
-    try:
-        response = model.invoke(
-            [HumanMessage(content="Return JSON only. Generate concise search keywords.\n" + json.dumps(prompt, ensure_ascii=False))]
-        )
-        content = _stringify_response_content(response.content)
-        parsed = json.loads(content)
-        if isinstance(parsed, dict):
-            return _normalize_keywords(list(parsed.get("keywords") or []), limit)
-    except Exception:
-        return []
-    return []
+    response = model.invoke(
+        [HumanMessage(content="Return JSON only. Generate concise search keywords.\n" + json.dumps(prompt, ensure_ascii=False))]
+    )
+    content = _stringify_response_content(response.content)
+    parsed = json.loads(content)
+    if isinstance(parsed, dict):
+        return _normalize_keywords(list(parsed.get("keywords") or []), limit)
+    raise ValueError("search keyword expansion returned an invalid payload")
 
 
 def build_default_search_documents_tool(config: AppConfig):

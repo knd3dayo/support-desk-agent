@@ -83,11 +83,7 @@ def _stringify_response_content(content: Any) -> str:
     return json.dumps(content, ensure_ascii=False)
 
 
-def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
-    if config.llm.provider.lower() != "openai":
-        return None
-    if not config.llm.api_key:
-        return None
+def _get_chat_model(config: AppConfig) -> ChatOpenAI:
     return ChatOpenAI(
         model=config.llm.model,
         api_key=cast(Any, config.llm.api_key),
@@ -198,8 +194,6 @@ def _serialize_document_summaries(documents: list[dict[str, Any]], prompt: str, 
 
 async def _analyze_text_documents(config: AppConfig, documents: list[dict[str, Any]], prompt: str) -> str:
     model = _get_chat_model(config)
-    if model is None:
-        return _serialize_document_summaries(documents, prompt, "metadata_only")
 
     payload_lines = ["You are analyzing customer support evidence.", f"Task: {prompt}", ""]
     for document in documents:
@@ -225,18 +219,6 @@ async def _analyze_images(config: AppConfig, paths: list[Path], prompt: str, det
             )
 
     model = _get_chat_model(config)
-    if model is None:
-        return json.dumps(
-            {
-                "mode": "metadata_only",
-                "prompt": prompt,
-                "detail": detail,
-                "images": image_summaries,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-
     content: list[dict[str, Any]] = [
         {
             "type": "text",
