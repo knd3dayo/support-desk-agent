@@ -268,6 +268,9 @@ class RuntimeService:
         return normalized
 
     def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: dict[str, object], prompt: str) -> str:
+        existing_title = str(self._context.memory_store.read_case_metadata(workspace_path).get("case_title") or "").strip()
+        if existing_title:
+            return existing_title
         case_title = str(state.get("case_title") or "").strip() or derive_case_title(prompt, fallback=case_id)
         return self._persist_case_title(case_id=case_id, workspace_path=workspace_path, case_title=case_title)
 

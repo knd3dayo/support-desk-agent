@@ -351,6 +351,27 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertTrue(str(state.get("external_ticket_id") or "").startswith("EXT-TRACE-"))
         self.assertTrue(str(state.get("internal_ticket_id") or "").startswith("INT-TRACE-"))
 
+    def test_resume_customer_input_does_not_overwrite_initial_case_title(self) -> None:
+        initial = self.service.action(
+            prompt="# 初回問い合わせタイトル\n\n障害が発生しています。gateway error が出ています。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-RESUME-TITLE",
+        )
+
+        initial_metadata = self.service.context.memory_store.read_case_metadata(str(self.workspace_path))
+        self.assertEqual(str(initial_metadata.get("case_title") or ""), "初回問い合わせタイトル")
+
+        self.service.resume_customer_input(
+            case_id="CASE-TEST-RESUME-TITLE",
+            trace_id=str(initial["trace_id"]),
+            workspace_path=str(self.workspace_path),
+            additional_input="追加の確認事項です。",
+            answer_key="intake_incident_timeframe",
+        )
+
+        resumed_metadata = self.service.context.memory_store.read_case_metadata(str(self.workspace_path))
+        self.assertEqual(str(resumed_metadata.get("case_title") or ""), "初回問い合わせタイトル")
+
     def test_action_uses_ai_platform_poc_as_knowledge_source(self) -> None:
         config = AppConfig.model_validate(
             {
