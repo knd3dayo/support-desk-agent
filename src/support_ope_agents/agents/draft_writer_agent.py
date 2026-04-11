@@ -5,7 +5,7 @@ import inspect
 import json
 from collections.abc import Coroutine
 from dataclasses import dataclass
-from typing import Any, Callable, cast
+from typing import Any, Callable, Mapping, cast
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
@@ -79,9 +79,111 @@ class DraftWriterPhaseExecutor:
             return str(resolved)
         return str(result)
 
+    @staticmethod
+    def _resolve_effective_workflow_kind(state: Mapping[str, object]) -> str:
+        workflow_kind = str(state.get("workflow_kind") or "").strip()
+        intake_category = str(state.get("intake_category") or "").strip()
+        valid_values = {"specification_inquiry", "incident_investigation", "ambiguous_case"}
+        if workflow_kind not in valid_values:
+            return intake_category if intake_category in valid_values else "ambiguous_case"
+        if workflow_kind == "ambiguous_case" and intake_category in {"specification_inquiry", "incident_investigation"}:
+            return intake_category
+        return workflow_kind
+
+    @staticmethod
+    def _sanitize_customer_summary(summary: str) -> str:
+        blocked_fragments = [
+            "SuperVisorAgent",
+            "KnowledgeRetrieverAgent",
+            "LogAnalyzerAgent",
+            "ComplianceReviewerAgent",
+            "document_sources",
+            "共有メモリ",
+            "ナレッジ照会結果",
+            "ログ解析結果",
+            "Query:",
+        ]
+        if any(fragment in summary for fragment in blocked_fragments):
+            return "関連資料を確認し、現時点で把握できている内容を整理しました。"
+        return summary
+
+    @staticmethod
+    def _format_markdown_links(results: list[dict[str, object]]) -> str:
+        links: list[str] = []
+        for item in results:
+            source_name = str(item.get("source_name") or "").strip()
+            matched_paths = item.get("matched_paths")
+            if not source_name or not isinstance(matched_paths, list) or not matched_paths:
+                continue
+            first_path = str(matched_paths[0]).strip()
+            if not first_path:
+                continue
+            links.append(f"[{source_name}]({first_path})")
+        deduplicated: list[str] = []
+        for link in links:
+            if link not in deduplicated:
+                deduplicated.append(link)
+        return "、".join(deduplicated[:3])
+
+    @staticmethod
+    def _select_primary_knowledge_result(state: Mapping[str, object]) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
+        raw_results = state.get("knowledge_retrieval_results")
+        if not isinstance(raw_results, list):
+            return None, []
+        document_results = [
+            item
+            for item in raw_results
+            if isinstance(item, dict) and str(item.get("source_type") or "") == "document_source"
+        ]
+        final_source = str(state.get("knowledge_retrieval_final_adopted_source") or "").strip()
+        if final_source:
+            prioritized = [item for item in document_results if str(item.get("source_name") or "") == final_source]
+            if prioritized:
+                return prioritized[0], document_results
+        return (document_results[0], document_results) if document_results else (None, [])
+
+    def _build_specification_response(self, state: Mapping[str, object]) -> str:
+        primary_result, document_results = self._select_primary_knowledge_result(state)
+        if primary_result is None:
+            return ""
+
+        source_name = str(primary_result.get("source_name") or "対象資料").strip()
+        summary = str(primary_result.get("summary") or "").strip()
+        summary = self._sanitize_customer_summary(summary)
+        links = self._format_markdown_links(document_results)
+
+        lines = ["お問い合わせありがとうございます。"]
+        lines.append(f"{source_name} について、現時点で確認できた内容は以下のとおりです。")
+        if summary:
+            lines.append(summary)
+        if links:
+            lines.append(f"根拠資料: {links}")
+        lines.append("必要であれば、個別機能ごとの詳細も確認してご案内します。")
+        return "\n\n".join(lines)
+
+    def _required_notice_phrase(self) -> str:
+        phrases = list(self.config.agents.ComplianceReviewerAgent.notice.required_phrases or [])
+        for phrase in phrases:
+            normalized = str(phrase).strip().rstrip("。")
+            if normalized:
+                return normalized + "。"
+        return ""
+
     def _fallback_draft(self, state: dict[str, object]) -> str:
-        investigation_summary = str(state.get("investigation_summary") or "調査結果を整理中です。").strip()
-        review_focus = str(state.get("review_focus") or "").strip()
+        effective_workflow_kind = self._resolve_effective_workflow_kind(state)
+        revision_request = str(state.get("compliance_revision_request") or "")
+        if effective_workflow_kind == "specification_inquiry":
+            specification_response = self._build_specification_response(state)
+            if specification_response:
+                if "注意文" in revision_request:
+                    notice_phrase = self._required_notice_phrase()
+                    if notice_phrase and notice_phrase not in specification_response:
+                        specification_response = specification_response + "\n\n" + notice_phrase
+                return specification_response
+
+        investigation_summary = self._sanitize_customer_summary(
+            str(state.get("investigation_summary") or "調査結果を整理中です。").strip()
+        )
         source_hint = str(state.get("knowledge_retrieval_final_adopted_source") or "").strip()
 
         lines: list[str] = []
@@ -89,8 +191,10 @@ class DraftWriterPhaseExecutor:
         lines.append(f"現時点の確認結果では、{investigation_summary}")
         if source_hint:
             lines.append(f"関連情報は {source_hint} を根拠候補として確認しています。")
-        if review_focus:
-            lines.append(f"今回の回答では、{review_focus} を重視して表現を調整しています。")
+        if "注意文" in revision_request:
+            notice_phrase = self._required_notice_phrase()
+            if notice_phrase:
+                lines.append(notice_phrase)
         lines.append("追加で確認が必要な点があれば、確認結果が揃い次第ご案内します。")
         return "\n\n".join(line for line in lines if line.strip())
 
@@ -107,6 +211,11 @@ class DraftWriterPhaseExecutor:
             "コンプライアンスレビュー",
             "compliance",
             "以下の観点を反映して文面を見直しました",
+            "supervisoragent",
+            "knowledgeretrieveragent",
+            "loganalyzeragent",
+            "共有メモリ",
+            "query:",
         }
         paragraphs = [paragraph.strip() for paragraph in normalized.split("\n\n") if paragraph.strip()]
         filtered: list[str] = []
@@ -150,8 +259,13 @@ class DraftWriterPhaseExecutor:
             return self._fallback_draft(state)
 
     def execute(self, state: dict[str, object]) -> dict[str, object]:
-        generated = self._invoke_tool(self._generate_with_llm, state)
-        draft_response = self._strip_internal_review_content(generated, str(state.get("compliance_revision_request") or ""))
+        existing_draft = str(state.get("draft_response") or "").strip()
+        revision_request = str(state.get("compliance_revision_request") or "")
+        if existing_draft and not revision_request:
+            draft_response = self._strip_internal_review_content(existing_draft, revision_request)
+        else:
+            generated = self._invoke_tool(self._generate_with_llm, state)
+            draft_response = self._strip_internal_review_content(generated, revision_request)
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         if case_id and workspace_path:

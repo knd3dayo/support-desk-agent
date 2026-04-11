@@ -495,6 +495,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("説明: レポート対象のケースを一意に識別するIDです。", content)
         self.assertIn("## 回答内容", content)
         self.assertIn("顧客向けに返却した、または返却予定の回答本文です。", content)
+        self.assertNotIn("LogAnalyzerAgent: needs improvement", content)
+        self.assertNotIn("Supervisor->>LogAnalyzer: ログ解析を依頼", content)
         self.assertIn("説明: 最終的に確定した対応方針を示します。", content)
         self.assertIn("### 総評", content)
         self.assertIn("ケース全体を通した自動対応品質の総括です。", content)

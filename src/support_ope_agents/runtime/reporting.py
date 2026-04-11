@@ -127,6 +127,17 @@ def _result_label(state: CaseState) -> str:
     return "回答ドラフトは作成されたが追加確認が必要"
 
 
+def _effective_workflow_kind(state: CaseState) -> str:
+    workflow_kind = str(state.get("workflow_kind") or "").strip()
+    intake_category = str(state.get("intake_category") or "").strip()
+    valid_values = {"specification_inquiry", "incident_investigation", "ambiguous_case"}
+    if workflow_kind not in valid_values:
+        return intake_category if intake_category in valid_values else "ambiguous_case"
+    if workflow_kind == "ambiguous_case" and intake_category in {"specification_inquiry", "incident_investigation"}:
+        return intake_category
+    return workflow_kind
+
+
 def _build_sequence_diagram(state: CaseState) -> str:
     lines = [
         "sequenceDiagram",
@@ -144,7 +155,7 @@ def _build_sequence_diagram(state: CaseState) -> str:
         "    User->>Intake: 問い合わせ入力",
         "    Intake->>Supervisor: Intake 結果を引き渡し",
     ]
-    workflow_kind = str(state.get("workflow_kind") or "")
+    workflow_kind = _effective_workflow_kind(state)
     if workflow_kind in {"incident_investigation", "ambiguous_case"}:
         lines.append("    Supervisor->>LogAnalyzer: ログ解析を依頼")
         lines.append("    LogAnalyzer-->>Supervisor: ログ解析結果を返却")
@@ -177,7 +188,7 @@ def _evaluate_agents(state: CaseState) -> list[AgentEvaluation]:
         detail=f"分類と前処理 {'完了' if intake_ok else '要再確認'}",
         improvement_point=None if intake_ok else "問い合わせ分類または前処理結果を見直し、再実行条件を明確化してください。",
     ))
-    workflow_kind = str(state.get("workflow_kind") or "")
+    workflow_kind = _effective_workflow_kind(state)
     if workflow_kind in {"incident_investigation", "ambiguous_case"}:
         log_ok = bool(str(state.get("log_analysis_summary") or "").strip())
         evaluations.append(AgentEvaluation(

@@ -48,6 +48,49 @@ class DraftWriterTests(unittest.TestCase):
             self.assertNotIn("【注意事項】", draft)
             self.assertIn("お問い合わせありがとうございます。", draft)
 
+    def test_specification_fallback_uses_customer_facing_summary_and_links(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir)
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+            executor = DraftWriterPhaseExecutor(
+                config=config,
+                write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
+            )
+
+            result = executor.execute(
+                {
+                    "case_id": "CASE-TEST-010",
+                    "workspace_path": str(workspace_path),
+                    "workflow_kind": "ambiguous_case",
+                    "intake_category": "specification_inquiry",
+                    "knowledge_retrieval_final_adopted_source": "ai-chat-util",
+                    "knowledge_retrieval_results": [
+                        {
+                            "source_name": "ai-chat-util",
+                            "source_type": "document_source",
+                            "status": "matched",
+                            "summary": "ai_chat_util は、生成AIを使ったチャット、文書解析、バッチ処理、MCP 連携をまとめて扱うためのユーティリティです。",
+                            "matched_paths": ["/knowledge/ai-chat-util/README.md"],
+                        }
+                    ],
+                    "investigation_summary": "SuperVisorAgent は共有メモリを参照し、KnowledgeRetrieverAgent を使って調査を進めます。",
+                }
+            )
+
+            draft = str(result.get("draft_response") or "")
+            self.assertIn("ai-chat-util について、現時点で確認できた内容は以下のとおりです。", draft)
+            self.assertIn("[ai-chat-util](/knowledge/ai-chat-util/README.md)", draft)
+            self.assertNotIn("SuperVisorAgent", draft)
+            self.assertNotIn("KnowledgeRetrieverAgent", draft)
+
     def test_draft_writer_hides_internal_compliance_revision_comments(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace_path = Path(tmpdir)

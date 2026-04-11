@@ -257,6 +257,7 @@ class SupervisorAgentTests(unittest.TestCase):
                     "interfaces": {},
                     "agents": {
                         "ComplianceReviewerAgent": {
+                            "notice": {"required": True},
                             "document_sources": [
                                 {
                                     "name": "answer_policy",
@@ -322,6 +323,7 @@ class SupervisorAgentTests(unittest.TestCase):
                     "agents": {
                         "ComplianceReviewerAgent": {
                             "max_review_loops": 3,
+                            "notice": {"required": True},
                             "document_sources": [
                                 {
                                     "name": "answer_policy",

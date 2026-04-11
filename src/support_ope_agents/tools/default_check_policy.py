@@ -75,14 +75,15 @@ def build_default_check_policy_tool(config: AppConfig):
 
         issues: list[str] = []
         notice_phrases = [phrase.strip() for phrase in settings.notice.required_phrases if phrase.strip()]
-        notice_present = True
+        notice_present = any(phrase in draft_response for phrase in notice_phrases)
         matched_notice_phrase = ""
         if settings.notice.required:
-            notice_present = any(phrase in draft_response for phrase in notice_phrases)
             if notice_present:
                 matched_notice_phrase = next(phrase for phrase in notice_phrases if phrase in draft_response)
             else:
                 issues.append("注意文が不足しています。少なくとも「生成AIは誤った回答をすることがあります」相当の注意書きを含めてください。")
+        elif notice_present:
+            matched_notice_phrase = next(phrase for phrase in notice_phrases if phrase in draft_response)
 
         for expression in RISKY_EXPRESSIONS:
             if expression in draft_response:
@@ -146,8 +147,12 @@ def build_default_check_policy_tool(config: AppConfig):
         status = "passed" if not issues else "revision_required"
         review_summary = (
             "ドラフトはポリシー照合と注意文チェックを通過しました。"
+            if status == "passed" and settings.notice.required
+            else "ドラフトはポリシー照合を通過しました。"
             if status == "passed"
             else "ドラフトはポリシー照合または注意文チェックで修正が必要です。"
+            if settings.notice.required
+            else "ドラフトはポリシー照合で修正が必要です。"
         )
         if llm_review_summary:
             review_summary = f"{review_summary} {llm_review_summary}".strip()

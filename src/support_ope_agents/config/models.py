@@ -112,7 +112,7 @@ class DocumentSourceSettings(StrictConfigModel):
 
 
 class ComplianceNoticeSettings(StrictConfigModel):
-    required: bool = True
+    required: bool = False
     required_phrases: list[str] = Field(
         default_factory=lambda: [
             "生成AIは誤った回答をすることがあります",

@@ -30,6 +30,7 @@ class ComplianceReviewerTests(unittest.TestCase):
                     "interfaces": {},
                     "agents": {
                         "ComplianceReviewerAgent": {
+                            "notice": {"required": True},
                             "document_sources": [
                                 {
                                     "name": "internal_policy",
@@ -107,6 +108,7 @@ support_ope_agents:
                     "interfaces": {},
                     "agents": {
                         "ComplianceReviewerAgent": {
+                            "notice": {"required": True},
                             "document_sources": [
                                 {
                                     "name": "law",
@@ -146,6 +148,19 @@ support_ope_agents:
         )
 
         self.assertEqual(config.agents.ComplianceReviewerAgent.max_review_loops, 3)
+
+    def test_notice_is_optional_by_default(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+
+        self.assertFalse(config.agents.ComplianceReviewerAgent.notice.required)
 
 
 if __name__ == "__main__":
