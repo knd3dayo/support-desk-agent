@@ -51,7 +51,16 @@ class CriterionEvaluation:
     viewpoint: str
     result: str
     score: int
+    criterion_key: str | None = None
     related_checklist_items: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class InstructionCriterion:
+    key: str
+    title: str
+    viewpoint: str
+    improvement_hint: str
 
 
 @dataclass(slots=True)
@@ -93,9 +102,12 @@ def build_support_improvement_report(
         "progress": progress_text,
         "summary": summary_text,
     }
+    runtime_audit_payload = runtime_audit or {}
+    control_catalog_payload = control_catalog or {}
     agent_memories = _load_agent_memories(case_paths, memory_store)
     memory_findings = _audit_memory_consistency(state, shared_memory, agent_memories)
     normalized_checklist = _normalize_checklist(checklist or [])
+    instruction_criteria = _extract_instruction_criteria(evaluator_instruction, normalized_checklist)
     structured_evaluation = ObjectiveEvaluationAgent(config=config, instruction_text=evaluator_instruction).evaluate(
         evidence=_build_objective_evaluation_evidence(
             case_id=case_id,
@@ -106,6 +118,7 @@ def build_support_improvement_report(
             memory_findings=memory_findings,
             artifact_paths=artifact_paths,
             checklist=normalized_checklist,
+            expected_criteria=instruction_criteria,
         )
     )
     evaluation = _build_objective_evaluation(
@@ -122,10 +135,13 @@ def build_support_improvement_report(
             progress_text,
             summary_text,
         ),
+        instruction_criteria=instruction_criteria,
+        runtime_audit=runtime_audit_payload,
+        control_catalog=control_catalog_payload,
     )
     checklist_section = _render_checklist(evaluation.criterion_evaluations, normalized_checklist)
-    control_summary_section = _render_control_summary(control_catalog or {}, runtime_audit or {})
-    control_catalog_section = _render_control_catalog_section(control_catalog or {}, runtime_audit or {})
+    control_summary_section = _render_control_summary(control_catalog_payload, runtime_audit_payload)
+    control_catalog_section = _render_control_catalog_section(control_catalog_payload, runtime_audit_payload)
 
     report_lines = [
         f"# Support Improvement Report: {case_id}",
@@ -350,6 +366,7 @@ def _build_objective_evaluation_evidence(
     memory_findings: list[MemoryConsistencyFinding],
     artifact_paths: list[str],
     checklist: list[str],
+    expected_criteria: list[InstructionCriterion],
 ) -> dict[str, Any]:
     return {
         "case_id": case_id,
@@ -374,6 +391,15 @@ def _build_objective_evaluation_evidence(
         ],
         "artifact_paths": artifact_paths,
         "user_checklist": checklist,
+        "expected_criteria": [
+            {
+                "criterion_key": item.key,
+                "title": item.title,
+                "viewpoint": item.viewpoint,
+                "improvement_hint": item.improvement_hint,
+            }
+            for item in expected_criteria
+        ],
         "agent_errors": list(state.get("agent_errors") or []),
     }
 
@@ -387,9 +413,13 @@ def _build_objective_evaluation(
     pass_score: int,
     checklist: list[str],
     checklist_assessments: list[tuple[str, str]],
+    instruction_criteria: list[InstructionCriterion],
+    runtime_audit: dict[str, object],
+    control_catalog: dict[str, object],
 ) -> ObjectiveEvaluation:
     criterion_evaluations = [
         CriterionEvaluation(
+            criterion_key=getattr(item, "criterion_key", None),
             name=item.title,
             viewpoint=item.viewpoint,
             result=item.result,
@@ -398,6 +428,7 @@ def _build_objective_evaluation(
         )
         for item in structured_evaluation.criterion_evaluations
     ]
+    criterion_evaluations = _merge_missing_instruction_criteria(criterion_evaluations, instruction_criteria)
     criterion_evaluations = _merge_missing_checklist_criteria(criterion_evaluations, checklist_assessments)
     agent_evaluations = [
         AgentEvaluation(
@@ -411,15 +442,23 @@ def _build_objective_evaluation(
     return ObjectiveEvaluation(
         evaluator_name=OBJECTIVE_EVALUATION_AGENT,
         instruction_excerpt=_instruction_excerpt(instruction_text),
-        sequence_diagram=_build_sequence_diagram(state),
-        subgraph_sequence_diagrams=_build_subgraph_sequence_diagrams(state),
+        sequence_diagram=_build_sequence_diagram(state, runtime_audit=runtime_audit, control_catalog=control_catalog),
+        subgraph_sequence_diagrams=_build_subgraph_sequence_diagrams(
+            state,
+            runtime_audit=runtime_audit,
+            control_catalog=control_catalog,
+        ),
         criterion_evaluations=criterion_evaluations,
         agent_evaluations=agent_evaluations,
         memory_findings=memory_findings,
         overall_summary=structured_evaluation.overall_summary,
-        improvement_points=_merge_checklist_improvement_points(
-            list(structured_evaluation.improvement_points),
-            checklist_assessments,
+        improvement_points=_merge_instruction_improvement_points(
+            _merge_checklist_improvement_points(
+                list(structured_evaluation.improvement_points),
+                checklist_assessments,
+            ),
+            criterion_evaluations,
+            instruction_criteria,
         ),
         score=structured_evaluation.overall_score,
     )
@@ -444,34 +483,31 @@ def _effective_workflow_kind(state: CaseState) -> str:
     return workflow_kind
 
 
-def _build_sequence_diagram(state: CaseState) -> str:
-    path = reconstruct_main_workflow_path(state)
-    approval_route = _approval_route_for_report(state)
+def _build_sequence_diagram(
+    state: CaseState,
+    *,
+    runtime_audit: dict[str, object] | None = None,
+    control_catalog: dict[str, object] | None = None,
+) -> str:
+    path = _workflow_path_for_report(state, runtime_audit)
+    approval_route = _approval_route_for_report(state, runtime_audit)
+    participants = _sequence_participants(path, runtime_audit)
     lines = [
         "sequenceDiagram",
-        "    participant User as User",
-        "    participant Intake as IntakeAgent",
-        "    participant Supervisor as SuperVisorAgent",
-        "    participant LogAnalyzer as LogAnalyzerAgent",
-        "    participant Knowledge as KnowledgeRetrieverAgent",
-        "    participant DraftWriter as DraftWriterAgent",
-        "    participant Compliance as ComplianceReviewerAgent",
-        "    participant Approval as ApprovalAgent",
-        "    participant TicketUpdate as TicketUpdateAgent",
-        "    participant Escalation as BackSupportEscalationAgent",
-        "    participant Inquiry as BackSupportInquiryWriterAgent",
-        "    User->>Intake: 問い合わせ入力",
-        "    Intake->>Supervisor: Intake 結果を引き渡し",
     ]
+    lines.extend([f"    participant {name} as {label}" for name, label in participants])
+    if _has_participant(participants, "User") and _has_participant(participants, "Intake"):
+        lines.append("    User->>Intake: 問い合わせ入力")
+    if _has_participant(participants, "Intake") and _has_participant(participants, "Supervisor"):
+        lines.append("    Intake->>Supervisor: Intake 結果を引き渡し")
     if "wait_for_customer_input" in path:
         lines.append("    Intake-->>User: 追加情報を依頼")
         return "\n".join(lines)
 
-    workflow_kind = _effective_workflow_kind(state)
-    if "investigation" in path and workflow_kind in {"incident_investigation", "ambiguous_case"}:
+    if _has_participant(participants, "LogAnalyzer"):
         lines.append("    Supervisor->>LogAnalyzer: ログ解析を依頼")
         lines.append("    LogAnalyzer-->>Supervisor: ログ解析結果を返却")
-    if "investigation" in path:
+    if _has_participant(participants, "Knowledge"):
         lines.append("    Supervisor->>Knowledge: ナレッジ検索を依頼")
         lines.append("    Knowledge-->>Supervisor: 検索結果を返却")
 
@@ -486,12 +522,12 @@ def _build_sequence_diagram(state: CaseState) -> str:
         elif approval_route == "draft_review":
             lines.append("    Approval->>Supervisor: 差戻しを依頼")
             lines.append("    Supervisor->>Inquiry: 問い合わせ文案の修正を依頼")
-        elif "ticket_update_prepare" in path:
+        elif approval_route == "ticket_update_prepare":
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
     elif "draft_review" in path:
         lines.append("    Supervisor->>DraftWriter: 回答ドラフト作成を依頼")
-        review_iterations = path.count("draft_review")
+        review_iterations = sum(1 for node in path if node == "draft_review")
         for _ in range(max(1, review_iterations)):
             lines.append("    DraftWriter-->>Supervisor: ドラフトを返却")
             lines.append("    Supervisor->>Compliance: コンプライアンス確認を依頼")
@@ -502,13 +538,18 @@ def _build_sequence_diagram(state: CaseState) -> str:
         elif approval_route == "draft_review":
             lines.append("    Approval->>Supervisor: 差戻しを依頼")
             lines.append("    Supervisor->>DraftWriter: 修正版ドラフト作成を依頼")
-        elif "ticket_update_prepare" in path:
+        elif approval_route == "ticket_update_prepare":
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
     return "\n".join(lines)
 
 
-def _approval_route_for_report(state: CaseState) -> str:
+def _approval_route_for_report(state: CaseState, runtime_audit: dict[str, object] | None = None) -> str:
+    audit_summary = runtime_audit.get("summary") if isinstance(runtime_audit, dict) else None
+    if isinstance(audit_summary, dict):
+        route = str(audit_summary.get("approval_route") or "").strip()
+        if route:
+            return route
     if str(state.get("status") or "") == "CLOSED" or str(state.get("ticket_update_result") or "").strip():
         return "ticket_update_prepare"
     decision = str(state.get("approval_decision") or "").strip().lower()
@@ -521,9 +562,72 @@ def _approval_route_for_report(state: CaseState) -> str:
     return "__end__"
 
 
-def _build_subgraph_sequence_diagrams(state: CaseState) -> list[SubgraphSequenceDiagram]:
-    path = reconstruct_main_workflow_path(state)
-    approval_route = _approval_route_for_report(state)
+def _workflow_path_for_report(state: CaseState, runtime_audit: dict[str, object] | None) -> tuple[str, ...]:
+    workflow_path = runtime_audit.get("workflow_path") if isinstance(runtime_audit, dict) else None
+    if isinstance(workflow_path, list) and workflow_path:
+        return tuple(str(item) for item in workflow_path if str(item).strip())
+    return reconstruct_main_workflow_path(state)
+
+
+def _sequence_participants(
+    workflow_path: tuple[str, ...],
+    runtime_audit: dict[str, object] | None,
+) -> list[tuple[str, str]]:
+    participant_defs = [
+        ("User", "User"),
+        ("Intake", "IntakeAgent"),
+        ("Supervisor", "SuperVisorAgent"),
+        ("LogAnalyzer", "LogAnalyzerAgent"),
+        ("Knowledge", "KnowledgeRetrieverAgent"),
+        ("DraftWriter", "DraftWriterAgent"),
+        ("Compliance", "ComplianceReviewerAgent"),
+        ("Approval", "ApprovalAgent"),
+        ("TicketUpdate", "TicketUpdateAgent"),
+        ("Escalation", "BackSupportEscalationAgent"),
+        ("Inquiry", "BackSupportInquiryWriterAgent"),
+    ]
+    used_roles = runtime_audit.get("used_roles") if isinstance(runtime_audit, dict) else None
+    used_role_set = {str(item) for item in used_roles} if isinstance(used_roles, list) else set()
+    included: list[tuple[str, str]] = []
+    for alias, label in participant_defs:
+        if alias == "User":
+            included.append((alias, label))
+            continue
+        if label in used_role_set:
+            included.append((alias, label))
+            continue
+        if alias == "Intake" and any(node.startswith("intake_") or node == "wait_for_customer_input" for node in workflow_path):
+            included.append((alias, label))
+        elif alias == "Supervisor" and any(node in {"investigation", "draft_review", "escalation_review", "wait_for_approval", "ticket_update_prepare"} for node in workflow_path):
+            included.append((alias, label))
+        elif alias == "DraftWriter" and "draft_review" in workflow_path:
+            included.append((alias, label))
+        elif alias == "Compliance" and "draft_review" in workflow_path:
+            included.append((alias, label))
+        elif alias == "Approval" and "wait_for_approval" in workflow_path:
+            included.append((alias, label))
+        elif alias == "TicketUpdate" and "ticket_update_prepare" in workflow_path:
+            included.append((alias, label))
+        elif alias == "Escalation" and "escalation_review" in workflow_path:
+            included.append((alias, label))
+        elif alias == "Inquiry" and "escalation_review" in workflow_path:
+            included.append((alias, label))
+    return included
+
+
+def _has_participant(participants: list[tuple[str, str]], alias: str) -> bool:
+    return any(name == alias for name, _ in participants)
+
+
+def _build_subgraph_sequence_diagrams(
+    state: CaseState,
+    *,
+    runtime_audit: dict[str, object] | None = None,
+    control_catalog: dict[str, object] | None = None,
+) -> list[SubgraphSequenceDiagram]:
+    del control_catalog
+    path = _workflow_path_for_report(state, runtime_audit)
+    approval_route = _approval_route_for_report(state, runtime_audit)
     intake_lines = [
         "sequenceDiagram",
         "    participant User as User",
@@ -552,12 +656,13 @@ def _build_subgraph_sequence_diagrams(state: CaseState) -> list[SubgraphSequence
         )
     ]
     if "draft_review" in path:
-        review_iterations = path.count("draft_review")
+        review_iterations = sum(1 for node in path if node == "draft_review")
         review_lines = [
             "sequenceDiagram",
             "    participant Supervisor as SuperVisorAgent",
             "    participant DraftWriter as DraftWriterAgent",
             "    participant Compliance as ComplianceReviewerAgent",
+            "    participant Approval as ApprovalAgent",
             "    Supervisor->>DraftWriter: 回答ドラフト作成を依頼",
         ]
         for index in range(max(1, review_iterations)):
@@ -590,7 +695,8 @@ def _build_subgraph_sequence_diagrams(state: CaseState) -> list[SubgraphSequence
         if approval_route == "investigation":
             escalation_lines.append("    Approval->>Supervisor: 再調査判断を返却")
         elif approval_route == "draft_review":
-            escalation_lines.append("    Approval->>Inquiry: 文案差戻しを返却")
+            escalation_lines.append("    Approval->>Supervisor: 文案差戻しを返却")
+            escalation_lines.append("    Supervisor->>Inquiry: 修正版問い合わせ文案を依頼")
         diagrams.append(
             SubgraphSequenceDiagram(
                 title="Escalation 準備フロー",
@@ -631,6 +737,97 @@ def _normalize_checklist(checklist: list[str]) -> list[str]:
         seen.add(key)
         normalized_items.append(normalized)
     return normalized_items
+
+
+def _extract_instruction_criteria(instruction_text: str, checklist: list[str]) -> list[InstructionCriterion]:
+    bullets = _extract_markdown_bullets(instruction_text, "## 評価方針")
+    criteria: list[InstructionCriterion] = []
+    for bullet in bullets:
+        normalized = re.sub(r"\s+", " ", bullet).strip()
+        if not normalized:
+            continue
+        if "ユーザーが何を知りたいか" in normalized or "質問内容を確認" in normalized:
+            criteria.append(
+                InstructionCriterion(
+                    key="question_intent",
+                    title="質問意図の理解と回答妥当性",
+                    viewpoint="ユーザーが何を知りたいかを解釈し、回答が結論・原因・次アクションまで十分に返せているかを確認する。",
+                    improvement_hint="ユーザーが求める結論、原因候補、次アクションを回答本文と shared summary に明示してください。",
+                )
+            )
+        elif "shared memory" in normalized and "反映" in normalized:
+            criteria.append(
+                InstructionCriterion(
+                    key="shared_memory",
+                    title="shared memory への情報反映",
+                    viewpoint="次工程に必要な情報が shared memory に反映され、後続処理が参照できる状態かを確認する。",
+                    improvement_hint="次工程に必要な判断材料を shared memory の context / progress / summary に明示的に残してください。",
+                )
+            )
+        elif "working memory" in normalized and "伝達漏れ" in normalized:
+            criteria.append(
+                InstructionCriterion(
+                    key="working_memory_handoff",
+                    title="working memory 起因の伝達漏れ",
+                    viewpoint="各エージェントの working memory にしかない重要情報が shared memory に伝播されているかを確認する。",
+                    improvement_hint="working memory にしかない重要情報は shared memory に要約転記し、引き継ぎ漏れを防いでください。",
+                )
+            )
+        elif "SuperVisorAgent" in normalized and "最終状態" in normalized:
+            criteria.append(
+                InstructionCriterion(
+                    key="supervisor_judgement",
+                    title="SuperVisorAgent 判断の妥当性",
+                    viewpoint="SuperVisorAgent の判断が最終状態と整合し、判断根拠や記録不足がないかを確認する。",
+                    improvement_hint="SuperVisorAgent の判断根拠と最終状態との対応を shared summary に短く残してください。",
+                )
+            )
+        elif "Summary" in normalized and "Adopted sources" in normalized:
+            criteria.append(
+                InstructionCriterion(
+                    key="structured_fields",
+                    title="構造化項目の記録充足",
+                    viewpoint="Summary、Adopted sources、Intake category、Intake urgency などの構造化項目が欠けずに記録されているかを確認する。",
+                    improvement_hint="Summary、Adopted sources、Intake category、Intake urgency などの構造化項目を欠落なく shared memory に残してください。",
+                )
+            )
+    if checklist:
+        criteria.append(
+            InstructionCriterion(
+                key="user_checklist",
+                title="ユーザー指定観点の充足",
+                viewpoint="ユーザーが明示した観点が評価対象に含まれ、結果と改善提案に反映されているかを確認する。",
+                improvement_hint="ユーザーが明示した観点ごとに、根拠・評価結果・改善案を対応付けて記録してください。",
+            )
+        )
+    return _dedupe_instruction_criteria(criteria)
+
+
+def _extract_markdown_bullets(text: str, heading: str) -> list[str]:
+    lines = text.splitlines()
+    in_section = False
+    bullets: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped == heading:
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            break
+        if in_section and stripped.startswith("- "):
+            bullets.append(stripped[2:].strip())
+    return bullets
+
+
+def _dedupe_instruction_criteria(criteria: list[InstructionCriterion]) -> list[InstructionCriterion]:
+    deduped: list[InstructionCriterion] = []
+    seen: set[str] = set()
+    for item in criteria:
+        if item.key in seen:
+            continue
+        seen.add(item.key)
+        deduped.append(item)
+    return deduped
 
 
 def _assess_checklist_items(
@@ -711,6 +908,7 @@ def _merge_missing_checklist_criteria(
         score = 100 if status == "matched" else 40
         merged.append(
             CriterionEvaluation(
+                criterion_key="user_checklist",
                 name=f"ユーザー指定観点: {checklist_item}",
                 viewpoint=f"インタラクションで指定された評価項目「{checklist_item}」が、回答本文・調査要約・共有メモリに反映されているかを確認する。",
                 result=(
@@ -723,6 +921,44 @@ def _merge_missing_checklist_criteria(
             )
         )
     return merged
+
+
+def _merge_missing_instruction_criteria(
+    criteria: list[CriterionEvaluation],
+    instruction_criteria: list[InstructionCriterion],
+) -> list[CriterionEvaluation]:
+    if not instruction_criteria:
+        return criteria
+    merged = list(criteria)
+    for instruction_criterion in instruction_criteria:
+        if _find_matching_criterion(merged, instruction_criterion) is not None:
+            continue
+        merged.append(
+            CriterionEvaluation(
+                criterion_key=instruction_criterion.key,
+                name=instruction_criterion.title,
+                viewpoint=instruction_criterion.viewpoint,
+                result="Evaluator 出力にこの instruction 由来の評価観点が含まれておらず、観点に対する判定結果を確認できませんでした。",
+                score=0,
+            )
+        )
+    return merged
+
+
+def _find_matching_criterion(
+    criteria: list[CriterionEvaluation],
+    instruction_criterion: InstructionCriterion,
+) -> CriterionEvaluation | None:
+    for criterion in criteria:
+        if criterion.criterion_key == instruction_criterion.key:
+            return criterion
+        normalized_name = _normalize_text(criterion.name)
+        normalized_viewpoint = _normalize_text(criterion.viewpoint)
+        if _normalize_text(instruction_criterion.title) in normalized_name:
+            return criterion
+        if _normalize_text(instruction_criterion.viewpoint)[:20] and _normalize_text(instruction_criterion.viewpoint)[:20] in normalized_viewpoint:
+            return criterion
+    return None
 
 
 def _merge_checklist_improvement_points(
@@ -741,6 +977,57 @@ def _merge_checklist_improvement_points(
             continue
         merged.append(candidate)
     return merged
+
+
+def _merge_instruction_improvement_points(
+    improvement_points: list[str],
+    criteria: list[CriterionEvaluation],
+    instruction_criteria: list[InstructionCriterion],
+) -> list[str]:
+    merged = list(improvement_points)
+    existing_points = [_normalize_improvement_point(item) for item in improvement_points if item.strip()]
+    for instruction_criterion in instruction_criteria:
+        criterion = _find_matching_criterion(criteria, instruction_criterion)
+        if criterion is None:
+            continue
+        if criterion.score >= 70:
+            continue
+        normalized_hint = _normalize_improvement_point(instruction_criterion.improvement_hint)
+        if any(_is_similar_improvement_point(normalized_hint, existing) for existing in existing_points):
+            continue
+        merged.append(instruction_criterion.improvement_hint)
+        existing_points.append(normalized_hint)
+    return merged
+
+
+def _normalize_improvement_point(value: str) -> str:
+    normalized = re.sub(r"\s+", " ", value).strip().casefold()
+    normalized = normalized.removesuffix("してください。")
+    normalized = normalized.removesuffix("してください")
+    normalized = normalized.removesuffix("する。")
+    normalized = normalized.removesuffix("する")
+    normalized = normalized.removesuffix("残してください。")
+    normalized = normalized.removesuffix("残してください")
+    normalized = normalized.removesuffix("残す。")
+    normalized = normalized.removesuffix("残す")
+    normalized = normalized.removesuffix("防いでください。")
+    normalized = normalized.removesuffix("防いでください")
+    normalized = normalized.removesuffix("防ぐ。")
+    normalized = normalized.removesuffix("防ぐ")
+    return normalized.strip()
+
+
+def _is_similar_improvement_point(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    if left == right or left in right or right in left:
+        return True
+    common_prefix = 0
+    for left_char, right_char in zip(left, right):
+        if left_char != right_char:
+            break
+        common_prefix += 1
+    return common_prefix >= 24
 
 
 def _render_compliance_review_history(history: list[dict[str, object]]) -> list[str]:

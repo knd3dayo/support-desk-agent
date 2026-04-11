@@ -5,7 +5,7 @@ import unittest
 from pydantic import ValidationError
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.runtime.reporting import _build_sequence_diagram, _build_subgraph_sequence_diagrams, _render_compliance_review_history
+from support_ope_agents.runtime.reporting import _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_compliance_review_history
 from support_ope_agents.workflow.state import CaseState
 
 
@@ -64,6 +64,69 @@ class ReportingEvaluationTests(unittest.TestCase):
         self.assertIn("Supervisor->>Inquiry: 問い合わせ文案の修正を依頼", diagram)
         self.assertNotIn("Escalation->>Inquiry", diagram)
 
+    def test_sequence_diagram_uses_runtime_audit_roles_for_participants(self) -> None:
+        state: CaseState = {
+            "workflow_kind": "incident_investigation",
+            "intake_category": "incident_investigation",
+            "draft_review_iterations": 1,
+        }
+
+        diagram = _build_sequence_diagram(
+            state,
+            runtime_audit={
+                "summary": {"approval_route": "__end__"},
+                "workflow_path": [
+                    "receive_case",
+                    "intake_prepare",
+                    "intake_mask",
+                    "intake_hydrate_tickets",
+                    "intake_classify",
+                    "intake_finalize",
+                    "investigation",
+                    "draft_review",
+                    "wait_for_approval",
+                ],
+                "used_roles": [
+                    "IntakeAgent",
+                    "SuperVisorAgent",
+                    "KnowledgeRetrieverAgent",
+                    "DraftWriterAgent",
+                    "ComplianceReviewerAgent",
+                    "ApprovalAgent",
+                ],
+            },
+        )
+
+        self.assertIn("participant Knowledge as KnowledgeRetrieverAgent", diagram)
+        self.assertNotIn("participant LogAnalyzer as LogAnalyzerAgent", diagram)
+        self.assertNotIn("participant TicketUpdate as TicketUpdateAgent", diagram)
+        self.assertNotIn("participant Escalation as BackSupportEscalationAgent", diagram)
+        self.assertNotIn("Supervisor->>LogAnalyzer: ログ解析を依頼", diagram)
+
+    def test_extract_instruction_criteria_returns_expected_rubric(self) -> None:
+        criteria = _extract_instruction_criteria(
+            """## 評価方針
+- 質問内容を確認して、「ユーザーが何を知りたいか？」などを解釈してください。
+- 出力の有無だけでなく、次工程に必要な情報が shared memory に反映されているかを確認してください。
+- 各エージェントの working memory にしか存在しない重要情報は、伝達漏れリスクとして扱ってください。
+- SuperVisorAgent の判断が最終状態と整合していても、根拠不足や記録不足があれば減点してください。
+- 可能な限り、Summary、Adopted sources、Intake category、Intake urgency、Incident timeframe などの構造化項目単位で確認してください。
+""",
+            [],
+        )
+
+        keys = [item.key for item in criteria]
+        self.assertEqual(
+            keys,
+            [
+                "question_intent",
+                "shared_memory",
+                "working_memory_handoff",
+                "supervisor_judgement",
+                "structured_fields",
+            ],
+        )
+
     def test_subgraph_sequence_diagrams_use_customer_input_branch(self) -> None:
         state: CaseState = {
             "workflow_kind": "ambiguous_case",
@@ -89,7 +152,54 @@ class ReportingEvaluationTests(unittest.TestCase):
         draft_diagram = next(item for item in diagrams if item.title == "Draft Review ループ")
 
         self.assertEqual(draft_diagram.diagram.count("ドラフトを返却"), 2)
+        self.assertIn("participant Approval as ApprovalAgent", draft_diagram.diagram)
         self.assertIn("Approval->>Supervisor: 差戻し判断を返却", draft_diagram.diagram)
+
+    def test_subgraph_sequence_diagrams_use_runtime_audit_path_iterations(self) -> None:
+        state: CaseState = {
+            "workflow_kind": "incident_investigation",
+            "intake_category": "incident_investigation",
+            "draft_review_iterations": 1,
+        }
+
+        diagrams = _build_subgraph_sequence_diagrams(
+            state,
+            runtime_audit={
+                "summary": {"approval_route": "investigation"},
+                "workflow_path": [
+                    "receive_case",
+                    "intake_prepare",
+                    "intake_mask",
+                    "intake_hydrate_tickets",
+                    "intake_classify",
+                    "intake_finalize",
+                    "investigation",
+                    "draft_review",
+                    "wait_for_approval",
+                    "draft_review",
+                    "wait_for_approval",
+                ],
+            },
+        )
+        draft_diagram = next(item for item in diagrams if item.title == "Draft Review ループ")
+
+        self.assertEqual(draft_diagram.diagram.count("ドラフトを返却"), 2)
+        self.assertIn("Approval->>Supervisor: 再調査判断を返却", draft_diagram.diagram)
+
+    def test_subgraph_sequence_diagrams_reflect_escalation_reject_via_supervisor(self) -> None:
+        state: CaseState = {
+            "workflow_kind": "incident_investigation",
+            "intake_category": "incident_investigation",
+            "escalation_required": True,
+            "approval_decision": "reject",
+        }
+
+        diagrams = _build_subgraph_sequence_diagrams(state)
+        escalation_diagram = next(item for item in diagrams if item.title == "Escalation 準備フロー")
+
+        self.assertIn("Approval->>Supervisor: 文案差戻しを返却", escalation_diagram.diagram)
+        self.assertIn("Supervisor->>Inquiry: 修正版問い合わせ文案を依頼", escalation_diagram.diagram)
+        self.assertNotIn("Approval->>Inquiry: 文案差戻しを返却", escalation_diagram.diagram)
 
     def test_render_compliance_review_history_lists_findings_and_responses(self) -> None:
         lines = _render_compliance_review_history(

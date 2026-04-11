@@ -14,6 +14,7 @@ from support_ope_agents.config.models import AppConfig
 
 
 class StructuredCriterionEvaluation(BaseModel):
+    criterion_key: str | None = None
     title: str
     viewpoint: str
     result: str

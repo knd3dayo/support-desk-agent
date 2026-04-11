@@ -11,13 +11,13 @@ support_ope_agents:
         enabled: true
         provider: builtin
       external_ticket:
-        enabled: true
+        enabled: false
         provider: mcp
         description: ai-platform-poc チームの顧客向け検証問い合わせ
         server: support-ticket-mcp
         tool: get_external_ticket
       internal_ticket:
-        enabled: true
+        enabled: false
         provider: mcp
         description: ai-platform-poc チームの内部管理チケット
         server: support-ticket-mcp
@@ -60,8 +60,8 @@ support_ope_agents:
           description: ai-chat-util のソースコードと関連実装
           path: /home/user/source/repos/ai-chat-util
         - name: langchain-docs
-          description: LangChain のローカルドキュメント
-          path: /home/user/oss/langchain-ai/langchain
+          description: LangChain関連のローカルドキュメント
+          path: /home/user/oss/langchain-ai
     DraftWriterAgent:
       enabled: true
       auto_compress: true
