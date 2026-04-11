@@ -3,12 +3,13 @@
 ## 1. 役割
 
 IntakeAgent は問い合わせ受付時および継続問い合わせ受付時の定型前処理を担当する疑似エージェントである。
-LangGraph 上では subgraph または subgraph 相当の段階的処理として実装し、後続の SuperVisorAgent が調査方針を判断できるように、入力問い合わせを正規化したうえで初期メモリと初期証跡を整える。
+LangGraph 上では true subgraph として実装し、後続の SuperVisorAgent が調査方針を判断できるように、入力問い合わせを正規化したうえで初期メモリと初期証跡を整える。
+また、問い合わせ分類、緊急度、障害発生時間帯などの必須項目が揃っているかを品質ゲートとして判定し、不足があれば追加質問を生成して WAITING_CUSTOMER_INPUT へ停止させる。
 
 ## 2. 呼び出し元 / 呼び出し先
 
 - 呼び出し元: receive_case ノード
-- 呼び出し先: investigation ノードの前段として SuperVisorAgent に結果を引き渡す
+- 呼び出し先: intake_subgraph 完了後に investigation ノードへ結果を引き渡す
 - 参照先: ケース workspace、共有メモリ、IntakeAgent 用ツール
 
 ## 3. 入力
@@ -87,7 +88,7 @@ logical_tools は disabled、builtin、mcp の 3 パターンで表現し、prov
 
 ## 6. 処理内容
 
-IntakeAgent の処理は次の 8 段階を基本とする。
+IntakeAgent の処理は true subgraph 内で次の段階を基本とする。
 
 1. 入力正規化
    raw_issue の余分なノイズを除去し、問い合わせの主題、事象、期待動作、制約条件を抽出しやすい形へ整える。
@@ -99,12 +100,21 @@ IntakeAgent の処理は次の 8 段階を基本とする。
    masked_issue を入力として、問い合わせカテゴリ、緊急度、初期調査の方向性を判定する。必要に応じて workflow_kind 判断の補助情報としても利用する。
 5. 障害時刻抽出
    障害系と判断したケースでは、問い合わせ文から発生日時または時間帯を抽出し、後続の品質チェックに使えるようにする。
-6. 共有メモリ初期化
-   write_shared_memory を使って shared/context.md と shared/progress.md に初期状態を書き込み、後続フェーズが必要な情報を読み取れる状態にする。
-7. 差し戻し時の追加質問生成
-   Supervisor から不足項目付きで差し戻された場合は、欠落項目に対応した follow-up 質問を生成し、WAITING_CUSTOMER_INPUT に遷移できる状態へ整える。
+6. 品質ゲート
+   共通 validator を使って問い合わせ分類、緊急度、incident_investigation 時の発生時間帯を検証する。必要項目が不足している場合は intake_missing_fields と intake_rework_reason を更新する。
+7. 共有メモリ初期化と follow-up 整理
+   write_shared_memory を使って shared/context.md と shared/progress.md に初期状態を書き込む。不足項目がある場合は follow-up 質問を生成し、WAITING_CUSTOMER_INPUT に遷移できる状態へ整える。
 8. 継続問い合わせの再 intake 判定
-   resume_customer_input や継続問い合わせ入力を受けた場合は、既存 state、customer_followup_answers、ticket hydration 済み情報を見て、追加質問の回収継続、再分類、または SuperVisorAgent への即時再連携を判断する。
+   resume_customer_input や継続問い合わせ入力を受けた場合は、既存 state、customer_followup_answers、ticket hydration 済み情報を見て、追加質問の回収継続、品質ゲート再判定、または SuperVisorAgent への即時再連携を判断する。
+
+subgraph 内の標準ノード構成は次の通りとする。
+
+- intake_prepare
+- intake_mask
+- intake_hydrate_tickets
+- intake_classify
+- intake_quality_gate
+- intake_finalize
 
 ## 7. 共有メモリ更新
 
@@ -131,7 +141,7 @@ shared/progress.md の初期記録例:
 
 - plan モード: 調査計画の提示に必要な初期整理を優先し、next_action はユーザー承認待ちに向けた文言を設定する
 - action モード: 以降の Investigation を開始できる状態にすることを優先し、共有メモリの初期化を必須とする
-- ただし Supervisor から差し戻しを受けた場合は、plan / action に関係なく不足情報の確認質問を生成し、WAITING_CUSTOMER_INPUT で停止する
+- ただし Intake の品質ゲートで必須項目不足を検出した場合は、plan / action に関係なく不足情報の確認質問を生成し、WAITING_CUSTOMER_INPUT で停止する
 - WAITING_CUSTOMER_INPUT で停止した trace は、同じ trace_id を維持したまま追加回答を与えて再開できるようにする
 - 再開時の追加回答は customer_followup_answers に構造化して保持し、再 intake 時の入力文脈にも反映する
 - customer_followup_answers は missing field をキーとする辞書構造で保持し、複数回の差し戻しでもどの質問への回答かを安定して識別できるようにする
@@ -141,14 +151,14 @@ shared/progress.md の初期記録例:
 
 - agent 定義メタデータは [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) の build_intake_agent_definition に残す
 - 複雑化する処理は専用の実行クラスへ切り出す
-- workflow 側の intake ノードは実行クラスへの委譲に留める
-- 実行クラスは pii_mask、external_ticket、internal_ticket、classify_ticket、write_shared_memory を必要に応じて呼び出したうえで、state 更新、workspace への ticket hydration、共有メモリ初期化、plan / action 分岐を担う
-- 実行クラスは Supervisor から渡された intake_missing_fields を見て follow-up 質問を生成できるようにする
+- intake subgraph の生成責務は [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) 側に置き、workflow 側は subgraph を呼び出すだけにする
+- 実行クラスは pii_mask、external_ticket、internal_ticket、classify_ticket、write_shared_memory を必要に応じて呼び出したうえで、state 更新、workspace への ticket hydration、品質ゲート、共有メモリ初期化、plan / action 分岐を担う
+- 品質ゲート判定ロジックは共通 validator を参照し、将来的に IntakeAgent 側へ完全移管しやすい依存構造を保つ
+- _NoOpIntakeExecutor は intake_executor が注入されない場合でも subgraph を構築できるようにするフォールバック実装であり、workflow のコンパイル、ノード列挙、テスト用の最低限の state 更新を担う
 - ticket 情報と添付ファイルの保存先は case workspace 配下の .artifacts/intake/ を標準とし、後続 agent はそこを参照する
 
 ## 10. 未決事項
 
 - 分類結果のうち、CaseState に載せた項目以外で共有メモリのみに残す補足情報の境界
-- IntakeAgent を単一 execute で扱うか、subgraph builder として扱うか
 - 緊急度の表現形式と workflow routing への反映方法
 - ticket 添付ファイルをどの形式まで自動展開するか

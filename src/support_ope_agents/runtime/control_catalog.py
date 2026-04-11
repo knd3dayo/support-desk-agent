@@ -34,31 +34,25 @@ def build_control_catalog(
     ]
     workflow_edges = [
         {"from": "START", "to": "receive_case", "type": "direct"},
-        {"from": "receive_case", "to": "intake_prepare", "type": "direct"},
+        {"from": "receive_case", "to": "intake_subgraph", "type": "direct"},
         {"from": "intake_prepare", "to": "intake_mask", "type": "direct"},
         {"from": "intake_mask", "to": "intake_hydrate_tickets", "type": "direct"},
         {"from": "intake_hydrate_tickets", "to": "intake_classify", "type": "direct"},
-        {"from": "intake_classify", "to": "intake_finalize", "type": "direct"},
+        {"from": "intake_classify", "to": "intake_quality_gate", "type": "direct"},
+        {"from": "intake_quality_gate", "to": "intake_finalize", "type": "direct"},
         {
-            "from": "intake_finalize",
+            "from": "intake_subgraph",
             "to": "wait_for_customer_input",
             "type": "conditional",
             "condition": "state.status == 'WAITING_CUSTOMER_INPUT'",
             "control_point_id": "workflow.route_after_intake.wait_for_customer_input",
         },
         {
-            "from": "intake_finalize",
+            "from": "intake_subgraph",
             "to": "investigation",
             "type": "conditional",
             "condition": "otherwise",
             "control_point_id": "workflow.route_after_intake.investigation",
-        },
-        {
-            "from": "investigation",
-            "to": "intake_prepare",
-            "type": "conditional",
-            "condition": "state.intake_rework_required is true",
-            "control_point_id": "workflow.route_after_investigation.intake_rework",
         },
         {
             "from": "investigation",
@@ -414,8 +408,8 @@ def _build_control_points(config: AppConfig, instructions: dict[str, object]) ->
             category="workflow",
             owner="case_workflow",
             origin="workflow._route_after_investigation",
-            condition="state.intake_rework_required or state.escalation_required",
-            effect="routes to intake, escalation_review, or draft_review",
+            condition="state.escalation_required",
+            effect="routes to escalation_review or draft_review",
             overrideable=False,
             config_key=None,
             docs_refs=["docs/customer-support-deepagents-design.md", "docs/agents/supervisor-agent.md"],
@@ -579,16 +573,7 @@ def _build_runtime_decision_log(
         }
     )
 
-    if bool(state.get("intake_rework_required")):
-        decisions.append(
-            {
-                "control_point_id": "workflow.route_after_investigation.intake_rework",
-                "category": "workflow",
-                "outcome": "taken",
-                "detail": "調査結果を受けて Intake の再実行が必要と判断しました。",
-            }
-        )
-    elif bool(state.get("escalation_required")):
+    if bool(state.get("escalation_required")):
         decisions.append(
             {
                 "control_point_id": "workflow.route_after_investigation.escalation_review",

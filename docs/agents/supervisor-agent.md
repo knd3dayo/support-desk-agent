@@ -5,6 +5,7 @@
 SuperVisorAgent はケース全体の進行管理を担う親エージェントである。
 IntakeAgent の出力を受けて調査方針を決定し、LogAnalyzerAgent と KnowledgeRetrieverAgent の結果を統合したうえで、DraftWriterAgent と ComplianceReviewerAgent による回答案作成とレビューを直接管理する。
 また、調査結果だけでは確実な回答ができない場合は、BackSupportEscalationAgent と BackSupportInquiryWriterAgent を起動してエスカレーション材料と問い合わせ文案を作成する。
+Intake 品質ゲートと追加質問生成は IntakeAgent 側の責務とし、SuperVisorAgent は gate 通過済みの入力を受けて investigation を開始する。
 
 ## 2. 呼び出し元 / 呼び出し先
 
@@ -32,9 +33,6 @@ CaseState へ反映する主な出力:
 - investigation_summary
 - draft_response
 - next_action
-- intake_rework_required
-- intake_rework_reason
-- intake_missing_fields
 - log_analysis_summary
 - log_analysis_file
 - escalation_required
@@ -71,8 +69,7 @@ SuperVisorAgent の処理は大きく次の 4 段階に分かれる。
 
 1. 調査フェーズ管理
    IntakeAgent の出力と read_shared_memory で取得した共有メモリ内容を参照し、workflow_kind を基準にしつつ、workflow_kind が ambiguous_case で intake_category がより具体的な場合はそちらを優先して、LogAnalyzerAgent と KnowledgeRetrieverAgent の起動組み合わせを決め、結果を収束させる。
-   ただしその前に Intake 品質ゲートを実行し、分類、緊急度、障害時の発生時間帯など必須項目が不足していれば IntakeAgent へ差し戻す。
-   評価チェック項目の既定値は、workflow_kind または intake_category の妥当性、intake_urgency の妥当性、incident_investigation における intake_incident_timeframe の充足、intake_investigation_focus の具体性、追加入力要否、共有メモリに残す内容の秘匿性確認である。
+   Intake 側で品質ゲートを通過している前提で、workflow_kind または intake_category の妥当性を解釈し、以降の調査方針と child agent 起動順を決める。
 2. ドラフト作成フェーズ管理
    調査結果をもとに DraftWriterAgent を起動し、顧客向け回答ドラフトを生成する。
 3. レビューループ管理
@@ -105,7 +102,7 @@ shared/progress.md には次を残す。
 
 - plan モード: 調査観点、起動予定エージェント、ドラフト作成方針、レビュー観点を整理して返す
 - action モード: 実際に子エージェントを順次起動し、結果を統合して承認待ちへ進める
-- intake の必須項目が欠ける場合は plan / action を問わず調査へ進まず、IntakeAgent が追加質問を生成して WAITING_CUSTOMER_INPUT で停止する
+- intake の必須項目が欠ける場合は IntakeAgent 側の quality gate で停止済みであり、SuperVisorAgent へは到達しない前提とする
 - 確実な回答が得られない場合は、通常回答ドラフトではなくエスカレーション文案生成フローへ切り替える
 
 ## 9. 実装方針
@@ -116,6 +113,7 @@ shared/progress.md には次を残す。
 - 子エージェント起動の詳細は ToolRegistry と DeepAgentFactory の責務に委ねる
 - shared/context.md への反映は Supervisor が最終判断した内容に限定する
 - 実行クラスは read_shared_memory と write_shared_memory を用いて、investigation / draft_review フェーズの共有メモリ更新経路を統一し、共有メモリ内容を子エージェント起動計画やレビュー重点の判断材料として使う
+- Intake 品質ゲートの判定ロジック自体は共通 validator を参照するが、その workflow 上の実行責務は IntakeAgent 側に置く
 - BackSupportEscalationAgent / BackSupportInquiryWriterAgent は、通常回答ドラフト系とは別の補助分岐として扱う
 - エスカレーション判定語彙と workflow_kind ごとの既定依頼資料は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の agents.BackSupportEscalationAgent.escalation で調整可能とする
 - Intake 出力評価のチェックリストは [src/support_ope_agents/instructions/defaults/SuperVisorAgent.md](/home/user/source/repos/support-ope-agents/src/support_ope_agents/instructions/defaults/SuperVisorAgent.md) の既定指示に置き、必要なら config_paths.instructions_path 配下の SuperVisorAgent.md で丸ごとオーバーライドする
@@ -125,5 +123,4 @@ shared/progress.md には次を残す。
 - draft_review フェーズ内で何回まで再レビューを許可するか
 - ComplianceReviewerAgent の差戻し結果を構造化して持つかどうか
 - 承認前に Supervisor が自動で不足情報を再調査する条件
-- Intake 差し戻しを何回まで許可するか
 - どの条件で通常回答を諦めてエスカレーションへ切り替えるか

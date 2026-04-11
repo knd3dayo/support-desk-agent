@@ -702,7 +702,7 @@ class RuntimeService:
             if record_key == "intake_incident_timeframe":
                 resumed_state["intake_incident_timeframe"] = normalized_additional_input
         resumed_state["customer_followup_answers"] = answer_records
-        resumed_state["next_action"] = "追加情報を反映して Intake を再実行する"
+        resumed_state["next_action"] = "追加情報を反映して Intake subgraph を再実行する"
 
         result = self._invoke_workflow(resumed_state, trace_id)
         self._sync_case_title_from_state(

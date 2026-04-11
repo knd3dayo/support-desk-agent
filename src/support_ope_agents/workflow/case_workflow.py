@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
-from support_ope_agents.agents.intake_agent import IntakePhaseExecutor
+from support_ope_agents.agents.intake_agent import IntakePhaseExecutor, create_node
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
@@ -25,18 +25,18 @@ def build_case_workflow(
 ):
     graph = StateGraph(CaseState)
     graph.add_node("receive_case", _receive_case)
+    graph.add_node("intake_subgraph", create_node(intake_executor))
     graph.add_node("investigation", _build_investigation_node(supervisor_executor))
     graph.add_node("draft_review", _build_draft_review_node(supervisor_executor))
     graph.add_node("escalation_review", _build_escalation_review_node(supervisor_executor))
     graph.add_node("wait_for_customer_input", _wait_for_customer_input)
     graph.add_node("wait_for_approval", _wait_for_approval)
-    _add_intake_subgraph(graph, intake_executor)
     _add_ticket_update_subgraph(graph)
 
     graph.add_edge(START, "receive_case")
-    graph.add_edge("receive_case", "intake_prepare")
+    graph.add_edge("receive_case", "intake_subgraph")
     graph.add_conditional_edges(
-        "intake_finalize",
+        "intake_subgraph",
         _route_after_intake,
         {
             "investigation": "investigation",
@@ -47,9 +47,8 @@ def build_case_workflow(
         "investigation",
         _route_after_investigation,
         {
-            "draft_review": "draft_review",
             "escalation_review": "escalation_review",
-            "intake": "intake_prepare",
+            "draft_review": "draft_review",
         },
     )
     graph.add_edge("escalation_review", "wait_for_approval")
@@ -85,16 +84,6 @@ def reconstruct_main_workflow_path(state: CaseState) -> tuple[str, ...]:
 
     path.append("investigation")
     after_investigation = _route_after_investigation(state)
-    if after_investigation == "intake":
-        path.extend([
-            "intake_prepare",
-            "intake_mask",
-            "intake_hydrate_tickets",
-            "intake_classify",
-            "intake_finalize",
-        ])
-        return tuple(path)
-
     if after_investigation == "escalation_review":
         path.extend(["escalation_review", "wait_for_approval"])
     else:
@@ -119,19 +108,6 @@ def _add_ticket_update_subgraph(graph: StateGraph[CaseState]) -> None:
     graph.add_edge("ticket_update_prepare", "ticket_update_execute")
 
 
-def _add_intake_subgraph(graph: StateGraph[CaseState], intake_executor: IntakePhaseExecutor | None) -> None:
-    executor = intake_executor or _NoOpIntakeExecutor()
-    graph.add_node("intake_prepare", lambda state: cast(CaseState, executor.prepare_state(state)))
-    graph.add_node("intake_mask", lambda state: cast(CaseState, executor.apply_pii_mask(state)))
-    graph.add_node("intake_hydrate_tickets", lambda state: cast(CaseState, executor.hydrate_tickets(state)))
-    graph.add_node("intake_classify", lambda state: cast(CaseState, executor.classify_issue(state)))
-    graph.add_node("intake_finalize", lambda state: cast(CaseState, executor.finalize_state(state)))
-    graph.add_edge("intake_prepare", "intake_mask")
-    graph.add_edge("intake_mask", "intake_hydrate_tickets")
-    graph.add_edge("intake_hydrate_tickets", "intake_classify")
-    graph.add_edge("intake_classify", "intake_finalize")
-
-
 def _receive_case(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "RECEIVED"
@@ -143,47 +119,6 @@ def _receive_case(state: CaseState) -> CaseState:
     update.setdefault("plan_steps", [])
     update.setdefault("plan_summary", "")
     return cast(CaseState, update)
-
-
-class _NoOpIntakeExecutor:
-    def prepare_state(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        update["status"] = "TRIAGED"
-        update["current_agent"] = INTAKE_AGENT
-        update.setdefault("intake_rework_required", False)
-        update.setdefault("intake_missing_fields", [])
-        update.setdefault("intake_followup_questions", {})
-        update.setdefault("customer_followup_answers", {})
-        update.setdefault("intake_ticket_context_summary", {})
-        update.setdefault("intake_ticket_artifacts", {})
-        update.setdefault("masked_issue", str(update.get("raw_issue") or ""))
-        return cast(CaseState, update)
-
-    def apply_pii_mask(self, state: CaseState) -> CaseState:
-        return cast(CaseState, dict(state))
-
-    def hydrate_tickets(self, state: CaseState) -> CaseState:
-        return cast(CaseState, dict(state))
-
-    def classify_issue(self, state: CaseState) -> CaseState:
-        return cast(CaseState, dict(state))
-
-    def finalize_state(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        if update.get("execution_mode") == "plan":
-            update["next_action"] = "ユーザーに計画を提示して承認を得る"
-        else:
-            update["next_action"] = "SuperVisorAgent が調査フェーズを開始する"
-        return cast(CaseState, update)
-
-    def execute(self, state: CaseState) -> CaseState:
-        update = self.prepare_state(state)
-        update = self.apply_pii_mask(update)
-        update = self.hydrate_tickets(update)
-        update = self.classify_issue(update)
-        return self.finalize_state(update)
-
-
 def _build_investigation_node(supervisor_executor: SupervisorPhaseExecutor | None):
     executor = supervisor_executor or _NoOpSupervisorExecutor()
 
@@ -324,8 +259,6 @@ def _route_after_intake(state: CaseState) -> str:
 
 
 def _route_after_investigation(state: CaseState) -> str:
-    if state.get("intake_rework_required"):
-        return "intake"
     if state.get("escalation_required"):
         return "escalation_review"
     return "draft_review"

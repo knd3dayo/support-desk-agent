@@ -9,6 +9,12 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import EscalationSettings
+from support_ope_agents.intake_validation import (
+    resolve_effective_workflow_kind,
+    resolve_intake_category,
+    resolve_intake_urgency,
+    validate_intake,
+)
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
@@ -57,30 +63,6 @@ class SupervisorPhaseExecutor:
         }
 
     @staticmethod
-    def _resolve_intake_category(state: "CaseState", memory_snapshot: dict[str, str]) -> str:
-        state_category = str(state.get("intake_category") or "").strip()
-        if state_category:
-            return state_category
-
-        combined = "\n".join(memory_snapshot.values())
-        match = re.search(r"(?:Category|Intake category):\s*([^\n]+)", combined)
-        if match:
-            return match.group(1).strip()
-        return "ambiguous_case"
-
-    @staticmethod
-    def _resolve_intake_urgency(state: "CaseState", memory_snapshot: dict[str, str]) -> str:
-        state_urgency = str(state.get("intake_urgency") or "").strip()
-        if state_urgency:
-            return state_urgency
-
-        combined = "\n".join(memory_snapshot.values())
-        match = re.search(r"(?:Urgency|Intake urgency):\s*([^\n]+)", combined)
-        if match:
-            return match.group(1).strip()
-        return "medium"
-
-    @staticmethod
     def _planned_child_agents(category: str) -> list[str]:
         if category == "specification_inquiry":
             return ["KnowledgeRetrieverAgent"]
@@ -90,54 +72,9 @@ class SupervisorPhaseExecutor:
             return ["LogAnalyzerAgent", "KnowledgeRetrieverAgent"]
         return ["KnowledgeRetrieverAgent"]
 
-    @staticmethod
-    def _resolve_effective_workflow_kind(state: "CaseState", memory_snapshot: dict[str, str]) -> str:
-        workflow_kind = str(state.get("workflow_kind") or "").strip()
-        intake_category = SupervisorPhaseExecutor._resolve_intake_category(state, memory_snapshot)
-        valid_values = {"specification_inquiry", "incident_investigation", "ambiguous_case"}
-
-        if workflow_kind not in valid_values:
-            return intake_category if intake_category in valid_values else "ambiguous_case"
-
-        if workflow_kind == "ambiguous_case" and intake_category in {"specification_inquiry", "incident_investigation"}:
-            return intake_category
-
-        return workflow_kind
-
-    @staticmethod
-    def _resolve_incident_timeframe(state: "CaseState", memory_snapshot: dict[str, str]) -> str:
-        timeframe = str(state.get("intake_incident_timeframe") or "").strip()
-        if timeframe:
-            return timeframe
-
-        combined = "\n".join(memory_snapshot.values())
-        match = re.search(r"Incident timeframe:\s*([^\n]+)", combined)
-        if match:
-            return match.group(1).strip()
-        return ""
-
     def _validate_intake(self, state: "CaseState", memory_snapshot: dict[str, str]) -> tuple[list[str], str]:
-        missing_fields: list[str] = []
-        intake_category = self._resolve_intake_category(state, memory_snapshot)
-        intake_urgency = self._resolve_intake_urgency(state, memory_snapshot)
-        incident_timeframe = self._resolve_incident_timeframe(state, memory_snapshot)
-
-        if not intake_category:
-            missing_fields.append("intake_category")
-        if not intake_urgency:
-            missing_fields.append("intake_urgency")
-        if intake_category == "incident_investigation" and not incident_timeframe:
-            missing_fields.append("intake_incident_timeframe")
-
-        if not missing_fields:
-            return [], ""
-
-        reasons = {
-            "intake_category": "問い合わせ分類が未確定",
-            "intake_urgency": "緊急度が未設定",
-            "intake_incident_timeframe": "障害発生時間帯が未確認",
-        }
-        return missing_fields, "、".join(reasons[field_name] for field_name in missing_fields)
+        result = validate_intake(state, memory_snapshot)
+        return result.missing_fields, result.rework_reason
 
     def _collect_escalation_missing_artifacts(
         self,
@@ -464,6 +401,9 @@ class SupervisorPhaseExecutor:
         update = cast("CaseState", dict(state))
         update["status"] = "INVESTIGATING"
         update["current_agent"] = SUPERVISOR_AGENT
+        update["intake_rework_required"] = False
+        update["intake_rework_reason"] = ""
+        update["intake_missing_fields"] = []
 
         case_id = str(update.get("case_id") or "").strip()
         workspace_path = str(update.get("workspace_path") or "").strip()
@@ -471,52 +411,9 @@ class SupervisorPhaseExecutor:
         if case_id and workspace_path:
             memory_snapshot = self._parse_memory(self._invoke_tool(self.read_shared_memory_tool, case_id, workspace_path))
 
-        missing_fields, rework_reason = self._validate_intake(update, memory_snapshot)
-        if missing_fields:
-            update["status"] = "TRIAGED"
-            update["current_agent"] = SUPERVISOR_AGENT
-            update["intake_rework_required"] = True
-            update["intake_rework_reason"] = rework_reason
-            update["intake_missing_fields"] = missing_fields
-            update["next_action"] = "IntakeAgent が不足情報の確認項目を作成し、ユーザー追加回答を待機する"
-
-            if case_id and workspace_path:
-                context_payload: SharedMemoryDocumentPayload = {
-                    "title": "Supervisor Intake Gate",
-                    "heading_level": 2,
-                    "bullets": [
-                        "Result: rework_required",
-                        f"Reason: {rework_reason}",
-                        f"Missing fields: {', '.join(missing_fields)}",
-                    ],
-                }
-                progress_payload: SharedMemoryDocumentPayload = {
-                    "title": "Supervisor Intake Gate",
-                    "heading_level": 2,
-                    "bullets": [
-                        "Current phase: TRIAGED",
-                        "Next phase: intake",
-                        "Decision: return_to_intake",
-                    ],
-                }
-                self._invoke_tool(
-                    self.write_shared_memory_tool,
-                    case_id,
-                    workspace_path,
-                    context_payload,
-                    progress_payload,
-                    None,
-                    "append",
-                )
-            return cast("CaseState", update)
-
-        update["intake_rework_required"] = False
-        update["intake_rework_reason"] = ""
-        update["intake_missing_fields"] = []
-
-        intake_category = self._resolve_intake_category(update, memory_snapshot)
-        intake_urgency = self._resolve_intake_urgency(update, memory_snapshot)
-        effective_workflow_kind = self._resolve_effective_workflow_kind(update, memory_snapshot)
+        intake_category = resolve_intake_category(update, memory_snapshot)
+        intake_urgency = resolve_intake_urgency(update, memory_snapshot)
+        effective_workflow_kind = resolve_effective_workflow_kind(update, memory_snapshot)
         planned_child_agents = self._planned_child_agents(effective_workflow_kind)
         log_analysis_summary = ""
         log_analysis_file = ""
@@ -695,9 +592,9 @@ class SupervisorPhaseExecutor:
         if case_id and workspace_path:
             memory_snapshot = self._parse_memory(self._invoke_tool(self.read_shared_memory_tool, case_id, workspace_path))
 
-        intake_category = self._resolve_intake_category(update, memory_snapshot)
-        intake_urgency = self._resolve_intake_urgency(update, memory_snapshot)
-        effective_workflow_kind = self._resolve_effective_workflow_kind(update, memory_snapshot)
+        intake_category = resolve_intake_category(update, memory_snapshot)
+        intake_urgency = resolve_intake_urgency(update, memory_snapshot)
+        effective_workflow_kind = resolve_effective_workflow_kind(update, memory_snapshot)
         review_focus = "表現の妥当性と根拠の整合性を確認する"
         if effective_workflow_kind == "incident_investigation":
             review_focus = "障害原因の断定過剰や不要な復旧約束がないかを重点確認する"

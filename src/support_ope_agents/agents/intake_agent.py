@@ -8,9 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
+from langgraph.graph import END, START, StateGraph
+
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.intake_validation import validate_intake
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
@@ -242,6 +245,21 @@ class IntakePhaseExecutor:
         update["intake_incident_timeframe"] = self._extract_incident_timeframe(masked_issue)
         return cast("CaseState", update)
 
+    def quality_gate(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        validation_result = validate_intake(
+            cast("CaseState", update),
+            {"context": "", "progress": "", "summary": ""},
+        )
+        update["intake_category"] = validation_result.category
+        update["intake_urgency"] = validation_result.urgency
+        if validation_result.incident_timeframe:
+            update["intake_incident_timeframe"] = validation_result.incident_timeframe
+        update["intake_missing_fields"] = validation_result.missing_fields
+        update["intake_rework_reason"] = validation_result.rework_reason
+        update["intake_rework_required"] = bool(validation_result.missing_fields)
+        return cast("CaseState", update)
+
     def finalize_state(self, state: CaseState) -> CaseState:
         update = dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
@@ -396,7 +414,72 @@ class IntakePhaseExecutor:
         update = self.apply_pii_mask(update)
         update = self.hydrate_tickets(update)
         update = self.classify_issue(update)
+        update = self.quality_gate(update)
         return self.finalize_state(update)
+
+
+class _NoOpIntakeExecutor:
+    def prepare_state(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        update["status"] = "TRIAGED"
+        update["current_agent"] = INTAKE_AGENT
+        update.setdefault("intake_rework_required", False)
+        update.setdefault("intake_missing_fields", [])
+        update.setdefault("intake_followup_questions", {})
+        update.setdefault("customer_followup_answers", {})
+        update.setdefault("intake_ticket_context_summary", {})
+        update.setdefault("intake_ticket_artifacts", {})
+        update.setdefault("masked_issue", str(update.get("raw_issue") or ""))
+        return cast("CaseState", update)
+
+    def apply_pii_mask(self, state: CaseState) -> CaseState:
+        return cast("CaseState", dict(state))
+
+    def hydrate_tickets(self, state: CaseState) -> CaseState:
+        return cast("CaseState", dict(state))
+
+    def classify_issue(self, state: CaseState) -> CaseState:
+        return cast("CaseState", dict(state))
+
+    def quality_gate(self, state: CaseState) -> CaseState:
+        return cast("CaseState", dict(state))
+
+    def finalize_state(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        if update.get("execution_mode") == "plan":
+            update["next_action"] = "ユーザーに計画を提示して承認を得る"
+        else:
+            update["next_action"] = "SuperVisorAgent が調査フェーズを開始する"
+        return cast("CaseState", update)
+
+    def execute(self, state: CaseState) -> CaseState:
+        update = self.prepare_state(state)
+        update = self.apply_pii_mask(update)
+        update = self.hydrate_tickets(update)
+        update = self.classify_issue(update)
+        update = self.quality_gate(update)
+        return self.finalize_state(update)
+
+
+def create_node(intake_executor: IntakePhaseExecutor | None):
+    from support_ope_agents.workflow.state import CaseState
+
+    executor = intake_executor or _NoOpIntakeExecutor()
+    graph = StateGraph(CaseState)
+    graph.add_node("intake_prepare", lambda state: cast(CaseState, executor.prepare_state(cast(CaseState, state))))
+    graph.add_node("intake_mask", lambda state: cast(CaseState, executor.apply_pii_mask(cast(CaseState, state))))
+    graph.add_node("intake_hydrate_tickets", lambda state: cast(CaseState, executor.hydrate_tickets(cast(CaseState, state))))
+    graph.add_node("intake_classify", lambda state: cast(CaseState, executor.classify_issue(cast(CaseState, state))))
+    graph.add_node("intake_quality_gate", lambda state: cast(CaseState, executor.quality_gate(cast(CaseState, state))))
+    graph.add_node("intake_finalize", lambda state: cast(CaseState, executor.finalize_state(cast(CaseState, state))))
+    graph.add_edge(START, "intake_prepare")
+    graph.add_edge("intake_prepare", "intake_mask")
+    graph.add_edge("intake_mask", "intake_hydrate_tickets")
+    graph.add_edge("intake_hydrate_tickets", "intake_classify")
+    graph.add_edge("intake_classify", "intake_quality_gate")
+    graph.add_edge("intake_quality_gate", "intake_finalize")
+    graph.add_edge("intake_finalize", END)
+    return graph.compile()
 
 
 def build_intake_agent_definition() -> AgentDefinition:
