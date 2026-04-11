@@ -493,6 +493,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("KnowledgeRetrieverAgent", content)
         self.assertIn("ユーザー指定チェックリスト", content)
         self.assertIn("説明: レポート対象のケースを一意に識別するIDです。", content)
+        self.assertIn("## 回答内容", content)
+        self.assertIn("顧客向けに返却した、または返却予定の回答本文です。", content)
         self.assertIn("説明: 最終的に確定した対応方針を示します。", content)
         self.assertIn("### 総評", content)
         self.assertIn("ケース全体を通した自動対応品質の総括です。", content)
