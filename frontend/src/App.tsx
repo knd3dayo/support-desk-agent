@@ -1021,23 +1021,20 @@ export default function App() {
 
             {activeSidebarView === 'files' ? (
               <>
-                <div className="panel-actions sidebar-panel-actions">
+                <div className="file-toolbar">
+                  <div className="breadcrumbs">
+                    <button type="button" onClick={() => void openDirectory('.')} disabled={!selectedCase}>
+                      root
+                    </button>
+                    {breadcrumbs.map((crumb, index) => (
+                      <span key={`${crumb}-${index}`}>{crumb}</span>
+                    ))}
+                  </div>
                   {selectedCase ? (
-                    <>
-                      <a className="ghost-button panel-action-secondary" href={downloadWorkspaceUrl(selectedCase.case_id, selectedCase.workspace_path)}>
-                        ZIPを取得
-                      </a>
-                    </>
+                    <a className="ghost-button panel-action-secondary" href={downloadWorkspaceUrl(selectedCase.case_id, selectedCase.workspace_path)}>
+                      ZIPを取得
+                    </a>
                   ) : null}
-                </div>
-
-                <div className="breadcrumbs">
-                  <button type="button" onClick={() => void openDirectory('.')} disabled={!selectedCase}>
-                    root
-                  </button>
-                  {breadcrumbs.map((crumb, index) => (
-                    <span key={`${crumb}-${index}`}>{crumb}</span>
-                  ))}
                 </div>
 
                 <div className="tree-view sidebar-tree-view">
