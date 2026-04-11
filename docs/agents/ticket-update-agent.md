@@ -66,6 +66,9 @@ TicketUpdateAgent が参照する使用ツール詳細は次を参照する。
 ## 9. 実装方針
 
 - TicketUpdateAgent は LangGraph subgraph として実装し、prepare と execute を分離する
+- workflow 側の入口は [src/support_ope_agents/agents/ticket_update_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/ticket_update_agent.py) の TicketUpdateAgent.create_node() とし、workflow は subgraph を呼び出すだけにする
+- create_node() の内部ノード名は ticket_update_prepare と ticket_update_execute を維持し、runtime audit / reporting / control catalog と整合させる
+- prepare_update() は ticket_update_payload と next_action を整え、execute_update() は CLOSED と ticket_update_result を確定させる
 - 外部チケット更新は当面スタブ化し、後続で MCP または API adapter へ置き換える
 - 更新前 HITL は ApprovalAgent とは別の停止点として扱う
 - prepare_ticket_update、zendesk_reply、redmine_update の有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools 配下で管理する

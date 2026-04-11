@@ -1061,7 +1061,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 updated["ticket_update_result"] = "updated"
                 return cast(CaseState, updated)
 
-        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, supervisor_executor=None):
+        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, ticket_update_executor=None, supervisor_executor=None):
             captured["checkpointer"] = checkpointer
             return _FakeWorkflow()
 
@@ -1117,7 +1117,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 updated["status"] = "WAITING_APPROVAL"
                 return cast(CaseState, updated)
 
-        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, supervisor_executor=None):
+        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, ticket_update_executor=None, supervisor_executor=None):
             captured["checkpointer"] = checkpointer
             return _FakeWorkflow()
 

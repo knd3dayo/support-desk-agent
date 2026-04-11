@@ -6,15 +6,10 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, cast
 
+from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import EscalationSettings
-from support_ope_agents.intake_validation import (
-    resolve_effective_workflow_kind,
-    resolve_intake_category,
-    resolve_intake_urgency,
-    validate_intake,
-)
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
@@ -73,7 +68,7 @@ class SupervisorPhaseExecutor:
         return ["KnowledgeRetrieverAgent"]
 
     def _validate_intake(self, state: "CaseState", memory_snapshot: dict[str, str]) -> tuple[list[str], str]:
-        result = validate_intake(state, memory_snapshot)
+        result = IntakeAgent.validate_intake(state, memory_snapshot)
         return result.missing_fields, result.rework_reason
 
     def _collect_escalation_missing_artifacts(
@@ -411,9 +406,9 @@ class SupervisorPhaseExecutor:
         if case_id and workspace_path:
             memory_snapshot = self._parse_memory(self._invoke_tool(self.read_shared_memory_tool, case_id, workspace_path))
 
-        intake_category = resolve_intake_category(update, memory_snapshot)
-        intake_urgency = resolve_intake_urgency(update, memory_snapshot)
-        effective_workflow_kind = resolve_effective_workflow_kind(update, memory_snapshot)
+        intake_category = IntakeAgent.resolve_intake_category(update, memory_snapshot)
+        intake_urgency = IntakeAgent.resolve_intake_urgency(update, memory_snapshot)
+        effective_workflow_kind = IntakeAgent.resolve_effective_workflow_kind(update, memory_snapshot)
         planned_child_agents = self._planned_child_agents(effective_workflow_kind)
         log_analysis_summary = ""
         log_analysis_file = ""
@@ -592,9 +587,9 @@ class SupervisorPhaseExecutor:
         if case_id and workspace_path:
             memory_snapshot = self._parse_memory(self._invoke_tool(self.read_shared_memory_tool, case_id, workspace_path))
 
-        intake_category = resolve_intake_category(update, memory_snapshot)
-        intake_urgency = resolve_intake_urgency(update, memory_snapshot)
-        effective_workflow_kind = resolve_effective_workflow_kind(update, memory_snapshot)
+        intake_category = IntakeAgent.resolve_intake_category(update, memory_snapshot)
+        intake_urgency = IntakeAgent.resolve_intake_urgency(update, memory_snapshot)
+        effective_workflow_kind = IntakeAgent.resolve_effective_workflow_kind(update, memory_snapshot)
         review_focus = "表現の妥当性と根拠の整合性を確認する"
         if effective_workflow_kind == "incident_investigation":
             review_focus = "障害原因の断定過剰や不要な復旧約束がないかを重点確認する"

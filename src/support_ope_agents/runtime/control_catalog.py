@@ -29,6 +29,7 @@ def build_control_catalog(
         "escalation_review",
         "wait_for_customer_input",
         "wait_for_approval",
+        "ticket_update_subgraph",
         "ticket_update_prepare",
         "ticket_update_execute",
     ]
@@ -72,7 +73,7 @@ def build_control_catalog(
         {"from": "draft_review", "to": "wait_for_approval", "type": "direct"},
         {
             "from": "wait_for_approval",
-            "to": "ticket_update_prepare",
+            "to": "ticket_update_subgraph",
             "type": "conditional",
             "condition": "state.approval_decision in {'approved', 'approve'}",
             "control_point_id": "workflow.route_after_approval.approved",
@@ -98,8 +99,8 @@ def build_control_catalog(
             "condition": "otherwise",
             "control_point_id": "workflow.route_after_approval.end",
         },
+        {"from": "ticket_update_subgraph", "to": "END", "type": "direct"},
         {"from": "ticket_update_prepare", "to": "ticket_update_execute", "type": "direct"},
-        {"from": "ticket_update_execute", "to": "END", "type": "direct"},
     ]
 
     instructions = _build_instruction_catalog(config, agent_definitions)

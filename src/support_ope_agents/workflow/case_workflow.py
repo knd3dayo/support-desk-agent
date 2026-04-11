@@ -7,12 +7,12 @@ from langgraph.graph import END, START, StateGraph
 
 from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.ticket_update_agent import TicketUpdateAgent
 from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
     INTAKE_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
     SUPERVISOR_AGENT,
-    TICKET_UPDATE_AGENT,
 )
 from support_ope_agents.workflow.state import CaseState
 
@@ -21,6 +21,7 @@ def build_case_workflow(
     *,
     checkpointer: Any | None = None,
     intake_executor: IntakeAgent,
+    ticket_update_executor: TicketUpdateAgent,
     supervisor_executor: SupervisorPhaseExecutor | None = None,
 ):
     graph = StateGraph(CaseState)
@@ -31,7 +32,7 @@ def build_case_workflow(
     graph.add_node("escalation_review", _build_escalation_review_node(supervisor_executor))
     graph.add_node("wait_for_customer_input", _wait_for_customer_input)
     graph.add_node("wait_for_approval", _wait_for_approval)
-    _add_ticket_update_subgraph(graph)
+    graph.add_node("ticket_update_subgraph", ticket_update_executor.create_node())
 
     graph.add_edge(START, "receive_case")
     graph.add_edge("receive_case", "intake_subgraph")
@@ -57,13 +58,13 @@ def build_case_workflow(
         "wait_for_approval",
         _route_after_approval,
         {
-            "ticket_update_prepare": "ticket_update_prepare",
+            "ticket_update_prepare": "ticket_update_subgraph",
             "draft_review": "draft_review",
             "investigation": "investigation",
             "__end__": END,
         },
     )
-    graph.add_edge("ticket_update_execute", END)
+    graph.add_edge("ticket_update_subgraph", END)
     return graph.compile(checkpointer=checkpointer) if checkpointer is not None else graph.compile()
 
 
@@ -101,13 +102,6 @@ def reconstruct_main_workflow_path(state: CaseState) -> tuple[str, ...]:
 
     return tuple(path)
 
-
-def _add_ticket_update_subgraph(graph: StateGraph[CaseState]) -> None:
-    graph.add_node("ticket_update_prepare", _ticket_update_prepare)
-    graph.add_node("ticket_update_execute", _ticket_update_execute)
-    graph.add_edge("ticket_update_prepare", "ticket_update_execute")
-
-
 def _receive_case(state: CaseState) -> CaseState:
     update = dict(state)
     update["status"] = "RECEIVED"
@@ -119,6 +113,8 @@ def _receive_case(state: CaseState) -> CaseState:
     update.setdefault("plan_steps", [])
     update.setdefault("plan_summary", "")
     return cast(CaseState, update)
+
+
 def _build_investigation_node(supervisor_executor: SupervisorPhaseExecutor | None):
     executor = supervisor_executor or _NoOpSupervisorExecutor()
 
@@ -221,23 +217,6 @@ def _wait_for_customer_input(state: CaseState) -> CaseState:
     update["current_agent"] = INTAKE_AGENT
     if not update.get("next_action"):
         update["next_action"] = "IntakeAgent の質問に回答し、追加情報を提供してください。"
-    return cast(CaseState, update)
-
-
-def _ticket_update_prepare(state: CaseState) -> CaseState:
-    update = dict(state)
-    update["current_agent"] = TICKET_UPDATE_AGENT
-    update["ticket_update_payload"] = "Zendesk / Redmine に反映する更新内容を準備しました。"
-    update["next_action"] = "外部チケット更新内容を確定して更新を実行する"
-    return cast(CaseState, update)
-
-
-def _ticket_update_execute(state: CaseState) -> CaseState:
-    update = dict(state)
-    update["status"] = "CLOSED"
-    update["current_agent"] = TICKET_UPDATE_AGENT
-    update["ticket_update_result"] = "Zendesk と Redmine の更新処理を完了しました。"
-    update["next_action"] = "外部チケット更新を完了しました"
     return cast(CaseState, update)
 
 

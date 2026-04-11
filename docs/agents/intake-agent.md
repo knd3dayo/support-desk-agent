@@ -101,7 +101,7 @@ IntakeAgent の処理は true subgraph 内で次の段階を基本とする。
 5. 障害時刻抽出
    障害系と判断したケースでは、問い合わせ文から発生日時または時間帯を抽出し、後続の品質チェックに使えるようにする。
 6. 品質ゲート
-   共通 validator を使って問い合わせ分類、緊急度、incident_investigation 時の発生時間帯を検証する。必要項目が不足している場合は intake_missing_fields と intake_rework_reason を更新する。
+   IntakeAgent 自身が持つ validation API を使って問い合わせ分類、緊急度、incident_investigation 時の発生時間帯を検証する。必要項目が不足している場合は intake_missing_fields と intake_rework_reason を更新する。
 7. 共有メモリ初期化と follow-up 整理
    write_shared_memory を使って shared/context.md と shared/progress.md に初期状態を書き込む。不足項目がある場合は follow-up 質問を生成し、WAITING_CUSTOMER_INPUT に遷移できる状態へ整える。
 8. 継続問い合わせの再 intake 判定
@@ -115,6 +115,16 @@ subgraph 内の標準ノード構成は次の通りとする。
 - intake_classify
 - intake_quality_gate
 - intake_finalize
+
+validation API として、少なくとも次の static / class method を [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) に持つ。
+
+- resolve_intake_category(state, memory_snapshot)
+- resolve_intake_urgency(state, memory_snapshot)
+- resolve_incident_timeframe(state, memory_snapshot)
+- resolve_effective_workflow_kind(state, memory_snapshot)
+- validate_intake(state, memory_snapshot)
+
+validate_intake は category、urgency、incident_timeframe、missing_fields、rework_reason を返す ValidationResult を返し、IntakeAgent 自身の quality gate と SuperVisorAgent の workflow kind 解決の両方から共通利用する。
 
 ## 7. 共有メモリ更新
 
@@ -152,9 +162,9 @@ shared/progress.md の初期記録例:
 - agent 定義メタデータは [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) の build_intake_agent_definition に残す
 - 複雑化する処理は専用の実行クラスへ切り出す
 - intake subgraph の生成責務は [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) 側に置き、workflow 側は subgraph を呼び出すだけにする
-- build_intake_subgraph は実際の IntakePhaseExecutor を必須入力とし、未注入は wiring ミスとして早期に検出する
+- workflow が呼ぶ入口は IntakeAgent.create_node() とし、未注入は wiring ミスとして早期に検出する
 - 実行クラスは pii_mask、external_ticket、internal_ticket、classify_ticket、write_shared_memory を必要に応じて呼び出したうえで、state 更新、workspace への ticket hydration、品質ゲート、共有メモリ初期化、plan / action 分岐を担う
-- 品質ゲート判定ロジックは共通 validator を参照し、将来的に IntakeAgent 側へ完全移管しやすい依存構造を保つ
+- 品質ゲート判定ロジックは IntakeAgent の validation API として同居させ、Supervisor からはその API を参照する
 - ticket 情報と添付ファイルの保存先は case workspace 配下の .artifacts/intake/ を標準とし、後続 agent はそこを参照する
 
 ## 10. 未決事項

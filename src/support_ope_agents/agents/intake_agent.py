@@ -13,7 +13,6 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.intake_validation import validate_intake
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
@@ -24,6 +23,14 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class IntakeAgent:
+    @dataclass(frozen=True, slots=True)
+    class ValidationResult:
+        category: str
+        urgency: str
+        incident_timeframe: str
+        missing_fields: list[str]
+        rework_reason: str
+
     config: AppConfig
     pii_mask_tool: Callable[..., Any]
     external_ticket_tool: Callable[..., Any]
@@ -84,6 +91,87 @@ class IntakeAgent:
             elif field_name == "intake_incident_timeframe":
                 questions[field_name] = "障害が最初に発生した日時、または少なくとも発生した時間帯を教えてください。"
         return questions
+
+    @staticmethod
+    def resolve_intake_category(state: CaseState, memory_snapshot: dict[str, str]) -> str:
+        state_category = str(state.get("intake_category") or "").strip()
+        if state_category:
+            return state_category
+
+        combined = "\n".join(memory_snapshot.values())
+        match = re.search(r"(?:Category|Intake category):\s*([^\n]+)", combined)
+        if match:
+            return match.group(1).strip()
+        return "ambiguous_case"
+
+    @staticmethod
+    def resolve_intake_urgency(state: CaseState, memory_snapshot: dict[str, str]) -> str:
+        state_urgency = str(state.get("intake_urgency") or "").strip()
+        if state_urgency:
+            return state_urgency
+
+        combined = "\n".join(memory_snapshot.values())
+        match = re.search(r"(?:Urgency|Intake urgency):\s*([^\n]+)", combined)
+        if match:
+            return match.group(1).strip()
+        return "medium"
+
+    @staticmethod
+    def resolve_incident_timeframe(state: CaseState, memory_snapshot: dict[str, str]) -> str:
+        timeframe = str(state.get("intake_incident_timeframe") or "").strip()
+        if timeframe:
+            return timeframe
+
+        combined = "\n".join(memory_snapshot.values())
+        match = re.search(r"Incident timeframe:\s*([^\n]+)", combined)
+        if match:
+            return match.group(1).strip()
+        return ""
+
+    @classmethod
+    def resolve_effective_workflow_kind(cls, state: CaseState, memory_snapshot: dict[str, str]) -> str:
+        workflow_kind = str(state.get("workflow_kind") or "").strip()
+        intake_category = cls.resolve_intake_category(state, memory_snapshot)
+        valid_values = {"specification_inquiry", "incident_investigation", "ambiguous_case"}
+
+        if workflow_kind not in valid_values:
+            return intake_category if intake_category in valid_values else "ambiguous_case"
+
+        if workflow_kind == "ambiguous_case" and intake_category in {"specification_inquiry", "incident_investigation"}:
+            return intake_category
+
+        return workflow_kind
+
+    @classmethod
+    def validate_intake(cls, state: CaseState, memory_snapshot: dict[str, str]) -> ValidationResult:
+        missing_fields: list[str] = []
+        category = cls.resolve_intake_category(state, memory_snapshot)
+        urgency = cls.resolve_intake_urgency(state, memory_snapshot)
+        incident_timeframe = cls.resolve_incident_timeframe(state, memory_snapshot)
+
+        if not category:
+            missing_fields.append("intake_category")
+        if not urgency:
+            missing_fields.append("intake_urgency")
+        if category == "incident_investigation" and not incident_timeframe:
+            missing_fields.append("intake_incident_timeframe")
+
+        rework_reason = ""
+        if missing_fields:
+            reasons = {
+                "intake_category": "問い合わせ分類が未確定",
+                "intake_urgency": "緊急度が未設定",
+                "intake_incident_timeframe": "障害発生時間帯が未確認",
+            }
+            rework_reason = "、".join(reasons[field_name] for field_name in missing_fields)
+
+        return cls.ValidationResult(
+            category=category,
+            urgency=urgency,
+            incident_timeframe=incident_timeframe,
+            missing_fields=missing_fields,
+            rework_reason=rework_reason,
+        )
 
     @staticmethod
     def _ticket_lookup_requested(update: dict[str, object], ticket_kind: str) -> bool:
@@ -187,6 +275,8 @@ class IntakeAgent:
             update["case_title"] = derive_case_title(raw_issue, fallback=str(update.get("case_id") or "新規ケース"))
         return cast("CaseState", update)
 
+    PII_MASK_PROMPT = "Mask API keys, tokens, and secrets for intake processing."
+
     def apply_pii_mask(self, state: CaseState) -> CaseState:
         update = dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
@@ -194,7 +284,7 @@ class IntakeAgent:
             update["masked_issue"] = self._invoke_tool(
                 self.pii_mask_tool,
                 raw_issue,
-                "Mask API keys, tokens, and secrets for intake processing.",
+                self.PII_MASK_PROMPT,
             )
         return cast("CaseState", update)
 
@@ -224,6 +314,8 @@ class IntakeAgent:
         update["intake_ticket_artifacts"] = ticket_artifacts
         return cast("CaseState", update)
 
+    CLASSIFY_PROMPT = "Classify the intake issue for customer support workflow routing and investigation planning."
+
     def classify_issue(self, state: CaseState) -> CaseState:
         update = dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
@@ -235,7 +327,7 @@ class IntakeAgent:
             self._invoke_tool(
                 self.classify_ticket_tool,
                 masked_issue,
-                "Classify the intake issue for customer support workflow routing and investigation planning.",
+                self.CLASSIFY_PROMPT,
             )
         )
         update["intake_category"] = classification["category"]
@@ -247,7 +339,7 @@ class IntakeAgent:
 
     def quality_gate(self, state: CaseState) -> CaseState:
         update = dict(state)
-        validation_result = validate_intake(
+        validation_result = self.validate_intake(
             cast("CaseState", update),
             {"context": "", "progress": "", "summary": ""},
         )
@@ -309,7 +401,9 @@ class IntakeAgent:
                             "bullets": [f"{field_name}: {question}" for field_name, question in followup_questions.items()],
                         }
                     ]
-                self._invoke_tool(self.write_working_memory_tool, case_id, workspace_path, working_payload, "append")
+                self._invoke_tool(
+                    self.write_working_memory_tool, case_id, workspace_path, working_payload, 
+                    "append")
 
             context_payload: SharedMemoryDocumentPayload = {
                 "title": "Shared Context",
@@ -391,7 +485,9 @@ class IntakeAgent:
                     progress_payload["bullets"].append("Planning note: plan モードだが、不足情報の確認が先に必要")
                 else:
                     progress_payload["bullets"].append("Planning note: plan モードのため、次はユーザー承認待ちの案内を行う")
-            self._invoke_tool(self.write_shared_memory_tool, case_id, workspace_path, context_payload, progress_payload)
+            self._invoke_tool(
+                self.write_shared_memory_tool, case_id, workspace_path, 
+                context_payload, progress_payload)
 
         if followup_questions:
             return cast("CaseState", update)

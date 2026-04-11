@@ -18,6 +18,7 @@ from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.ticket_update_agent import TicketUpdateAgent
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
 from support_ope_agents.agents.roles import COMPLIANCE_REVIEWER_AGENT
@@ -26,6 +27,7 @@ from support_ope_agents.agents.roles import INTAKE_AGENT
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
+from support_ope_agents.agents.roles import TICKET_UPDATE_AGENT
 from support_ope_agents.agents.deep_agent_factory import DeepAgentFactory
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
@@ -101,6 +103,7 @@ class RuntimeService:
             tool.name: tool.handler for tool in context.tool_registry.get_tools(COMPLIANCE_REVIEWER_AGENT)
         }
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
+        ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
         self._intake_executor = IntakeAgent(
             config=context.config,
             pii_mask_tool=intake_tools["pii_mask"],
@@ -109,6 +112,11 @@ class RuntimeService:
             classify_ticket_tool=intake_tools["classify_ticket"],
             write_shared_memory_tool=intake_tools["write_shared_memory"],
             write_working_memory_tool=intake_tools.get("write_working_memory"),
+        )
+        self._ticket_update_executor = TicketUpdateAgent(
+            prepare_ticket_update_tool=ticket_update_tools.get("prepare_ticket_update") or self._noop_ticket_update_tool,
+            zendesk_reply_tool=ticket_update_tools.get("zendesk_reply") or self._noop_ticket_update_tool,
+            redmine_update_tool=ticket_update_tools.get("redmine_update") or self._noop_ticket_update_tool,
         )
         self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
             detect_log_format_tool=log_analyzer_tools["detect_log_format"],
@@ -150,6 +158,10 @@ class RuntimeService:
             escalation_settings=context.config.agents.BackSupportEscalationAgent.escalation,
             compliance_max_review_loops=context.config.agents.ComplianceReviewerAgent.max_review_loops,
         )
+
+    @staticmethod
+    def _noop_ticket_update_tool(*args: object, **kwargs: object) -> str:
+        return ""
 
     @property
     def context(self) -> RuntimeContext:
@@ -756,7 +768,11 @@ class RuntimeService:
         return response
 
     def print_workflow_nodes(self) -> list[str]:
-        graph = build_case_workflow(intake_executor=self._intake_executor, supervisor_executor=self._supervisor_executor).get_graph()
+        graph = build_case_workflow(
+            intake_executor=self._intake_executor,
+            ticket_update_executor=self._ticket_update_executor,
+            supervisor_executor=self._supervisor_executor,
+        ).get_graph()
         return sorted(node.id for node in graph.nodes.values())
 
     def checkpoint_db_path(self, case_id: str, workspace_path: str) -> Path:
@@ -882,6 +898,7 @@ class RuntimeService:
             graph = build_case_workflow(
                 checkpointer=checkpointer,
                 intake_executor=self._intake_executor,
+                ticket_update_executor=self._ticket_update_executor,
                 supervisor_executor=self._supervisor_executor,
             )
             snapshot = graph.get_state({"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}})
@@ -899,6 +916,7 @@ class RuntimeService:
             graph = build_case_workflow(
                 checkpointer=checkpointer,
                 intake_executor=self._intake_executor,
+                ticket_update_executor=self._ticket_update_executor,
                 supervisor_executor=self._supervisor_executor,
             )
             return cast(CaseState, graph.invoke(state, config=workflow_config))
