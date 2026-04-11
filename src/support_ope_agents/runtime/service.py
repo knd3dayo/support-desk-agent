@@ -14,7 +14,7 @@ from support_ope_agents.agents.back_support_escalation_agent import BackSupportE
 from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
 from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
 from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
-from support_ope_agents.agents.intake_agent import IntakePhaseExecutor
+from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
@@ -101,7 +101,7 @@ class RuntimeService:
             tool.name: tool.handler for tool in context.tool_registry.get_tools(COMPLIANCE_REVIEWER_AGENT)
         }
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
-        self._intake_executor = IntakePhaseExecutor(
+        self._intake_executor = IntakeAgent(
             config=context.config,
             pii_mask_tool=intake_tools["pii_mask"],
             external_ticket_tool=intake_tools["external_ticket"],

@@ -152,9 +152,9 @@ shared/progress.md の初期記録例:
 - agent 定義メタデータは [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) の build_intake_agent_definition に残す
 - 複雑化する処理は専用の実行クラスへ切り出す
 - intake subgraph の生成責務は [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) 側に置き、workflow 側は subgraph を呼び出すだけにする
+- build_intake_subgraph は実際の IntakePhaseExecutor を必須入力とし、未注入は wiring ミスとして早期に検出する
 - 実行クラスは pii_mask、external_ticket、internal_ticket、classify_ticket、write_shared_memory を必要に応じて呼び出したうえで、state 更新、workspace への ticket hydration、品質ゲート、共有メモリ初期化、plan / action 分岐を担う
 - 品質ゲート判定ロジックは共通 validator を参照し、将来的に IntakeAgent 側へ完全移管しやすい依存構造を保つ
-- _NoOpIntakeExecutor は intake_executor が注入されない場合でも subgraph を構築できるようにするフォールバック実装であり、workflow のコンパイル、ノード列挙、テスト用の最低限の state 更新を担う
 - ticket 情報と添付ファイルの保存先は case workspace 配下の .artifacts/intake/ を標準とし、後続 agent はそこを参照する
 
 ## 10. 未決事項

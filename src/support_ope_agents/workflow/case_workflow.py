@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
-from support_ope_agents.agents.intake_agent import IntakePhaseExecutor, create_node
+from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
@@ -20,12 +20,12 @@ from support_ope_agents.workflow.state import CaseState
 def build_case_workflow(
     *,
     checkpointer: Any | None = None,
-    intake_executor: IntakePhaseExecutor | None = None,
+    intake_executor: IntakeAgent,
     supervisor_executor: SupervisorPhaseExecutor | None = None,
 ):
     graph = StateGraph(CaseState)
     graph.add_node("receive_case", _receive_case)
-    graph.add_node("intake_subgraph", create_node(intake_executor))
+    graph.add_node("intake_subgraph", intake_executor.create_node())
     graph.add_node("investigation", _build_investigation_node(supervisor_executor))
     graph.add_node("draft_review", _build_draft_review_node(supervisor_executor))
     graph.add_node("escalation_review", _build_escalation_review_node(supervisor_executor))

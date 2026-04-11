@@ -810,7 +810,9 @@ export default function App() {
     <div className="app-frame">
       <header className="topbar panel-subtle">
         <div className="topbar-brand">
-          <strong>{uiConfig.app_name}</strong>
+          <p className="eyebrow topbar-brand-label">{uiConfig.app_name}</p>
+          {uiConfig.target_label ? <strong className="topbar-brand-target">{uiConfig.target_label}</strong> : null}
+          {uiConfig.target_description ? <p className="topbar-brand-copy">{uiConfig.target_description}</p> : null}
         </div>
         <div className="topbar-actions">
           <div className="status-pill topbar-status">{statusLine}</div>
@@ -916,12 +918,6 @@ export default function App() {
           <div className="panel-content sidebar-panel-content">
             {activeSidebarView === 'sessions' ? (
               <>
-                {uiConfig.target_label ? (
-                  <div className="target-chip-block panel-subtle">
-                    <span className="target-chip">{uiConfig.target_label}</span>
-                    {uiConfig.target_description ? <p>{uiConfig.target_description}</p> : null}
-                  </div>
-                ) : null}
                 <div className="sidebar-actions">
                   <button className="ghost-button" onClick={startNewCase} type="button">
                     新規ケース
@@ -961,7 +957,6 @@ export default function App() {
                 </div>
                 <div className="control-inspector-header">
                   <div>
-                    <p className="eyebrow">Control View</p>
                     <strong>制御一覧と実行時監査</strong>
                   </div>
                   <span className="control-trace-label">{runtimeAudit?.summary.trace_id || 'trace 未選択'}</span>
