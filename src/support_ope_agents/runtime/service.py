@@ -107,6 +107,7 @@ class RuntimeService:
             internal_ticket_tool=intake_tools["internal_ticket"],
             classify_ticket_tool=intake_tools["classify_ticket"],
             write_shared_memory_tool=intake_tools["write_shared_memory"],
+            write_working_memory_tool=intake_tools.get("write_working_memory"),
         )
         self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
             detect_log_format_tool=log_analyzer_tools["detect_log_format"],

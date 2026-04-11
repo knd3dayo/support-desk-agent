@@ -28,6 +28,7 @@ class IntakePhaseExecutor:
     internal_ticket_tool: Callable[..., Any]
     classify_ticket_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
+    write_working_memory_tool: Callable[..., Any] | None = None
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -274,6 +275,32 @@ class IntakePhaseExecutor:
         workspace_path = str(update.get("workspace_path") or "").strip()
         case_id = str(update.get("case_id") or "").strip()
         if workspace_path and case_id:
+            if self.write_working_memory_tool is not None and raw_issue:
+                working_payload: SharedMemoryDocumentPayload = {
+                    "title": "Intake Result",
+                    "heading_level": 2,
+                    "bullets": [
+                        f"Raw issue: {raw_issue}",
+                        f"Masked issue: {masked_issue}",
+                        f"Category: {classification['category']}",
+                        f"Urgency: {classification['urgency']}",
+                        f"Investigation focus: {classification['investigation_focus']}",
+                        f"Reason: {classification['reason'] or 'n/a'}",
+                        f"Incident timeframe: {incident_timeframe or 'n/a'}",
+                        f"Follow-up required: {'yes' if bool(followup_questions) else 'no'}",
+                    ],
+                }
+                if missing_fields:
+                    working_payload["bullets"].append(f"Missing fields: {', '.join(missing_fields)}")
+                if followup_questions:
+                    working_payload["sections"] = [
+                        {
+                            "title": "Follow-up Questions",
+                            "bullets": [f"{field_name}: {question}" for field_name, question in followup_questions.items()],
+                        }
+                    ]
+                self._invoke_tool(self.write_working_memory_tool, case_id, workspace_path, working_payload, "append")
+
             context_payload: SharedMemoryDocumentPayload = {
                 "title": "Shared Context",
                 "heading_level": 1,

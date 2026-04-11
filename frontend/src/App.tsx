@@ -180,6 +180,8 @@ function isReportMarkdown(entry: WorkspaceEntry): boolean {
   return entry.kind === 'file' && isMarkdownFile(entry.name);
 }
 
+const REPORT_SUBDIR = '.report';
+
 function findLatestTraceId(messages: ChatMessage[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const traceId = messages[index]?.trace_id?.trim();
@@ -469,7 +471,7 @@ export default function App() {
     setStatusLine('最新レポートを確認しています。');
 
     try {
-      const reportWorkspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, 'report');
+      const reportWorkspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, REPORT_SUBDIR);
       const latestReport = reportWorkspace.entries
         .filter(isReportMarkdown)
         .sort((left, right) => {
@@ -479,7 +481,7 @@ export default function App() {
         })[0];
 
       if (!latestReport) {
-        setStatusLine('report フォルダに表示可能な Markdown レポートが見つかりません。');
+        setStatusLine(`${REPORT_SUBDIR} フォルダに表示可能な Markdown レポートが見つかりません。`);
         return;
       }
 

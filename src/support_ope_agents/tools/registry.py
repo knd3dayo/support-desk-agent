@@ -113,6 +113,13 @@ class ToolRegistry:
                     provider="builtin",
                     target="default-case-memory-writer",
                 ),
+                ToolSpec(
+                    "write_working_memory",
+                    "Write agent working memory",
+                    build_default_write_working_memory_tool(self._config, INTAKE_AGENT),
+                    provider="builtin",
+                    target="default-working-memory-writer",
+                ),
             ],
             INTAKE_AGENT: [
                 ToolSpec(

@@ -610,8 +610,9 @@ def _audit_memory_consistency(
                 detail=f"{label} が {agent_name} の working memory に見当たらず、処理経緯の追跡性が弱くなっています。",
             ))
 
+    expectation_map = _build_expectation_lookup(_build_memory_expectations(state))
     for agent_name, memory_text in raw_agent_memories.items():
-        private_lines = _unshared_memory_lines(memory_text, shared_corpus)
+        private_lines = _unshared_memory_lines(memory_text, shared_corpus, expectation_map.get(agent_name, ()))
         if private_lines:
             findings.append(MemoryConsistencyFinding(
                 agent_name=agent_name,
@@ -641,6 +642,18 @@ def _build_memory_expectations(state: CaseState) -> list[tuple[str, str, str, tu
 
 def _normalize_text(value: str) -> str:
     return " ".join(value.lower().split())
+
+
+def _build_expectation_lookup(
+    expectations: list[tuple[str, str, str, tuple[str, ...], tuple[str, ...]]],
+) -> dict[str, tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...]]:
+    grouped: dict[str, list[tuple[str, str, tuple[str, ...], tuple[str, ...]]]] = {}
+    for agent_name, _label, value, shared_markers, agent_markers in expectations:
+        normalized_value = _normalize_text(value)
+        if not normalized_value:
+            continue
+        grouped.setdefault(agent_name, []).append((normalized_value, value, shared_markers, agent_markers))
+    return {agent_name: tuple(items) for agent_name, items in grouped.items()}
 
 
 def _normalize_memory_text(value: str) -> str:
@@ -689,7 +702,11 @@ def _warning_penalty(warnings: list[MemoryConsistencyFinding], settings: Objecti
     return total
 
 
-def _unshared_memory_lines(memory_text: str, shared_corpus: str) -> list[str]:
+def _unshared_memory_lines(
+    memory_text: str,
+    shared_corpus: str,
+    expectations: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...],
+) -> list[str]:
     if not memory_text:
         return []
     candidates: list[str] = []
@@ -700,9 +717,51 @@ def _unshared_memory_lines(memory_text: str, shared_corpus: str) -> list[str]:
             continue
         if stripped.startswith("#"):
             continue
+        if _should_ignore_private_memory_line(normalized):
+            continue
+        if _line_is_semantically_shared(stripped, normalized, shared_corpus, expectations):
+            continue
         if normalized not in shared_corpus and stripped[:40] not in candidates:
             candidates.append(stripped[:40])
     return candidates[:2]
+
+
+def _should_ignore_private_memory_line(normalized_line: str) -> bool:
+    ignored_prefixes = (
+        "external ticket id: ext-trace-",
+        "internal ticket id: int-trace-",
+    )
+    ignored_exact = {
+        "review focus: n/a",
+        "adopted sources: none",
+        "issues: none",
+    }
+    return normalized_line in ignored_exact or any(normalized_line.startswith(prefix) for prefix in ignored_prefixes)
+
+
+def _line_is_semantically_shared(
+    line: str,
+    normalized_line: str,
+    shared_corpus: str,
+    expectations: tuple[tuple[str, str, tuple[str, ...], tuple[str, ...]], ...],
+) -> bool:
+    if normalized_line in shared_corpus:
+        return True
+    value_part = normalized_line.split(":", 1)[1].strip() if ":" in normalized_line else ""
+    if value_part and value_part in shared_corpus:
+        return True
+    for normalized_value, raw_value, shared_markers, agent_markers in expectations:
+        if normalized_value and normalized_value in normalized_line:
+            if _memory_field_covered(shared_corpus, normalized_value, shared_markers):
+                return True
+            if value_part and _text_covered(shared_corpus, value_part):
+                return True
+        if agent_markers and any(_normalize_text(marker) in normalized_line for marker in agent_markers):
+            if value_part and _memory_field_covered(shared_corpus, value_part, shared_markers):
+                return True
+            if raw_value and _memory_field_covered(shared_corpus, _normalize_text(raw_value), shared_markers):
+                return True
+    return False
 
 
 def _memory_field_covered(corpus: str, value: str, markers: tuple[str, ...]) -> bool:

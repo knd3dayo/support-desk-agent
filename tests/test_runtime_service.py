@@ -43,6 +43,7 @@ class _FakeToolRegistry:
         self.internal_ticket_calls: list[str] = []
         self._read_shared_memory = build_default_read_shared_memory_tool(config)
         self._write_shared_memory = build_default_write_shared_memory_tool(config)
+        self._write_intake_working_memory = build_default_write_working_memory_tool(config, INTAKE_AGENT)
         self._search_documents = build_default_search_documents_tool(config)
         self._write_log_working_memory = build_default_write_working_memory_tool(config, LOG_ANALYZER_AGENT)
         self._write_knowledge_working_memory = build_default_write_working_memory_tool(config, KNOWLEDGE_RETRIEVER_AGENT)
@@ -68,6 +69,13 @@ class _FakeToolRegistry:
                     self._write_shared_memory,
                     provider="builtin",
                     target="default-case-memory-writer",
+                ),
+                ToolSpec(
+                    "write_working_memory",
+                    "Write intake working memory",
+                    self._write_intake_working_memory,
+                    provider="builtin",
+                    target="default-working-memory-writer",
                 ),
             ]
         if role == LOG_ANALYZER_AGENT:
@@ -534,6 +542,38 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("## 情報伝達監査", content)
         self.assertIn("Evaluation rubric", content)
         self.assertRegex(content, r"- IntakeAgent: \d{1,3} / 100 - ")
+
+    def test_action_writes_intake_working_memory(self) -> None:
+        self.service.action(
+            prompt="ai-chat-utilの機能一覧を出して",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-INTAKE-WM",
+        )
+
+        working_path = self.workspace_path / ".memory" / "agents" / INTAKE_AGENT / "working.md"
+        content = working_path.read_text(encoding="utf-8")
+
+        self.assertIn("## Intake Result", content)
+        self.assertIn("Category: specification_inquiry", content)
+        self.assertIn("Urgency: high", content)
+
+    def test_report_skips_false_positive_memory_warnings_for_shared_equivalents(self) -> None:
+        result = self.service.action(
+            prompt="ai-chat-utilの機能一覧を出して",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-REPORT-WARNINGS",
+        )
+
+        report = self.service.generate_support_improvement_report(
+            case_id="CASE-TEST-REPORT-WARNINGS",
+            trace_id=str(result["trace_id"]),
+            workspace_path=str(self.workspace_path),
+        )
+
+        content = Path(str(report["report_path"])).read_text(encoding="utf-8")
+
+        self.assertNotIn("External ticket ID", content)
+        self.assertNotIn("Adopted sources: none", content)
 
     def test_initialize_case_creates_objective_evaluator_working_memory(self) -> None:
         self.service.initialize_case("CASE-TEST-017", str(self.workspace_path))
