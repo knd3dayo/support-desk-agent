@@ -11,6 +11,7 @@ from support_ope_agents.config import load_config
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.default_check_policy import build_default_check_policy_tool
 from support_ope_agents.tools.default_request_revision import build_default_request_revision_tool
+from support_ope_agents.tools.registry import ToolRegistry
 
 
 class ComplianceReviewerTests(unittest.TestCase):
@@ -135,6 +136,56 @@ support_ope_agents:
             self.assertFalse(result["compliance_review_passed"])
             self.assertFalse(result["compliance_notice_present"])
             self.assertIn("注意文", result["compliance_revision_request"])
+
+    def test_writes_raw_policy_results_to_working_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir)
+            policy_root = workspace_path / "policy"
+            policy_root.mkdir()
+            (policy_root / "guideline.md").write_text(
+                "# 回答ガイドライン\n\n生成AIを利用した回答には注意書きを含める。断定的な表現は避ける。",
+                encoding="utf-8",
+            )
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "ComplianceReviewerAgent": {
+                            "notice": {"required": True},
+                            "document_sources": [
+                                {
+                                    "name": "internal_policy",
+                                    "description": "社内回答ガイドライン",
+                                    "path": str(policy_root),
+                                }
+                            ],
+                        }
+                    },
+                }
+            )
+            executor = ComplianceReviewerPhaseExecutor(
+                check_policy_tool=build_default_check_policy_tool(config),
+                request_revision_tool=build_default_request_revision_tool(),
+                write_working_memory_tool=ToolRegistry(config).get_tools("ComplianceReviewerAgent")[-1].handler,
+            )
+
+            executor.execute(
+                {
+                    "case_id": "CASE-TEST-COMP-WM-001",
+                    "workspace_path": str(workspace_path),
+                    "draft_response": "この回答は必ず正しいです。",
+                    "review_focus": "注意文と断定表現を確認する",
+                }
+            )
+
+            working_path = workspace_path / ".memory" / "agents" / "ComplianceReviewerAgent" / "working.md"
+            content = working_path.read_text(encoding="utf-8")
+            self.assertIn("## Result: internal_policy", content)
+            self.assertIn("Raw result:", content)
+            self.assertIn('"source_name": "internal_policy"', content)
 
     def test_max_review_loops_defaults_to_three(self) -> None:
         config = AppConfig.model_validate(

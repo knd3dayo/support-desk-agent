@@ -108,10 +108,12 @@ support_ope_agents:
 
 ## 5.1 data_paths と checkpoint 保存先
 
-`data_paths.checkpoint_db_filename` では、workspace 配下の `traces/` ディレクトリに作る LangGraph checkpointer 用 SQLite ファイル名を指定する。
+`data_paths.trace_subdir` では、workspace 配下に作る LangGraph checkpoint 保存ディレクトリ名を指定する。既定値は `.traces` である。
+
+`data_paths.checkpoint_db_filename` では、workspace 配下の `<trace_subdir>/` ディレクトリに作る LangGraph checkpointer 用 SQLite ファイル名を指定する。
 
 - 既定値: `checkpoints.sqlite`
-- 実際の保存先: `<workspace>/traces/<checkpoint_db_filename>`
+- 実際の保存先: `<workspace>/<trace_subdir>/<checkpoint_db_filename>`
 - state の正本はこの SQLite checkpoint DB であり、trace ごとの JSON state は使わない
 
 例:
@@ -119,10 +121,11 @@ support_ope_agents:
 ```yaml
 support_ope_agents:
   data_paths:
+    trace_subdir: .traces
     checkpoint_db_filename: checkpoints.sqlite
 ```
 
-`data_paths.report_subdir` では、改善レポートの出力ディレクトリ名を指定する。既定値は `report` で、実際の出力先は `<workspace>/<report_subdir>/support-improvement-<trace_id>.md` になる。
+`data_paths.report_subdir` では、改善レポートの出力ディレクトリ名を指定する。既定値は `.report` で、実際の出力先は `<workspace>/<report_subdir>/support-improvement-<trace_id>.md` になる。
 
 `agents.SuperVisorAgent.auto_generate_report` を true にすると、Supervisor 実行結果に応じて改善レポートを自動生成する。
 
@@ -137,7 +140,7 @@ plan モードでは自動生成しない。改善レポートは実行結果の
 ```yaml
 support_ope_agents:
   data_paths:
-    report_subdir: report
+    report_subdir: .report
   agents:
     SuperVisorAgent:
       auto_generate_report: true

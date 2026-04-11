@@ -88,7 +88,7 @@ def build_default_search_documents_tool(config: AppConfig):
 
         payload = {
             "status": "matched",
-            "message": "document_sources から概要候補を抽出しました。",
+            "message": "document_sources から関連箇所を抽出しました。",
             "query": query,
             "results": results,
         }

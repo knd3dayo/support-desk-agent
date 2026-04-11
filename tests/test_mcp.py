@@ -62,7 +62,7 @@ support_ope_agents:
 
         report_path = Path(str(result["report_path"]))
         self.assertTrue(report_path.exists())
-        self.assertEqual(report_path.parent.name, "report")
+        self.assertEqual(report_path.parent.name, ".report")
 
 
 if __name__ == "__main__":

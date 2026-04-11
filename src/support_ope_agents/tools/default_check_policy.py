@@ -136,7 +136,7 @@ def build_default_check_policy_tool(config: AppConfig):
                     )
                 search_result = {
                     "status": "matched",
-                    "message": "document_sources から概要候補を抽出しました。",
+                    "message": "document_sources から関連箇所を抽出しました。",
                     "query": query,
                     "results": results,
                 }

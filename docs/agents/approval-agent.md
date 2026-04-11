@@ -52,7 +52,7 @@ ApprovalAgent が参照する使用ツール詳細は次を参照する。
 ## 7. 共有メモリ更新
 
 - shared/progress.md に承認待ちか、差戻しか、再調査かを簡潔に残す
-- 承認判断の詳細コメントを残す場合は traces 側と progress に分離して持つ
+- 承認判断の詳細コメントを残す場合は .traces 側と progress に分離して持つ
 
 ## 8. plan / action 差分
 

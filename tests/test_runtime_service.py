@@ -486,7 +486,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         report_path = Path(str(report["report_path"]))
         self.assertTrue(report_path.exists())
-        self.assertEqual(report_path.parent.name, "report")
+        self.assertEqual(report_path.parent.name, ".report")
         content = report_path.read_text(encoding="utf-8")
         self.assertIn("# Support Improvement Report: CASE-TEST-011", content)
         self.assertIn("sequenceDiagram", content)
@@ -512,9 +512,9 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             case_id="CASE-TEST-013",
         )
 
-        legacy_state_path = self.workspace_path / "traces" / f"{result['trace_id']}.json"
+        legacy_state_path = self.workspace_path / ".traces" / f"{result['trace_id']}.json"
         self.assertFalse(legacy_state_path.exists())
-        self.assertTrue((self.workspace_path / "traces" / "checkpoints.sqlite").exists())
+        self.assertTrue((self.workspace_path / ".traces" / "checkpoints.sqlite").exists())
 
     def test_checkpoint_status_lists_workspace_scoped_trace_ids(self) -> None:
         result = self.service.action(
@@ -691,7 +691,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         report_path = Path(str(result.get("report_path") or ""))
         self.assertTrue(report_path.exists())
-        self.assertEqual(report_path.parent.name, "report")
+        self.assertEqual(report_path.parent.name, ".report")
 
     def test_action_does_not_auto_generate_report_for_non_matching_trigger(self) -> None:
         config = AppConfig.model_validate(
@@ -765,7 +765,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         report_path = Path(str(result.get("report_path") or ""))
         self.assertTrue(report_path.exists())
-        self.assertEqual(report_path.parent.name, "report")
+        self.assertEqual(report_path.parent.name, ".report")
 
     def test_action_uses_workspace_scoped_sqlite_checkpointer_when_available(self) -> None:
         captured: dict[str, object] = {}
@@ -819,7 +819,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 case_id="CASE-TEST-012",
             )
 
-        self.assertEqual(str(captured.get("conn_string") or ""), str(self.workspace_path / "traces" / "workflow.sqlite"))
+        self.assertEqual(str(captured.get("conn_string") or ""), str(self.workspace_path / ".traces" / "workflow.sqlite"))
         self.assertIsNotNone(captured.get("checkpointer"))
         self.assertEqual(
             captured.get("invoke_config"),

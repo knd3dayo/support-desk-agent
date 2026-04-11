@@ -27,6 +27,7 @@ class CaseWorkspace:
     artifacts_dir: Path
     evidence_dir: Path
     report_dir: Path
+    traces_dir: Path
 
 
 CasePaths = CaseWorkspace
@@ -62,6 +63,7 @@ class CaseMemoryStore:
         artifacts_dir = root / self._config.data_paths.artifacts_subdir
         evidence_dir = root / self._config.data_paths.evidence_subdir
         report_dir = root / self._config.data_paths.report_subdir
+        traces_dir = root / self._config.data_paths.trace_subdir
         return CaseWorkspace(
             root=root,
             case_metadata=root / CASE_METADATA_FILENAME,
@@ -74,6 +76,7 @@ class CaseMemoryStore:
             artifacts_dir=artifacts_dir,
             evidence_dir=evidence_dir,
             report_dir=report_dir,
+            traces_dir=traces_dir,
         )
 
     def initialize_case(self, case_id: str, workspace_path: str) -> CasePaths:
@@ -85,6 +88,7 @@ class CaseMemoryStore:
         paths.artifacts_dir.mkdir(parents=True, exist_ok=True)
         paths.evidence_dir.mkdir(parents=True, exist_ok=True)
         paths.report_dir.mkdir(parents=True, exist_ok=True)
+        paths.traces_dir.mkdir(parents=True, exist_ok=True)
         self.write_case_id_marker(paths.root, case_id)
 
         self._write_if_missing(paths.case_metadata, "{}\n")

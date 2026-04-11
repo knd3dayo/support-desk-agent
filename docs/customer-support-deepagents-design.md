@@ -214,7 +214,7 @@ IntakeAgent、ApprovalAgent、TicketUpdateAgent は LangGraph 上の疑似エー
 - .memory/shared/context.md: 現在の共通知識、調査方針、重要事実
 - .memory/shared/progress.md: 進捗、未完了タスク、ブロッカー
 - .memory/shared/summary.md: 圧縮済みサマリ
-- traces/checkpoints.sqlite: plan/action/resume 継続用の LangGraph checkpoint 保存
+- .traces/checkpoints.sqlite: plan/action/resume 継続用の LangGraph checkpoint 保存
 - .memory/agents/<agent_name>/working.md: DeepAgent として実装した担当の作業ログ
 
 役割別指示ファイルはケース workspace 配下ではなく、アプリ共通の指示ディレクトリに配置する。

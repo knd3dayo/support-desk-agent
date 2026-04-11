@@ -244,7 +244,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         executor = KnowledgeRetrieverPhaseExecutor(
             search_documents_tool=lambda **_: json.dumps(
                 {
-                    "message": "document_sources から概要候補を抽出しました。",
+                    "message": "document_sources から関連箇所を抽出しました。",
                     "results": [
                         {
                             "source_name": "ai-platform-poc",

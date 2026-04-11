@@ -49,7 +49,8 @@ class DataPathSettings(StrictConfigModel):
     shared_memory_subdir: str = ".memory"
     artifacts_subdir: str = ".artifacts"
     evidence_subdir: str = ".evidence"
-    report_subdir: str = "report"
+    report_subdir: str = ".report"
+    trace_subdir: str = ".traces"
     checkpoint_db_filename: str = "checkpoints.sqlite"
 
 

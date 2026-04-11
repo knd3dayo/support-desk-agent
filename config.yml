@@ -31,7 +31,10 @@ support_ope_agents:
   #   evidence_subdir: .evidence
   #
   #   # ケース用 workspace 配下に作るレポート出力ディレクトリ名です。
-  #   report_subdir: report
+  #   report_subdir: .report
+  #
+  #   # ケース用 workspace 配下に作る LangGraph checkpoint 保存ディレクトリ名です。
+  #   trace_subdir: .traces
   #
   #   # LangGraph checkpointer 用 SQLite ファイル名です。
   #   checkpoint_db_filename: checkpoints.sqlite

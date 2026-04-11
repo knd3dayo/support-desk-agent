@@ -117,7 +117,7 @@ support_ope_agents:
         self.assertEqual(preview.json()["content"], "api payload")
         self.assertEqual(download.status_code, 200)
 
-        archive_path = self.case_path / "report" / "CASE-API-001-workspace.zip"
+        archive_path = self.case_path / ".report" / "CASE-API-001-workspace.zip"
         self.assertTrue(archive_path.exists())
         with zipfile.ZipFile(archive_path) as archive:
             self.assertIn("CASE-API-001/uploads/note.txt", archive.namelist())
@@ -160,7 +160,7 @@ support_ope_agents:
         payload = response.json()
         report_path = Path(payload["report_path"])
         self.assertTrue(report_path.exists())
-        self.assertEqual(report_path.parent.name, "report")
+        self.assertEqual(report_path.parent.name, ".report")
         self.assertIn("sequenceDiagram", report_path.read_text(encoding="utf-8"))
 
     def test_generate_report_endpoint_requires_auth_when_enabled(self) -> None:

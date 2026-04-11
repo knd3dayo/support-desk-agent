@@ -223,6 +223,13 @@ class ToolRegistry:
                     provider="builtin",
                     target="default-revision-request",
                 ),
+                ToolSpec(
+                    "write_working_memory",
+                    "Write agent working memory",
+                    build_default_write_working_memory_tool(self._config, COMPLIANCE_REVIEWER_AGENT),
+                    provider="builtin",
+                    target="default-working-memory-writer",
+                ),
             ],
             BACK_SUPPORT_ESCALATION_AGENT: [
                 ToolSpec(

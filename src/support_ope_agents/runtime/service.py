@@ -133,6 +133,7 @@ class RuntimeService:
         self._compliance_reviewer_executor = ComplianceReviewerPhaseExecutor(
             check_policy_tool=compliance_reviewer_tools.get("check_policy") or build_default_check_policy_tool(context.config),
             request_revision_tool=compliance_reviewer_tools.get("request_revision") or build_default_request_revision_tool(),
+            write_working_memory_tool=compliance_reviewer_tools.get("write_working_memory"),
         )
         self._supervisor_executor = SupervisorPhaseExecutor(
             read_shared_memory_tool=supervisor_tools["read_shared_memory"],
@@ -733,9 +734,8 @@ class RuntimeService:
 
     def checkpoint_db_path(self, case_id: str, workspace_path: str) -> Path:
         case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
-        state_dir = case_paths.root / "traces"
-        state_dir.mkdir(parents=True, exist_ok=True)
-        return state_dir / self._context.config.data_paths.checkpoint_db_filename
+        case_paths.traces_dir.mkdir(parents=True, exist_ok=True)
+        return case_paths.traces_dir / self._context.config.data_paths.checkpoint_db_filename
 
     def report_file_path(self, case_id: str, trace_id: str, workspace_path: str) -> Path:
         case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
