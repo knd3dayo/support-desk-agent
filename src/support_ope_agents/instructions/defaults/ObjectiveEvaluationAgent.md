@@ -17,3 +17,12 @@
 - 断定できない場合は、その旨を明記したうえで warning としてください。
 - 主観的な印象ではなく、確認できた state・memory・artifact を根拠に記述してください。
 - 改善提案は、再実行時に具体的に何を shared memory へ残すべきかが分かる粒度で書いてください。
+
+## Structured Output 契約
+- 必ず structured output schema に従って返してください。XML や自由文のみの応答は禁止です。
+- criterion_evaluations は評価観点の一覧です。各要素に title, viewpoint, result, score を含めてください。
+- agent_evaluations はエージェント別評価の一覧です。各要素に agent_name, score, comment を含めてください。
+- overall_summary はケース全体の総評を 1 つの文字列で返してください。
+- improvement_points は改善提案の配列です。shared memory や working memory に何を残すべきか分かる粒度で書いてください。
+- overall_score はケース全体の 0 から 100 の点数です。
+- criterion_evaluations と agent_evaluations の score は 0 から 100 の整数で返してください。

@@ -10,7 +10,15 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
+from langchain_core.messages import AIMessage
+
 from support_ope_agents.agents.agent_definition import AgentDefinition
+from support_ope_agents.agents.objective_evaluation_agent import (
+    ObjectiveEvaluationAgent,
+    ObjectiveEvaluationStructuredResult,
+    StructuredAgentEvaluation,
+    StructuredCriterionEvaluation,
+)
 from support_ope_agents.agents.roles import (
     BACK_SUPPORT_ESCALATION_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
@@ -33,6 +41,97 @@ from support_ope_agents.tools.default_write_shared_memory import build_default_w
 from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
 from support_ope_agents.tools.registry import ToolSpec
 from support_ope_agents.workflow.state import CaseState
+
+
+def _fake_objective_evaluation_result() -> ObjectiveEvaluationStructuredResult:
+    return ObjectiveEvaluationStructuredResult(
+        criterion_evaluations=[
+            StructuredCriterionEvaluation(
+                title="質問意図への回答妥当性",
+                viewpoint="ユーザーの主訴に対して、最終回答が結論と次アクションを返しているか",
+                result="回答の方向性は妥当ですが、結論の明示がやや弱いです。",
+                score=72,
+            ),
+            StructuredCriterionEvaluation(
+                title="調査根拠と構造化情報",
+                viewpoint="ログ解析、採用ナレッジ、調査結果の構造化項目が十分に示されているか",
+                result="ナレッジ根拠は示されていますが、調査結果の圧縮が不足しています。",
+                score=76,
+            ),
+            StructuredCriterionEvaluation(
+                title="情報伝達とメモリ連携",
+                viewpoint="shared memory と working memory の間で必要情報が維持されているか",
+                result="重要情報の大半は引き継がれていますが、一部の要約は shared memory 側が薄いです。",
+                score=68,
+            ),
+            StructuredCriterionEvaluation(
+                title="レビューと最終判断の整合性",
+                viewpoint="レビュー結果と最終判断のあいだに矛盾がないか",
+                result="最終判断との整合は取れています。",
+                score=81,
+            ),
+        ],
+        agent_evaluations=[
+            StructuredAgentEvaluation(agent_name="IntakeAgent", score=84, comment="分類と緊急度の整理はできています。"),
+            StructuredAgentEvaluation(agent_name="KnowledgeRetrieverAgent", score=78, comment="採用ナレッジはありますが、採用理由の要約をもう一段短くできます。"),
+            StructuredAgentEvaluation(agent_name="DraftWriterAgent", score=70, comment="回答本文は成立していますが、結論の先出しが弱いです。"),
+            StructuredAgentEvaluation(agent_name="ComplianceReviewerAgent", score=82, comment="レビュー判断は最終状態と整合しています。"),
+        ],
+        overall_summary="自動実行は完了していますが、回答の結論提示と memory 連携の明示には改善余地があります。",
+        improvement_points=[
+            "shared summary に結論と根拠を 1 段落で残してください。",
+            "draft_response の冒頭に結論を先出ししてください。",
+        ],
+        overall_score=75,
+    )
+
+
+def _messages_text(messages: object) -> str:
+    if not isinstance(messages, list):
+        return str(messages)
+    return "\n".join(str(getattr(item, "content", item)) for item in messages)
+
+
+class _FakeClassifierModel:
+    async def ainvoke(self, messages):
+        text = _messages_text(messages).lower()
+        category = "ambiguous_case"
+        urgency = "medium"
+        focus = "問い合わせ内容の事実関係と再現条件を確認する"
+        if any(token in text for token in ["error", "障害", "gateway", "timeout", "fail", "exception"]):
+            category = "incident_investigation"
+            focus = "エラー条件と影響範囲を切り分ける"
+        elif any(token in text for token in ["機能", "一覧", "アーキテクチャ", "仕様", "使い方"]):
+            category = "specification_inquiry"
+            focus = "期待動作と現行仕様の差分を確認する"
+        if any(token in text for token in ["urgent", "至急", "緊急", "critical", "本番"]):
+            urgency = "high"
+        return AIMessage(
+            content=json.dumps(
+                {
+                    "category": category,
+                    "urgency": urgency,
+                    "investigation_focus": focus,
+                    "reason": "mocked llm classification",
+                },
+                ensure_ascii=False,
+            )
+        )
+
+
+class _FakeDraftModel:
+    async def ainvoke(self, messages):
+        text = _messages_text(messages)
+        if "gateway" in text.lower() or "error" in text.lower():
+            content = "お問い合わせありがとうございます。\n\n現時点の結論として、障害調査を継続しています。追加のログ確認をお願いします。"
+        else:
+            content = "お問い合わせありがとうございます。\n\n現時点の結論として、アーキテクチャ概要をご案内します。"
+        return AIMessage(content=content)
+
+
+class _FakeComplianceModel:
+    async def ainvoke(self, _messages):
+        return AIMessage(content='{"summary":"mocked compliance review","issues":[]}')
 
 
 class _FakeToolRegistry:
@@ -290,13 +389,34 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.workspace_path = Path(self._tmpdir.name)
         self.config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
                 "agents": {},
             }
         )
+        self._classify_model_patcher = patch(
+            "support_ope_agents.tools.default_classify_ticket._get_chat_model",
+            return_value=_FakeClassifierModel(),
+        )
+        self._draft_model_patcher = patch(
+            "support_ope_agents.agents.draft_writer_agent._get_chat_model",
+            return_value=_FakeDraftModel(),
+        )
+        self._compliance_model_patcher = patch(
+            "support_ope_agents.tools.default_check_policy._get_chat_model",
+            return_value=_FakeComplianceModel(),
+        )
+        self._classify_model_patcher.start()
+        self._draft_model_patcher.start()
+        self._compliance_model_patcher.start()
+        self._objective_eval_patcher = patch.object(
+            ObjectiveEvaluationAgent,
+            "_invoke_structured_evaluation",
+            return_value=_fake_objective_evaluation_result(),
+        )
+        self._objective_eval_patcher.start()
         self.service = self._build_service(self.config)
 
     def _build_service(self, config: AppConfig) -> RuntimeService:
@@ -312,6 +432,10 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         return RuntimeService(context)  # type: ignore[arg-type]
 
     def tearDown(self) -> None:
+        self._compliance_model_patcher.stop()
+        self._draft_model_patcher.stop()
+        self._classify_model_patcher.stop()
+        self._objective_eval_patcher.stop()
         self._tmpdir.cleanup()
 
     def test_action_sets_log_analysis_fields_and_waits_for_approval(self) -> None:
@@ -392,7 +516,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
     def test_action_uses_ai_platform_poc_as_knowledge_source(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "ai-platform-poc", "description": "生成AI基盤のアーキテクチャ検討資料", "path": "/home/user/source/repos/ai-platform-poc"}]}},
@@ -470,7 +594,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
     def test_action_applies_pii_mask_only_when_enabled(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "agents": {"IntakeAgent": {"pii_mask": {"enabled": True}}},
@@ -543,12 +667,18 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("### 点数", content)
         self.assertRegex(content, r"\n\d{1,3} / 100\n")
         self.assertIn("ObjectiveEvaluationAgent", content)
+        self.assertIn("## Evaluator 評価観点一覧", content)
+        self.assertIn("### 質問意図への回答妥当性", content)
+        self.assertIn("- 評価観点: ", content)
+        self.assertIn("- 評価結果: ", content)
+        self.assertIn("- 点数: ", content)
         self.assertIn("## サブグラフ詳細シーケンス", content)
         self.assertIn("### IntakeAgent サブグラフ", content)
         self.assertIn("### Draft Review ループ", content)
         self.assertIn("## 情報伝達監査", content)
         self.assertIn("Evaluation rubric", content)
         self.assertRegex(content, r"- IntakeAgent: \d{1,3} / 100 - ")
+        self.assertNotIn("## このリポジトリが扱うこと", content)
 
     def test_action_writes_intake_working_memory(self) -> None:
         self.service.action(
@@ -591,7 +721,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
     def test_objective_evaluator_settings_are_loaded(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -774,7 +904,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
     def test_action_auto_generates_report_when_supervisor_enabled(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -798,7 +928,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
     def test_action_does_not_auto_generate_report_for_non_matching_trigger(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -820,7 +950,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
     def test_supervisor_report_on_accepts_single_string(self) -> None:
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -847,7 +977,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
@@ -903,7 +1033,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                 "config_paths": {},
                 "data_paths": {"checkpoint_db_filename": "workflow.sqlite"},
                 "interfaces": {},

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 import re
-from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, cast
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 
@@ -27,14 +26,7 @@ class KnowledgeRetrieverPhaseExecutor:
         except TypeError:
             result = tool(*args)
         if inspect.isawaitable(result):
-            try:
-                resolved = asyncio.run(cast(Coroutine[Any, Any, Any], result))
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                try:
-                    resolved = loop.run_until_complete(result)
-                finally:
-                    loop.close()
+            resolved = run_awaitable_sync(cast(Any, result))
             return str(resolved)
         return str(result)
 
@@ -133,12 +125,36 @@ class KnowledgeRetrieverPhaseExecutor:
         if matched_results:
             matched_path_count = sum(len(cast(list[str], item.get("matched_paths") or [])) for item in matched_results)
             summary += f" 一致したソース数: {len(matched_results)}、参照候補ファイル数: {matched_path_count}。"
-            first_summary = str(matched_results[0].get("summary") or "").strip()
-            if first_summary:
-                summary += f" 代表的な抜粋: {first_summary}"
+            primary_source = str(matched_results[0].get("source_name") or "").strip()
+            primary_path = str(matched_results[0].get("path") or "").strip()
+            highlight = KnowledgeRetrieverPhaseExecutor._build_document_highlight(matched_results[0])
+            if primary_source:
+                summary += f" 代表ソース: {primary_source}。"
+            if primary_path:
+                summary += f" 代表ファイル: {primary_path}。"
+            if highlight:
+                summary += f" 要点: {highlight}"
         if adopted_sources:
             summary += f" 採用した根拠ソース: {', '.join(adopted_sources)}。"
         return summary.strip()
+
+    @staticmethod
+    def _build_document_highlight(item: Mapping[str, object]) -> str:
+        feature_bullets = item.get("feature_bullets")
+        if isinstance(feature_bullets, list):
+            for bullet in feature_bullets:
+                text = str(bullet).strip()
+                if text:
+                    return text[:160]
+
+        evidence = item.get("evidence")
+        if isinstance(evidence, list):
+            for bullet in evidence:
+                text = str(bullet).strip()
+                if text:
+                    return text[:160]
+
+        return ""
 
     @staticmethod
     def _normalize_query_text(text: str) -> str:

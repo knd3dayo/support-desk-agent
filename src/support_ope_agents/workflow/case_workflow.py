@@ -68,6 +68,51 @@ def build_case_workflow(
     return graph.compile(checkpointer=checkpointer) if checkpointer is not None else graph.compile()
 
 
+def reconstruct_main_workflow_path(state: CaseState) -> tuple[str, ...]:
+    path: list[str] = [
+        "receive_case",
+        "intake_prepare",
+        "intake_mask",
+        "intake_hydrate_tickets",
+        "intake_classify",
+        "intake_finalize",
+    ]
+
+    after_intake = _route_after_intake(state)
+    if after_intake == "wait_for_customer_input":
+        path.append("wait_for_customer_input")
+        return tuple(path)
+
+    path.append("investigation")
+    after_investigation = _route_after_investigation(state)
+    if after_investigation == "intake":
+        path.extend([
+            "intake_prepare",
+            "intake_mask",
+            "intake_hydrate_tickets",
+            "intake_classify",
+            "intake_finalize",
+        ])
+        return tuple(path)
+
+    if after_investigation == "escalation_review":
+        path.extend(["escalation_review", "wait_for_approval"])
+    else:
+        review_iterations = max(1, int(state.get("draft_review_iterations") or 1))
+        for _ in range(review_iterations):
+            path.extend(["draft_review", "wait_for_approval"])
+
+    after_approval = _route_after_approval(state)
+    if after_approval == "ticket_update_prepare":
+        path.extend(["ticket_update_prepare", "ticket_update_execute"])
+    elif after_approval == "draft_review":
+        path.extend(["draft_review", "wait_for_approval"])
+    elif after_approval == "investigation":
+        path.append("investigation")
+
+    return tuple(path)
+
+
 def _add_ticket_update_subgraph(graph: StateGraph[CaseState]) -> None:
     graph.add_node("ticket_update_prepare", _ticket_update_prepare)
     graph.add_node("ticket_update_execute", _ticket_update_execute)

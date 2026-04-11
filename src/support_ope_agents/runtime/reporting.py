@@ -4,10 +4,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from support_ope_agents.agents.objective_evaluation_agent import ObjectiveEvaluationAgent
 from support_ope_agents.agents.roles import OBJECTIVE_EVALUATION_AGENT
-from support_ope_agents.config.models import AppConfig, ObjectiveEvaluationAgentSettings
+from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
+from support_ope_agents.workflow.case_workflow import reconstruct_main_workflow_path
 from support_ope_agents.workflow.state import CaseState
 
 
@@ -26,6 +28,7 @@ class AgentEvaluation:
     detail: str
     improvement_point: str | None = None
     evidence: list[str] = field(default_factory=list)
+    critical_failure: bool = False
 
 
 @dataclass(slots=True)
@@ -42,57 +45,25 @@ class SubgraphSequenceDiagram:
 
 
 @dataclass(slots=True)
+class CriterionEvaluation:
+    name: str
+    viewpoint: str
+    result: str
+    score: int
+
+
+@dataclass(slots=True)
 class ObjectiveEvaluation:
     evaluator_name: str
     instruction_excerpt: str
     sequence_diagram: str
     subgraph_sequence_diagrams: list[SubgraphSequenceDiagram]
+    criterion_evaluations: list[CriterionEvaluation]
     agent_evaluations: list[AgentEvaluation]
     memory_findings: list[MemoryConsistencyFinding]
     overall_summary: str
     improvement_points: list[str]
     score: int
-
-
-class ObjectiveEvaluationAgent:
-    name = OBJECTIVE_EVALUATION_AGENT
-
-    def __init__(self, settings: ObjectiveEvaluationAgentSettings, instruction_text: str):
-        self._settings = settings
-        self._instruction_text = instruction_text.strip()
-
-    def evaluate(
-        self,
-        *,
-        state: CaseState,
-        case_paths: Any,
-        memory_store: CaseMemoryStore,
-        context_text: str,
-        progress_text: str,
-        summary_text: str,
-    ) -> ObjectiveEvaluation:
-        shared_memory = {
-            "context": context_text,
-            "progress": progress_text,
-            "summary": summary_text,
-        }
-        agent_memories = _load_agent_memories(case_paths, memory_store)
-        memory_findings = _audit_memory_consistency(state, shared_memory, agent_memories)
-        agent_evaluations = _evaluate_agents(state, memory_findings, self._settings)
-        overall_summary = _build_overall_summary(state, agent_evaluations, memory_findings)
-        improvement_points = _build_improvement_points(agent_evaluations, memory_findings)
-        score = _calculate_overall_score(agent_evaluations)
-        return ObjectiveEvaluation(
-            evaluator_name=self.name,
-            instruction_excerpt=_instruction_excerpt(self._instruction_text),
-            sequence_diagram=_build_sequence_diagram(state),
-            subgraph_sequence_diagrams=_build_subgraph_sequence_diagrams(state),
-            agent_evaluations=agent_evaluations,
-            memory_findings=memory_findings,
-            overall_summary=overall_summary,
-            improvement_points=improvement_points,
-            score=score,
-        )
 
 
 def build_support_improvement_report(
@@ -112,15 +83,31 @@ def build_support_improvement_report(
     summary_text = memory_store.read_text(case_paths.shared_summary)
     artifact_paths = [path.relative_to(case_paths.root).as_posix() for path in memory_store.list_artifacts(case_id, workspace_path)]
 
-    evaluator_settings = config.agents.ObjectiveEvaluationAgent
     evaluator_instruction = instruction_loader.load(case_id, OBJECTIVE_EVALUATION_AGENT)
-    evaluation = ObjectiveEvaluationAgent(evaluator_settings, evaluator_instruction).evaluate(
+    shared_memory = {
+        "context": context_text,
+        "progress": progress_text,
+        "summary": summary_text,
+    }
+    agent_memories = _load_agent_memories(case_paths, memory_store)
+    memory_findings = _audit_memory_consistency(state, shared_memory, agent_memories)
+    structured_evaluation = ObjectiveEvaluationAgent(config, evaluator_instruction).evaluate(
+        evidence=_build_objective_evaluation_evidence(
+            case_id=case_id,
+            trace_id=trace_id,
+            state=state,
+            shared_memory=shared_memory,
+            agent_memories=agent_memories,
+            memory_findings=memory_findings,
+            artifact_paths=artifact_paths,
+        )
+    )
+    evaluation = _build_objective_evaluation(
         state=state,
-        case_paths=case_paths,
-        memory_store=memory_store,
-        context_text=context_text,
-        progress_text=progress_text,
-        summary_text=summary_text,
+        instruction_text=evaluator_instruction,
+        memory_findings=memory_findings,
+        structured_evaluation=structured_evaluation,
+        pass_score=config.agents.ObjectiveEvaluationAgent.pass_score,
     )
     checklist_section = _render_checklist(checklist or [], state, context_text, progress_text, summary_text)
 
@@ -132,7 +119,7 @@ def build_support_improvement_report(
         *_report_item("Trace ID", trace_id, "今回の実行トレースを追跡するための識別子です。"),
         *_report_item("Workspace", case_paths.root, "ケース関連ファイルと成果物を保存した作業ディレクトリです。"),
         *_report_item("Final status", str(state.get("status") or "unknown"), "ワークフロー完了時点の最終ステータスです。"),
-        *_report_item("Evaluator", evaluation.evaluator_name, "SuperVisor ではなく、決め打ちルールで評価する客観評価エージェントです。"),
+        *_report_item("Evaluator", evaluation.evaluator_name, "SuperVisor ではなく、instruction と structured output schema に基づいて評価する客観評価エージェントです。"),
         *_report_item("Evaluation rubric", evaluation.instruction_excerpt or "n/a", "Evaluator instruction の冒頭要約です。"),
         "",
         "## 問い合わせ内容",
@@ -153,9 +140,13 @@ def build_support_improvement_report(
         *_report_item("コンプライアンス要約", str(state.get("compliance_review_summary") or "n/a"), "回答案に対するレビュー観点と判定結果の要約です。"),
         *_report_item("エスカレーション理由", str(state.get("escalation_reason") or "n/a"), "追加確認や上位支援が必要と判断した根拠です。"),
         "",
+        "## Evaluator 評価観点一覧",
+        "ObjectiveEvaluationAgent が instruction に基づいて出力した評価観点一覧と、その結果です。",
+        *_render_criterion_evaluations(evaluation.criterion_evaluations),
+        "",
         "## 総合評価",
         "### 総評",
-        "ケース全体を通した自動対応品質の総括です。ObjectiveEvaluationAgent が固定基準で判定しています。",
+        "ケース全体を通した自動対応品質の総括です。ObjectiveEvaluationAgent が instruction と structured output で判定しています。",
         evaluation.overall_summary,
         "",
         "### 要改善点",
@@ -208,6 +199,81 @@ def build_support_improvement_report(
     return EvaluationReportResult(report_path=report_path, sequence_diagram=evaluation.sequence_diagram, content=content)
 
 
+def _build_objective_evaluation_evidence(
+    *,
+    case_id: str,
+    trace_id: str,
+    state: CaseState,
+    shared_memory: dict[str, str],
+    agent_memories: dict[str, str],
+    memory_findings: list[MemoryConsistencyFinding],
+    artifact_paths: list[str],
+) -> dict[str, Any]:
+    return {
+        "case_id": case_id,
+        "trace_id": trace_id,
+        "status": str(state.get("status") or "unknown"),
+        "workflow_kind": _effective_workflow_kind(state),
+        "raw_issue": str(state.get("raw_issue") or ""),
+        "draft_response": str(state.get("draft_response") or ""),
+        "investigation_summary": str(state.get("investigation_summary") or ""),
+        "compliance_review_summary": str(state.get("compliance_review_summary") or ""),
+        "escalation_reason": str(state.get("escalation_reason") or ""),
+        "escalation_summary": str(state.get("escalation_summary") or ""),
+        "escalation_draft": str(state.get("escalation_draft") or ""),
+        "log_analysis_summary": str(state.get("log_analysis_summary") or ""),
+        "knowledge_retrieval_adopted_sources": list(state.get("knowledge_retrieval_adopted_sources") or []),
+        "shared_memory": shared_memory,
+        "agent_memories": agent_memories,
+        "memory_findings": [
+            {"agent_name": item.agent_name, "severity": item.severity, "detail": item.detail}
+            for item in memory_findings
+        ],
+        "artifact_paths": artifact_paths,
+        "agent_errors": list(state.get("agent_errors") or []),
+    }
+
+
+def _build_objective_evaluation(
+    *,
+    state: CaseState,
+    instruction_text: str,
+    memory_findings: list[MemoryConsistencyFinding],
+    structured_evaluation: Any,
+    pass_score: int,
+) -> ObjectiveEvaluation:
+    criterion_evaluations = [
+        CriterionEvaluation(
+            name=item.title,
+            viewpoint=item.viewpoint,
+            result=item.result,
+            score=item.score,
+        )
+        for item in structured_evaluation.criterion_evaluations
+    ]
+    agent_evaluations = [
+        AgentEvaluation(
+            agent_name=item.agent_name,
+            score=item.score,
+            is_good=item.score >= pass_score,
+            detail=item.comment,
+        )
+        for item in structured_evaluation.agent_evaluations
+    ]
+    return ObjectiveEvaluation(
+        evaluator_name=OBJECTIVE_EVALUATION_AGENT,
+        instruction_excerpt=_instruction_excerpt(instruction_text),
+        sequence_diagram=_build_sequence_diagram(state),
+        subgraph_sequence_diagrams=_build_subgraph_sequence_diagrams(state),
+        criterion_evaluations=criterion_evaluations,
+        agent_evaluations=agent_evaluations,
+        memory_findings=memory_findings,
+        overall_summary=structured_evaluation.overall_summary,
+        improvement_points=list(structured_evaluation.improvement_points),
+        score=structured_evaluation.overall_score,
+    )
+
+
 def _result_label(state: CaseState) -> str:
     if bool(state.get("escalation_required")):
         return "エスカレーションが必要だった"
@@ -228,6 +294,8 @@ def _effective_workflow_kind(state: CaseState) -> str:
 
 
 def _build_sequence_diagram(state: CaseState) -> str:
+    path = reconstruct_main_workflow_path(state)
+    approval_route = _approval_route_for_report(state)
     lines = [
         "sequenceDiagram",
         "    participant User as User",
@@ -244,54 +312,93 @@ def _build_sequence_diagram(state: CaseState) -> str:
         "    User->>Intake: 問い合わせ入力",
         "    Intake->>Supervisor: Intake 結果を引き渡し",
     ]
+    if "wait_for_customer_input" in path:
+        lines.append("    Intake-->>User: 追加情報を依頼")
+        return "\n".join(lines)
+
     workflow_kind = _effective_workflow_kind(state)
-    if workflow_kind in {"incident_investigation", "ambiguous_case"}:
+    if "investigation" in path and workflow_kind in {"incident_investigation", "ambiguous_case"}:
         lines.append("    Supervisor->>LogAnalyzer: ログ解析を依頼")
         lines.append("    LogAnalyzer-->>Supervisor: ログ解析結果を返却")
-    lines.append("    Supervisor->>Knowledge: ナレッジ検索を依頼")
-    lines.append("    Knowledge-->>Supervisor: 検索結果を返却")
-    if bool(state.get("escalation_required")):
+    if "investigation" in path:
+        lines.append("    Supervisor->>Knowledge: ナレッジ検索を依頼")
+        lines.append("    Knowledge-->>Supervisor: 検索結果を返却")
+
+    if "escalation_review" in path:
         lines.append("    Supervisor->>Escalation: エスカレーション判断と要約を依頼")
         lines.append("    Escalation->>Inquiry: 問い合わせ文案作成を依頼")
         lines.append("    Inquiry-->>Supervisor: エスカレーション文案を返却")
-    else:
+        lines.append("    Supervisor->>Approval: 承認依頼を送信")
+        if approval_route == "investigation":
+            lines.append("    Approval->>Supervisor: 再調査を依頼")
+        elif approval_route == "draft_review":
+            lines.append("    Approval->>Inquiry: 問い合わせ文案の差戻しを依頼")
+        elif "ticket_update_prepare" in path:
+            lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
+            lines.append("    TicketUpdate-->>User: 更新完了")
+    elif "draft_review" in path:
         lines.append("    Supervisor->>DraftWriter: 回答ドラフト作成を依頼")
-        review_iterations = int(state.get("draft_review_iterations") or 1)
+        review_iterations = path.count("draft_review")
         for _ in range(max(1, review_iterations)):
             lines.append("    DraftWriter-->>Supervisor: ドラフトを返却")
             lines.append("    Supervisor->>Compliance: コンプライアンス確認を依頼")
             lines.append("    Compliance-->>Supervisor: レビュー結果を返却")
         lines.append("    Supervisor->>Approval: 承認依頼を送信")
-        if str(state.get("status") or "") == "CLOSED" or str(state.get("ticket_update_result") or ""):
+        if approval_route == "investigation":
+            lines.append("    Approval->>Supervisor: 再調査を依頼")
+        elif approval_route == "draft_review":
+            lines.append("    Approval->>DraftWriter: 差戻しを依頼")
+        elif "ticket_update_prepare" in path:
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
     return "\n".join(lines)
 
 
+def _approval_route_for_report(state: CaseState) -> str:
+    if str(state.get("status") or "") == "CLOSED" or str(state.get("ticket_update_result") or "").strip():
+        return "ticket_update_prepare"
+    decision = str(state.get("approval_decision") or "").strip().lower()
+    if decision in {"approved", "approve"}:
+        return "ticket_update_prepare"
+    if decision in {"rejected", "reject"}:
+        return "draft_review"
+    if decision == "reinvestigate":
+        return "investigation"
+    return "__end__"
+
+
 def _build_subgraph_sequence_diagrams(state: CaseState) -> list[SubgraphSequenceDiagram]:
+    path = reconstruct_main_workflow_path(state)
+    approval_route = _approval_route_for_report(state)
+    intake_lines = [
+        "sequenceDiagram",
+        "    participant User as User",
+        "    participant Intake as IntakeAgent",
+        "    participant Prepare as intake_prepare",
+        "    participant Mask as intake_mask",
+        "    participant Hydrate as intake_hydrate_tickets",
+        "    participant Classify as intake_classify",
+        "    participant Finalize as intake_finalize",
+        "    User->>Intake: 問い合わせ入力",
+        "    Intake->>Prepare: 初期状態を準備",
+        "    Prepare->>Mask: PII マスキング",
+        "    Mask->>Hydrate: チケット文脈を補完",
+        "    Hydrate->>Classify: 問い合わせ分類",
+        "    Classify->>Finalize: 次フェーズを決定",
+    ]
+    if "wait_for_customer_input" in path:
+        intake_lines.append("    Finalize-->>User: 追加情報を依頼")
+    elif "investigation" in path:
+        intake_lines.append("    Finalize->>Supervisor: 調査フェーズへ引き継ぎ")
+
     diagrams = [
         SubgraphSequenceDiagram(
             title="IntakeAgent サブグラフ",
-            diagram="\n".join([
-                "sequenceDiagram",
-                "    participant User as User",
-                "    participant Intake as IntakeAgent",
-                "    participant Prepare as intake_prepare",
-                "    participant Mask as intake_mask",
-                "    participant Hydrate as intake_hydrate_tickets",
-                "    participant Classify as intake_classify",
-                "    participant Finalize as intake_finalize",
-                "    User->>Intake: 問い合わせ入力",
-                "    Intake->>Prepare: 初期状態を準備",
-                "    Prepare->>Mask: PII マスキング",
-                "    Mask->>Hydrate: チケット文脈を補完",
-                "    Hydrate->>Classify: 問い合わせ分類",
-                "    Classify->>Finalize: 次フェーズを決定",
-            ]),
+            diagram="\n".join(intake_lines),
         )
     ]
-    if not bool(state.get("escalation_required")):
-        review_iterations = int(state.get("draft_review_iterations") or 1)
+    if "draft_review" in path:
+        review_iterations = path.count("draft_review")
         review_lines = [
             "sequenceDiagram",
             "    participant Supervisor as SuperVisorAgent",
@@ -303,31 +410,40 @@ def _build_subgraph_sequence_diagrams(state: CaseState) -> list[SubgraphSequence
             review_lines.append(f"    DraftWriter-->>Supervisor: ドラフトを返却 ({index + 1})")
             review_lines.append(f"    Supervisor->>Compliance: レビュー依頼 ({index + 1})")
             review_lines.append(f"    Compliance-->>Supervisor: レビュー結果を返却 ({index + 1})")
+        if approval_route == "draft_review":
+            review_lines.append("    Approval->>Supervisor: 差戻し判断を返却")
+        elif approval_route == "investigation":
+            review_lines.append("    Approval->>Supervisor: 再調査判断を返却")
         diagrams.append(
             SubgraphSequenceDiagram(
                 title="Draft Review ループ",
                 diagram="\n".join(review_lines),
             )
         )
-    if bool(state.get("escalation_required")):
+    if "escalation_review" in path:
+        escalation_lines = [
+            "sequenceDiagram",
+            "    participant Supervisor as SuperVisorAgent",
+            "    participant Escalation as BackSupportEscalationAgent",
+            "    participant Inquiry as BackSupportInquiryWriterAgent",
+            "    participant Approval as ApprovalAgent",
+            "    Supervisor->>Escalation: 判断根拠と不足情報を整理",
+            "    Escalation-->>Supervisor: エスカレーション要約を返却",
+            "    Supervisor->>Inquiry: バックサポート向け問い合わせ文案を依頼",
+            "    Inquiry-->>Supervisor: 問い合わせ文案を返却",
+            "    Supervisor->>Approval: 承認待ちへ回付",
+        ]
+        if approval_route == "investigation":
+            escalation_lines.append("    Approval->>Supervisor: 再調査判断を返却")
+        elif approval_route == "draft_review":
+            escalation_lines.append("    Approval->>Inquiry: 文案差戻しを返却")
         diagrams.append(
             SubgraphSequenceDiagram(
                 title="Escalation 準備フロー",
-                diagram="\n".join([
-                    "sequenceDiagram",
-                    "    participant Supervisor as SuperVisorAgent",
-                    "    participant Escalation as BackSupportEscalationAgent",
-                    "    participant Inquiry as BackSupportInquiryWriterAgent",
-                    "    participant Approval as ApprovalAgent",
-                    "    Supervisor->>Escalation: 判断根拠と不足情報を整理",
-                    "    Escalation-->>Supervisor: エスカレーション要約を返却",
-                    "    Supervisor->>Inquiry: バックサポート向け問い合わせ文案を依頼",
-                    "    Inquiry-->>Supervisor: 問い合わせ文案を返却",
-                    "    Supervisor->>Approval: 承認待ちへ回付",
-                ]),
+                diagram="\n".join(escalation_lines),
             )
         )
-    if str(state.get("status") or "") == "CLOSED" or str(state.get("ticket_update_result") or "").strip():
+    if "ticket_update_prepare" in path:
         diagrams.append(
             SubgraphSequenceDiagram(
                 title="TicketUpdateAgent サブグラフ",
@@ -346,89 +462,6 @@ def _build_subgraph_sequence_diagrams(state: CaseState) -> list[SubgraphSequence
             )
         )
     return diagrams
-
-
-def _evaluate_agents(
-    state: CaseState,
-    memory_findings: list[MemoryConsistencyFinding],
-    settings: ObjectiveEvaluationAgentSettings,
-) -> list[AgentEvaluation]:
-    evaluations: list[AgentEvaluation] = []
-    finding_map = _group_findings_by_agent(memory_findings)
-    intake_ok = bool(state.get("intake_category")) and not bool(state.get("intake_rework_required"))
-    evaluations.append(_build_agent_evaluation(
-        state,
-        agent_name="IntakeAgent",
-        primary_ok=intake_ok,
-        detail=f"分類と前処理 {'完了' if intake_ok else '要再確認'}",
-        improvement_point=None if intake_ok else "問い合わせ分類または前処理結果を見直し、再実行条件を明確化してください。",
-        finding_map=finding_map,
-        settings=settings,
-    ))
-    workflow_kind = _effective_workflow_kind(state)
-    if workflow_kind in {"incident_investigation", "ambiguous_case"}:
-        log_ok = bool(str(state.get("log_analysis_summary") or "").strip())
-        evaluations.append(_build_agent_evaluation(
-            state,
-            agent_name="LogAnalyzerAgent",
-            primary_ok=log_ok,
-            detail=f"ログ解析結果 {'あり' if log_ok else 'なし'}",
-            improvement_point=None if log_ok else "調査対象ログの特定と解析結果の要約を補強してください。",
-            finding_map=finding_map,
-            settings=settings,
-        ))
-    knowledge_ok = bool(list(state.get("knowledge_retrieval_adopted_sources") or []))
-    evaluations.append(_build_agent_evaluation(
-        state,
-        agent_name="KnowledgeRetrieverAgent",
-        primary_ok=knowledge_ok,
-        detail=f"採用ナレッジソース {', '.join(list(state.get('knowledge_retrieval_adopted_sources') or [])) or 'なし'}",
-        improvement_point=None if knowledge_ok else "採用根拠となるナレッジソースを追加し、参照結果を明示してください。",
-        finding_map=finding_map,
-        settings=settings,
-    ))
-    if bool(state.get("escalation_required")):
-        escalation_ok = bool(str(state.get("escalation_summary") or "").strip()) and bool(str(state.get("escalation_draft") or "").strip())
-        evaluations.append(_build_agent_evaluation(
-            state,
-            agent_name="BackSupportEscalationAgent",
-            primary_ok=escalation_ok,
-            detail=f"エスカレーション要約 {'あり' if escalation_ok else 'なし'}",
-            improvement_point=None if escalation_ok else "エスカレーション判断の根拠と要約内容を具体化してください。",
-            finding_map=finding_map,
-            settings=settings,
-        ))
-        evaluations.append(_build_agent_evaluation(
-            state,
-            agent_name="BackSupportInquiryWriterAgent",
-            primary_ok=escalation_ok,
-            detail=f"問い合わせ文案 {'あり' if escalation_ok else 'なし'}",
-            improvement_point=None if escalation_ok else "バックサポート向け問い合わせ文案の必須情報を補完してください。",
-            finding_map=finding_map,
-            settings=settings,
-        ))
-    else:
-        draft_ok = bool(str(state.get("draft_response") or "").strip())
-        evaluations.append(_build_agent_evaluation(
-            state,
-            agent_name="DraftWriterAgent",
-            primary_ok=draft_ok,
-            detail=f"ドラフト {'あり' if draft_ok else 'なし'}",
-            improvement_point=None if draft_ok else "顧客向け回答ドラフトの本文を補完し、結論と案内を明確にしてください。",
-            finding_map=finding_map,
-            settings=settings,
-        ))
-        compliance_ok = bool(state.get("compliance_review_passed"))
-        evaluations.append(_build_agent_evaluation(
-            state,
-            agent_name="ComplianceReviewerAgent",
-            primary_ok=compliance_ok,
-            detail=f"レビュー {'通過' if compliance_ok else '未通過'}",
-            improvement_point=None if compliance_ok else "レビュー差戻し論点を反映し、回答内容を再点検してください。",
-            finding_map=finding_map,
-            settings=settings,
-        ))
-    return evaluations
 
 
 def _render_checklist(
@@ -460,45 +493,6 @@ def _render_checklist(
     return lines or ["- なし"]
 
 
-def _build_overall_summary(
-    state: CaseState,
-    agent_scores: list[AgentEvaluation],
-    memory_findings: list[MemoryConsistencyFinding],
-) -> str:
-    weak_count = sum(1 for item in agent_scores if not item.is_good)
-    warning_count = sum(1 for item in memory_findings if item.severity == "warning")
-    if bool(state.get("escalation_required")):
-        return (
-            "調査自体は成立していますが、確実な回答に必要な材料が不足しており、"
-            f"客観評価ではエスカレーション判断を妥当とみなします。情報伝達上の注意点は {warning_count} 件です。"
-        )
-    if weak_count == 0 and warning_count == 0 and bool(state.get("compliance_review_passed")):
-        return "主要エージェントの出力とメモリ連携は安定しており、顧客向け回答とレビューは客観基準でも良好です。"
-    return (
-        f"自動実行は完了しましたが、{weak_count} 件の品質課題と {warning_count} 件の情報伝達リスクがあります。"
-        "差戻し論点と memory 監査結果を確認してください。"
-    )
-
-
-def _build_improvement_points(
-    agent_scores: list[AgentEvaluation],
-    memory_findings: list[MemoryConsistencyFinding],
-) -> list[str]:
-    items = [item.improvement_point for item in agent_scores if item.improvement_point]
-    items.extend(item.detail for item in memory_findings if item.severity == "warning")
-    deduplicated: list[str] = []
-    for item in items:
-        if item not in deduplicated:
-            deduplicated.append(item)
-    return deduplicated
-
-
-def _calculate_overall_score(agent_scores: list[AgentEvaluation]) -> int:
-    if not agent_scores:
-        return 0
-    return max(0, min(100, round(sum(item.score for item in agent_scores) / len(agent_scores))))
-
-
 def _format_agent_evaluation(evaluation: AgentEvaluation) -> str:
     evidence_suffix = f" | 根拠: {' / '.join(evaluation.evidence[:2])}" if evaluation.evidence else ""
     return (
@@ -509,6 +503,23 @@ def _format_agent_evaluation(evaluation: AgentEvaluation) -> str:
 
 def _format_memory_finding(finding: MemoryConsistencyFinding) -> str:
     return f"[{finding.severity}] {finding.agent_name}: {finding.detail}"
+
+
+def _render_criterion_evaluations(criteria: list[CriterionEvaluation]) -> list[str]:
+    if not criteria:
+        return ["- なし"]
+    lines: list[str] = []
+    for item in criteria:
+        lines.extend([
+            f"### {item.name}",
+            f"- 評価観点: {item.viewpoint}",
+            f"- 評価結果: {item.result}",
+            f"- 点数: {item.score} / 100",
+            "",
+        ])
+    if lines and not lines[-1].strip():
+        lines.pop()
+    return lines
 
 
 def _render_subgraph_sequence_section(diagrams: list[SubgraphSequenceDiagram]) -> list[str]:
@@ -526,53 +537,6 @@ def _render_subgraph_sequence_section(diagrams: list[SubgraphSequenceDiagram]) -
     if lines and not lines[-1].strip():
         lines.pop()
     return lines
-
-
-def _build_agent_evaluation(
-    state: CaseState,
-    *,
-    agent_name: str,
-    primary_ok: bool,
-    detail: str,
-    improvement_point: str | None,
-    finding_map: dict[str, list[MemoryConsistencyFinding]],
-    settings: ObjectiveEvaluationAgentSettings,
-) -> AgentEvaluation:
-    warnings = finding_map.get(agent_name, [])
-    agent_errors = list(state.get("agent_errors") or [])
-    related_error_count = sum(
-        1
-        for item in agent_errors
-        if agent_name.lower() in str(item.get("agent_name") or item.get("agent") or "").lower()
-    )
-    score = 100
-    if not primary_ok:
-        score -= settings.primary_failure_penalty
-    score -= _warning_penalty(warnings, settings)
-    score -= settings.agent_error_penalty * related_error_count
-    score = max(0, min(100, score))
-    evidence = [item.detail for item in warnings[:2]]
-    if related_error_count:
-        evidence.append(f"関連エラー {related_error_count} 件")
-    detail_suffix = f" / memory warning {len(warnings)} 件" if warnings else ""
-    effective_improvement = improvement_point
-    if warnings:
-        effective_improvement = improvement_point or warnings[0].detail
-    return AgentEvaluation(
-        agent_name=agent_name,
-        score=score,
-        is_good=primary_ok and score >= settings.pass_score,
-        detail=f"{detail}{detail_suffix}",
-        improvement_point=effective_improvement,
-        evidence=evidence,
-    )
-
-
-def _group_findings_by_agent(findings: list[MemoryConsistencyFinding]) -> dict[str, list[MemoryConsistencyFinding]]:
-    grouped: dict[str, list[MemoryConsistencyFinding]] = {}
-    for item in findings:
-        grouped.setdefault(item.agent_name, []).append(item)
-    return grouped
 
 
 def _load_agent_memories(case_paths: Any, memory_store: CaseMemoryStore) -> dict[str, str]:
@@ -688,18 +652,6 @@ def _instruction_excerpt(value: str) -> str:
         if stripped and not stripped.startswith("#"):
             return stripped[:120]
     return ""
-
-
-def _warning_penalty(warnings: list[MemoryConsistencyFinding], settings: ObjectiveEvaluationAgentSettings) -> int:
-    total = 0
-    for item in warnings:
-        if "shared memory" in item.detail:
-            total += settings.missing_shared_memory_penalty
-        elif "working memory" in item.detail:
-            total += settings.missing_agent_memory_penalty
-        else:
-            total += settings.private_memory_penalty
-    return total
 
 
 def _unshared_memory_lines(
