@@ -24,6 +24,15 @@
 - 実装方針
 - 未決事項
 
+すべての agent は処理開始時に、少なくとも次を確認する前提とする。
+
+- shared/context.md
+- shared/progress.md
+- shared/summary.md
+- 自エージェントの .memory/agents/<agent_name>/working.md
+
+これにより、既知事実、進捗、未完了タスク、過去の試行履歴を確認したうえで処理を始める。
+
 ## 3. 共有メモリ Payload
 
 write_shared_memory の既定実装は、文字列だけでなく構造化 payload を受け付ける。

@@ -6,6 +6,7 @@
 
 - 共通事項: [docs/agents/common.md](/home/user/source/repos/support-ope-agents/docs/agents/common.md)
 - SuperVisorAgent: [docs/agents/supervisor-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/supervisor-agent.md)
+- ObjectiveEvaluationAgent: [docs/agents/objective-evaluation-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/objective-evaluation-agent.md)
 - IntakeAgent: [docs/agents/intake-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/intake-agent.md)
 - LogAnalyzerAgent: [docs/agents/log-analyzer-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/log-analyzer-agent.md)
 - KnowledgeRetrieverAgent: [docs/agents/knowledge-retriever-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/knowledge-retriever-agent.md)
@@ -20,6 +21,7 @@
 
 - shared memory payload や記述ルールのような共通事項は [docs/agents/common.md](/home/user/source/repos/support-ope-agents/docs/agents/common.md) に置く
 - agent 固有の責務、入出力、実装方針、未決事項は agent 単位の文書へ分離する
+- 改善レポートの評価主体も agent として同じ粒度で文書化する
 - 今後 agent を追加する場合も同じ粒度で docs/agents 配下へ分割する
 
 ## 3. 補足
