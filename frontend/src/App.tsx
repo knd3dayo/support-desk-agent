@@ -115,11 +115,92 @@ function MermaidBlock({ chart }: { chart: string }) {
   return <div className="mermaid-diagram" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
-function MarkdownContent({ content }: { content: string }) {
+type MarkdownContentProps = {
+  content: string;
+  basePath?: string;
+  onWorkspaceLinkClick?: (path: string) => void | Promise<void>;
+};
+
+function normalizeWorkspacePath(path: string): string | null {
+  const segments = path.split('/');
+  const normalized: string[] = [];
+
+  for (const segment of segments) {
+    if (!segment || segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      if (normalized.length === 0) {
+        return null;
+      }
+      normalized.pop();
+      continue;
+    }
+    normalized.push(segment);
+  }
+
+  return normalized.join('/') || '.';
+}
+
+function dirname(path: string): string {
+  if (!path || path === '.') {
+    return '.';
+  }
+  const lastSlash = path.lastIndexOf('/');
+  return lastSlash >= 0 ? path.slice(0, lastSlash) || '.' : '.';
+}
+
+function resolveWorkspaceLink(href: string, basePath?: string): string | null {
+  const trimmedHref = href.trim();
+  if (!trimmedHref || trimmedHref.startsWith('#')) {
+    return null;
+  }
+  if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(trimmedHref) || trimmedHref.startsWith('mailto:') || trimmedHref.startsWith('tel:')) {
+    return null;
+  }
+  if (trimmedHref.startsWith('/knowledge/')) {
+    return null;
+  }
+
+  const pathOnly = trimmedHref.split('#', 1)[0].split('?', 1)[0];
+  if (!pathOnly) {
+    return null;
+  }
+
+  const candidate = pathOnly.startsWith('/')
+    ? pathOnly.slice(1)
+    : `${dirname(basePath || '.').replace(/\/$/, '')}/${pathOnly}`;
+  return normalizeWorkspacePath(candidate);
+}
+
+function MarkdownContent({ content, basePath, onWorkspaceLinkClick }: MarkdownContentProps) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
+        a({ href, children, ...props }) {
+          const resolvedPath = href ? resolveWorkspaceLink(href, basePath) : null;
+          if (resolvedPath && onWorkspaceLinkClick) {
+            return (
+              <a
+                href={href}
+                {...props}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void onWorkspaceLinkClick(resolvedPath);
+                }}
+              >
+                {children}
+              </a>
+            );
+          }
+
+          return (
+            <a href={href} {...props}>
+              {children}
+            </a>
+          );
+        },
         code({ className, children, ...props }) {
           const language = /language-([\w-]+)/.exec(className || '')?.[1]?.toLowerCase();
           if (language === 'mermaid') {
@@ -227,6 +308,10 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
   const [inlinePreviewUrl, setInlinePreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState('プレビューを読み込み中です。');
 
+  async function openLinkedPreview(targetPath: string) {
+    window.location.href = renderedPreviewUrl(caseId, workspacePath, targetPath);
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -236,7 +321,6 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
         if (cancelled) {
           return;
         }
-
         if ((nextPreview.mime_type || '').startsWith('image/') || nextPreview.mime_type === 'application/pdf') {
           const blob = await loadRawFileBlob(caseId, workspacePath, path);
           if (cancelled) {
@@ -286,7 +370,7 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
           preview.preview_available ? (
             isMarkdownFile(preview.name, preview.mime_type) ? (
               <div className="preview-markdown standalone-preview-content markdown-body">
-                <MarkdownContent content={preview.content || ''} />
+                <MarkdownContent content={preview.content || ''} basePath={preview.path} onWorkspaceLinkClick={openLinkedPreview} />
               </div>
             ) : (
               <pre className="standalone-preview-content">{preview.content}</pre>
@@ -461,6 +545,36 @@ export default function App() {
       setInlinePreviewUrl(URL.createObjectURL(blob));
     }
     setPreview(nextPreview);
+  }
+
+  async function openWorkspaceFileFromLink(path: string) {
+    if (!selectedCase) {
+      return;
+    }
+
+    try {
+      const nextPreview = await loadFile(selectedCase.case_id, selectedCase.workspace_path, path);
+      const containerPath = dirname(path);
+      const nextWorkspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, containerPath);
+
+      if (inlinePreviewUrl) {
+        URL.revokeObjectURL(inlinePreviewUrl);
+        setInlinePreviewUrl(null);
+      }
+      if ((nextPreview.mime_type || '').startsWith('image/') || nextPreview.mime_type === 'application/pdf') {
+        const blob = await loadRawFileBlob(selectedCase.case_id, selectedCase.workspace_path, path);
+        setInlinePreviewUrl(URL.createObjectURL(blob));
+      }
+
+      startTransition(() => {
+        setWorkspaceView(nextWorkspace);
+        setSelectedEntry(nextWorkspace.entries.find((entry) => entry.path === path) ?? { name: nextPreview.name, path, kind: 'file' });
+        setPreview(nextPreview);
+      });
+      setStatusLine(`${nextPreview.name} をプレビューしています。`);
+    } catch {
+      setStatusLine(`ワークスペース内のリンク先 ${path} を開けませんでした。`);
+    }
   }
 
   async function openLatestReport() {
@@ -751,7 +865,7 @@ export default function App() {
                   </button>
                 </div>
                 <div className="message-body markdown-body">
-                  <MarkdownContent content={message.content} />
+                  <MarkdownContent content={message.content} onWorkspaceLinkClick={selectedCase ? openWorkspaceFileFromLink : undefined} />
                 </div>
                 <span className="message-meta">{formatTimestamp(message.created_at)} {message.event ? `· ${message.event}` : ''}</span>
               </article>
@@ -925,7 +1039,7 @@ export default function App() {
                   {preview.preview_available ? (
                     isMarkdownFile(preview.name, preview.mime_type) ? (
                       <div className="preview-markdown markdown-body">
-                        <MarkdownContent content={preview.content || ''} />
+                        <MarkdownContent content={preview.content || ''} basePath={preview.path} onWorkspaceLinkClick={openWorkspaceFileFromLink} />
                       </div>
                     ) : (
                       <pre>{preview.content}</pre>
