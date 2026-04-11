@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import re
 from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, cast
@@ -136,6 +137,23 @@ class KnowledgeRetrieverPhaseExecutor:
             summary += f" 採用した根拠ソース: {', '.join(adopted_sources)}。"
         return summary.strip()
 
+    @staticmethod
+    def _normalize_query_text(text: str) -> str:
+        return re.sub(r"[^0-9a-z\u3040-\u30ff\u4e00-\u9fff]+", " ", text.lower()).strip()
+
+    @classmethod
+    def _rank_document_result(cls, raw_issue: str, item: Mapping[str, object]) -> tuple[int, int, int, str]:
+        normalized_query = cls._normalize_query_text(raw_issue)
+        normalized_source_name = cls._normalize_query_text(str(item.get("source_name") or ""))
+        explicit_source_match = int(bool(normalized_query and normalized_source_name and normalized_source_name in normalized_query))
+        evidence_count = len(item.get("evidence")) if isinstance(item.get("evidence"), list) else 0
+        matched_path_count = len(item.get("matched_paths")) if isinstance(item.get("matched_paths"), list) else 0
+        return (explicit_source_match, evidence_count, matched_path_count, str(item.get("source_name") or ""))
+
+    @classmethod
+    def _prioritize_document_results(cls, raw_issue: str, document_results: list[dict[str, object]]) -> list[dict[str, object]]:
+        return sorted(document_results, key=lambda item: cls._rank_document_result(raw_issue, item), reverse=True)
+
     def execute(self, state: Mapping[str, object]) -> dict[str, object]:
         raw_issue = str(state.get("raw_issue") or "")
         case_id = str(state.get("case_id") or "").strip()
@@ -149,6 +167,7 @@ class KnowledgeRetrieverPhaseExecutor:
         document_message, document_results = self._parse_document_result(
             self._invoke_tool(self.search_documents_tool, query=raw_issue)
         )
+        document_results = self._prioritize_document_results(raw_issue, document_results)
         external_hydrated_summary = str(ticket_context.get("external_ticket") or "").strip()
         internal_hydrated_summary = str(ticket_context.get("internal_ticket") or "").strip()
         if external_hydrated_summary or ticket_artifacts.get("external_ticket"):

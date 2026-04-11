@@ -48,13 +48,6 @@ def _stringify_response_content(content: Any) -> str:
     return str(content).strip()
 
 
-def _format_notice_text(notice_phrase: str) -> str:
-    normalized = notice_phrase.strip().rstrip("。")
-    if not normalized:
-        return ""
-    return f"【注意事項】{normalized}。"
-
-
 def _normalize_internal_guidance_lines(revision_request: str) -> set[str]:
     normalized: set[str] = set()
     for line in revision_request.splitlines():
@@ -87,14 +80,8 @@ class DraftWriterPhaseExecutor:
         return str(result)
 
     def _fallback_draft(self, state: dict[str, object]) -> str:
-        notice_settings = self.config.agents.ComplianceReviewerAgent.notice
-        notice_text = ""
-        if notice_settings.required and notice_settings.required_phrases:
-            notice_text = _format_notice_text(str(notice_settings.required_phrases[0]))
-
         investigation_summary = str(state.get("investigation_summary") or "調査結果を整理中です。").strip()
         review_focus = str(state.get("review_focus") or "").strip()
-        revision_request = str(state.get("compliance_revision_request") or "").strip()
         source_hint = str(state.get("knowledge_retrieval_final_adopted_source") or "").strip()
 
         lines: list[str] = []
@@ -105,8 +92,6 @@ class DraftWriterPhaseExecutor:
         if review_focus:
             lines.append(f"今回の回答では、{review_focus} を重視して表現を調整しています。")
         lines.append("追加で確認が必要な点があれば、確認結果が揃い次第ご案内します。")
-        if notice_text:
-            lines.append(notice_text)
         return "\n\n".join(line for line in lines if line.strip())
 
     def _strip_internal_review_content(self, draft: str, revision_request: str) -> str:
@@ -135,37 +120,11 @@ class DraftWriterPhaseExecutor:
             filtered.append(paragraph)
         return "\n\n".join(filtered)
 
-    def _normalize_notice_placement(self, draft: str) -> str:
-        normalized = draft.strip()
-        if not normalized:
-            return normalized
-
-        notice_settings = self.config.agents.ComplianceReviewerAgent.notice
-        if not notice_settings.required or not notice_settings.required_phrases:
-            return normalized
-
-        formatted_notice = _format_notice_text(str(notice_settings.required_phrases[0]))
-        if not formatted_notice:
-            return normalized
-
-        paragraphs = [paragraph.strip() for paragraph in normalized.split("\n\n") if paragraph.strip()]
-        raw_notices = {str(phrase).strip().rstrip("。") for phrase in notice_settings.required_phrases if str(phrase).strip()}
-        raw_notices.add(formatted_notice.strip().rstrip("。"))
-        filtered: list[str] = []
-        for paragraph in paragraphs:
-            candidate = paragraph.strip().removeprefix("【注意事項】").strip().rstrip("。")
-            if candidate in raw_notices:
-                continue
-            filtered.append(paragraph)
-        filtered.append(formatted_notice)
-        return "\n\n".join(filtered)
-
     async def _generate_with_llm(self, state: dict[str, object]) -> str:
         model = _get_chat_model(self.config)
         if model is None:
             return self._fallback_draft(state)
 
-        notice_settings = self.config.agents.ComplianceReviewerAgent.notice
         prompt = {
             "task": "Write a customer-facing support response draft in Japanese.",
             "investigation_summary": str(state.get("investigation_summary") or ""),
@@ -178,8 +137,6 @@ class DraftWriterPhaseExecutor:
                 "Keep the response customer-friendly.",
                 "Do not mention internal compliance review comments, policy retrieval failures, or document_sources configuration to the customer.",
             ],
-            "required_notice": notice_settings.required,
-            "required_notice_phrases": list(notice_settings.required_phrases),
             "internal_revision_guidance": str(state.get("compliance_revision_request") or ""),
         }
         try:
@@ -188,14 +145,13 @@ class DraftWriterPhaseExecutor:
             )
             content = _stringify_response_content(response.content)
             sanitized = self._strip_internal_review_content(content or self._fallback_draft(state), str(state.get("compliance_revision_request") or ""))
-            return self._normalize_notice_placement(sanitized or self._fallback_draft(state))
+            return sanitized or self._fallback_draft(state)
         except Exception:
             return self._fallback_draft(state)
 
     def execute(self, state: dict[str, object]) -> dict[str, object]:
         generated = self._invoke_tool(self._generate_with_llm, state)
-        sanitized = self._strip_internal_review_content(generated, str(state.get("compliance_revision_request") or ""))
-        draft_response = self._normalize_notice_placement(sanitized)
+        draft_response = self._strip_internal_review_content(generated, str(state.get("compliance_revision_request") or ""))
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         if case_id and workspace_path:

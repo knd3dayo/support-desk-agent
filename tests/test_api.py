@@ -112,6 +112,7 @@ support_ope_agents:
         self.assertEqual(upload.json()["path"], "uploads/note.txt")
         self.assertEqual(browse.status_code, 200)
         self.assertEqual(browse.json()["entries"][0]["name"], "note.txt")
+        self.assertTrue(browse.json()["entries"][0]["updated_at"])
         self.assertEqual(preview.status_code, 200)
         self.assertEqual(preview.json()["content"], "api payload")
         self.assertEqual(download.status_code, 200)
@@ -133,6 +134,46 @@ support_ope_agents:
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/markdown", response.headers.get("content-type") or "")
         self.assertIn("inline", response.headers.get("content-disposition") or "")
+
+    def test_generate_report_endpoint_writes_report(self) -> None:
+        trace_id = "TRACE-API-001"
+        self.client.post(
+            "/action",
+            json={
+                "prompt": "生成AI基盤のアーキテクチャ概要を教えてください。",
+                "workspace_path": str(self.case_path),
+                "case_id": "CASE-API-001",
+                "trace_id": trace_id,
+            },
+        )
+
+        response = self.client.post(
+            "/cases/CASE-API-001/report",
+            json={
+                "trace_id": trace_id,
+                "workspace_path": str(self.case_path),
+                "checklist": ["sequenceDiagram が含まれているか"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        report_path = Path(payload["report_path"])
+        self.assertTrue(report_path.exists())
+        self.assertEqual(report_path.parent.name, "report")
+        self.assertIn("sequenceDiagram", report_path.read_text(encoding="utf-8"))
+
+    def test_generate_report_endpoint_requires_auth_when_enabled(self) -> None:
+        response = self.secure_client.post(
+            "/cases/CASE-API-001/report",
+            json={
+                "trace_id": "TRACE-API-SECURE",
+                "workspace_path": str(self.case_path),
+                "checklist": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 401)
 
     def test_auth_blocks_requests_without_token(self) -> None:
         response = self.secure_client.get("/cases")

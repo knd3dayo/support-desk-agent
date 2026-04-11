@@ -37,6 +37,9 @@ support_ope_agents:
     SuperVisorAgent:
       enabled: true
       auto_compress: true
+      auto_generate_report: true
+      report_on:
+        - waiting_approval
     IntakeAgent:
       enabled: true
       auto_compress: true

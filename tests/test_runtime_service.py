@@ -492,6 +492,14 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("sequenceDiagram", content)
         self.assertIn("KnowledgeRetrieverAgent", content)
         self.assertIn("ユーザー指定チェックリスト", content)
+        self.assertIn("説明: レポート対象のケースを一意に識別するIDです。", content)
+        self.assertIn("説明: 最終的に確定した対応方針を示します。", content)
+        self.assertIn("### 総評", content)
+        self.assertIn("ケース全体を通した自動対応品質の総括です。", content)
+        self.assertIn("### 要改善点", content)
+        self.assertIn("各エージェントや処理全体の課題、改善点を一覧化します。", content)
+        self.assertIn("### 点数", content)
+        self.assertRegex(content, r"\n\d{1,3} / 100\n")
 
     def test_action_does_not_write_legacy_json_state_file(self) -> None:
         result = self.service.action(
@@ -539,6 +547,33 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(case_index["CASE-TWO"]["message_count"], 0)
         self.assertEqual(case_index["CASE-ONE"]["case_title"], "障害調査: API タイムアウト")
         self.assertEqual(case_index["CASE-TWO"]["case_title"], "CASE-TWO")
+
+    def test_list_cases_returns_newest_updated_case_first(self) -> None:
+        older_workspace = self.workspace_path / "CASE-OLDER"
+        newer_workspace = self.workspace_path / "CASE-NEWER"
+        self.service.initialize_case("CASE-OLDER", str(older_workspace))
+        self.service.initialize_case("CASE-NEWER", str(newer_workspace))
+
+        self.service.context.memory_store.append_chat_history(
+            "CASE-OLDER",
+            str(older_workspace),
+            {"role": "user", "content": "older"},
+        )
+        self.service.context.memory_store.append_chat_history(
+            "CASE-NEWER",
+            str(newer_workspace),
+            {"role": "user", "content": "newer"},
+        )
+
+        import os
+        older_time = older_workspace.stat().st_mtime - 60
+        newer_time = newer_workspace.stat().st_mtime
+        os.utime(older_workspace, (older_time, older_time))
+        os.utime(newer_workspace, (newer_time, newer_time))
+
+        cases = self.service.list_cases(str(self.workspace_path))
+
+        self.assertEqual([item["case_id"] for item in cases[:2]], ["CASE-NEWER", "CASE-OLDER"])
 
     def test_action_persists_case_title_for_case_list(self) -> None:
         case_workspace = self.workspace_path / "CASE-TEST-TITLE"

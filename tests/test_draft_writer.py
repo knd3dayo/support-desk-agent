@@ -10,7 +10,7 @@ from support_ope_agents.tools.default_write_draft import build_default_write_dra
 
 
 class DraftWriterTests(unittest.TestCase):
-    def test_draft_writer_uses_compliance_notice_settings(self) -> None:
+    def test_draft_writer_does_not_append_compliance_notice(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace_path = Path(tmpdir)
             config = AppConfig.model_validate(
@@ -43,16 +43,10 @@ class DraftWriterTests(unittest.TestCase):
                 }
             )
 
-            self.assertIn(
-                "この回答は生成AI補助を含み、誤りの可能性があります",
-                str(result.get("draft_response") or ""),
-            )
             draft = str(result.get("draft_response") or "")
-            self.assertTrue(draft.endswith("【注意事項】この回答は生成AI補助を含み、誤りの可能性があります。"))
-            self.assertLess(
-                draft.find("お問い合わせありがとうございます。"),
-                draft.find("【注意事項】この回答は生成AI補助を含み、誤りの可能性があります。"),
-            )
+            self.assertNotIn("この回答は生成AI補助を含み、誤りの可能性があります", draft)
+            self.assertNotIn("【注意事項】", draft)
+            self.assertIn("お問い合わせありがとうございます。", draft)
 
     def test_draft_writer_hides_internal_compliance_revision_comments(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

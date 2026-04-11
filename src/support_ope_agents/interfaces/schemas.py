@@ -31,6 +31,12 @@ class ResumeCustomerInputRequest(BaseModel):
     internal_ticket_id: str | None = None
 
 
+class GenerateReportRequest(BaseModel):
+    trace_id: str
+    workspace_path: str
+    checklist: list[str] = Field(default_factory=list)
+
+
 class DescribeAgentsRequest(BaseModel):
     prompt: str
 
@@ -60,6 +66,13 @@ class RuntimeEnvelope(BaseModel):
     requires_approval: bool | None = None
     requires_customer_input: bool | None = None
     state: dict[str, Any] = Field(default_factory=dict)
+
+
+class GenerateReportResponse(BaseModel):
+    case_id: str
+    trace_id: str
+    report_path: str
+    sequence_diagram: str
 
 
 class InitCaseResponse(BaseModel):
@@ -95,6 +108,7 @@ class WorkspaceEntry(BaseModel):
     path: str
     kind: str
     size: int | None = None
+    updated_at: str | None = None
 
 
 class WorkspaceBrowseResponse(BaseModel):

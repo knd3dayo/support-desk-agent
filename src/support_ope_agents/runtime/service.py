@@ -247,6 +247,7 @@ class RuntimeService:
                     "message_count": len(history),
                 }
             )
+        cases.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
         return cases
 
     def create_case(self, *, cases_root: str, prompt: str, case_id: str | None = None) -> dict[str, str]:

@@ -22,6 +22,8 @@ from .schemas import (
     CaseSummary,
     ChatHistoryResponse,
     CreateCaseRequest,
+    GenerateReportRequest,
+    GenerateReportResponse,
     DescribeAgentsRequest,
     InitCaseRequest,
     InitCaseResponse,
@@ -211,6 +213,23 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
         except Exception as exc:
             raise map_error(exc) from exc
         return FileResponse(path=archive_path, filename=archive_path.name, media_type="application/zip")
+
+    @app.post("/cases/{case_id}/report", response_model=GenerateReportResponse)
+    def generate_report(
+        case_id: str,
+        request: GenerateReportRequest,
+        _: None = Depends(require_auth),
+    ) -> GenerateReportResponse:
+        try:
+            payload = service.generate_support_improvement_report(
+                case_id=case_id,
+                trace_id=request.trace_id,
+                workspace_path=resolve_workspace_path(case_id, request.workspace_path),
+                checklist=request.checklist,
+            )
+        except Exception as exc:
+            raise map_error(exc) from exc
+        return GenerateReportResponse.model_validate(payload)
 
     @app.post("/init-case", response_model=InitCaseResponse)
     def init_case(request: InitCaseRequest, _: None = Depends(require_auth)) -> InitCaseResponse:

@@ -241,6 +241,54 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertEqual(external_calls, [])
         self.assertEqual(internal_calls, [])
 
+    def test_prioritizes_explicitly_named_document_source(self) -> None:
+        executor = KnowledgeRetrieverPhaseExecutor(
+            search_documents_tool=lambda **_: json.dumps(
+                {
+                    "message": "document_sources から概要候補を抽出しました。",
+                    "results": [
+                        {
+                            "source_name": "ai-platform-poc",
+                            "source_description": "生成AI基盤のアーキテクチャ検討資料",
+                            "source_type": "document_source",
+                            "status": "matched",
+                            "summary": "ai-platform-poc は生成AI基盤 PoC 全体を説明します。",
+                            "path": "/tmp/ai-platform-poc",
+                            "route_prefix": "/knowledge/ai-platform-poc/",
+                            "matched_paths": ["/knowledge/ai-platform-poc/README.md"],
+                            "evidence": ["生成AI", "基盤", "PoC"],
+                        },
+                        {
+                            "source_name": "ai-chat-util",
+                            "source_description": "チャットユーティリティの利用資料",
+                            "source_type": "document_source",
+                            "status": "matched",
+                            "summary": "ai-chat-util は利用可能な機能と API をまとめた資料です。",
+                            "path": "/tmp/ai-chat-util",
+                            "route_prefix": "/knowledge/ai-chat-util/",
+                            "matched_paths": ["/knowledge/ai-chat-util/README.md"],
+                            "evidence": ["機能一覧"],
+                        },
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            external_ticket_tool=lambda: "external_ticket tool is not configured.",
+            internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
+        )
+
+        result = executor.execute({"raw_issue": "ai-chat-utilの機能一覧を出して"})
+
+        document_results = [
+            item
+            for item in cast(list[dict[str, object]], result["knowledge_retrieval_results"])
+            if item.get("source_type") == "document_source"
+        ]
+        self.assertEqual(document_results[0]["source_name"], "ai-chat-util")
+        self.assertEqual(cast(list[str], result["knowledge_retrieval_adopted_sources"])[0], "ai-chat-util")
+        retrieval_summary = cast(str, result["knowledge_retrieval_summary"])
+        self.assertIn("代表的な根拠: ai-chat-util は利用可能な機能と API をまとめた資料です。", retrieval_summary)
+
 
 if __name__ == "__main__":
     unittest.main()

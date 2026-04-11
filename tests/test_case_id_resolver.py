@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
@@ -31,6 +32,13 @@ class CaseIdResolverServiceTests(unittest.TestCase):
         self.assertTrue(resolver.is_auto_generated_internal_ticket_id("INT-TRACE-abc123"))
         self.assertFalse(resolver.is_auto_generated_external_ticket_id("EXT-001"))
         self.assertFalse(resolver.is_auto_generated_internal_ticket_id("INT-001"))
+
+    def test_generated_case_id_uses_timestamp_and_suffix_format(self) -> None:
+        resolver = CaseIdResolverService()
+
+        case_id = resolver.resolve("調査を開始してください")
+
+        self.assertRegex(case_id, r"^CASE-\d{8}-\d{6}-[0-9A-F]{4}$")
 
 
 if __name__ == "__main__":

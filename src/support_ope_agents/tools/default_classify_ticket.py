@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, cast
 
 from langchain_core.messages import HumanMessage
@@ -42,6 +43,7 @@ def _stringify_response_content(content: Any) -> str:
 
 def _fallback_classification(text: str) -> dict[str, str]:
     lowered = text.lower()
+    normalized = re.sub(r"[^0-9a-z\u3040-\u30ff\u4e00-\u9fff]+", " ", lowered)
     category = "ambiguous_case"
     urgency = "medium"
     investigation_focus = "問い合わせ内容の事実関係と再現条件を確認する"
@@ -50,6 +52,9 @@ def _fallback_classification(text: str) -> dict[str, str]:
         category = "incident_investigation"
         investigation_focus = "エラー条件と影響範囲を切り分ける"
     elif any(token in lowered for token in ["仕様", "spec", "expected", "期待動作"]):
+        category = "specification_inquiry"
+        investigation_focus = "期待動作と現行仕様の差分を確認する"
+    elif any(token in normalized for token in ["機能", "一覧", "教えて", "使い方", "手順", "サポート", "対応"]):
         category = "specification_inquiry"
         investigation_focus = "期待動作と現行仕様の差分を確認する"
     elif any(token in lowered for token in ["どうなる", "どちら", "仕様か不具合", "判定"]):

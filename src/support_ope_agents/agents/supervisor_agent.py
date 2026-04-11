@@ -263,19 +263,29 @@ class SupervisorPhaseExecutor:
         )
 
     @staticmethod
-    def _select_final_knowledge_source(results: list[dict[str, object]]) -> str:
+    def _normalize_query_text(text: str) -> str:
+        return re.sub(r"[^0-9a-z\u3040-\u30ff\u4e00-\u9fff]+", " ", text.lower()).strip()
+
+    @classmethod
+    def _select_final_knowledge_source(cls, results: list[dict[str, object]], raw_issue: str = "") -> str:
         if not results:
             return ""
 
+        normalized_query = cls._normalize_query_text(raw_issue)
         status_priority = {"matched": 3, "fetched": 2, "configured": 1}
         source_type_priority = {"document_source": 1, "ticket_source": 0}
 
         def _list_length(value: object) -> int:
             return len(value) if isinstance(value, list) else 0
 
+        def _explicit_source_match(item: dict[str, object]) -> int:
+            normalized_source_name = cls._normalize_query_text(str(item.get("source_name") or ""))
+            return int(bool(normalized_query and normalized_source_name and normalized_source_name in normalized_query))
+
         ranked = sorted(
             results,
             key=lambda item: (
+                _explicit_source_match(item),
                 status_priority.get(str(item.get("status") or ""), -1),
                 source_type_priority.get(str(item.get("source_type") or ""), -1),
                 _list_length(item.get("evidence")),
@@ -369,7 +379,10 @@ class SupervisorPhaseExecutor:
             raw_adopted_sources = knowledge_result.get("knowledge_retrieval_adopted_sources")
             if isinstance(raw_adopted_sources, list):
                 knowledge_retrieval_adopted_sources = [str(item) for item in raw_adopted_sources if str(item).strip()]
-            knowledge_retrieval_final_adopted_source = self._select_final_knowledge_source(knowledge_retrieval_results)
+            knowledge_retrieval_final_adopted_source = self._select_final_knowledge_source(
+                knowledge_retrieval_results,
+                raw_issue=str(update.get("raw_issue") or ""),
+            )
             if knowledge_retrieval_summary:
                 update["knowledge_retrieval_summary"] = knowledge_retrieval_summary
             if knowledge_retrieval_results:

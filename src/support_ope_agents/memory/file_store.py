@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -160,6 +162,7 @@ class CaseMemoryStore:
                     "path": relative_child,
                     "kind": "directory" if child.is_dir() else "file",
                     "size": child.stat().st_size if child.is_file() else None,
+                    "updated_at": datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat(),
                 }
             )
         return entries

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -9,6 +10,12 @@ CASE_ID_FILENAME = ".support-ope-case-id"
 
 
 class CaseIdResolverService:
+    @staticmethod
+    def _generate_case_id() -> str:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        suffix = uuid4().hex[:4].upper()
+        return f"CASE-{timestamp}-{suffix}"
+
     def __init__(self):
         self._patterns = (
             re.compile(r"\b(CASE[-_][A-Za-z0-9-]+)\b", re.IGNORECASE),
@@ -68,4 +75,4 @@ class CaseIdResolverService:
             if match:
                 return match.group(1).upper()
 
-        return f"CASE-{uuid4().hex.upper()}"
+        return self._generate_case_id()

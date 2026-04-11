@@ -44,6 +44,33 @@ class _FakeKnowledgeRetrieverExecutor:
         }
 
 
+class _FakeExplicitSourceKnowledgeRetrieverExecutor:
+    @staticmethod
+    def execute(_state: dict[str, object]) -> dict[str, object]:
+        return {
+            "knowledge_retrieval_summary": "2 つのソースから候補を取得しました。",
+            "knowledge_retrieval_results": [
+                {
+                    "source_name": "ai-platform-poc",
+                    "source_type": "document_source",
+                    "status": "matched",
+                    "summary": "生成AI基盤の 3 層構成を説明",
+                    "matched_paths": ["/knowledge/ai-platform-poc/README.md"],
+                    "evidence": ["Application層", "Tool層", "AIガバナンス層"],
+                },
+                {
+                    "source_name": "ai-chat-util",
+                    "source_type": "document_source",
+                    "status": "matched",
+                    "summary": "チャットユーティリティの機能一覧を説明",
+                    "matched_paths": ["/knowledge/ai-chat-util/README.md"],
+                    "evidence": ["機能一覧"],
+                },
+            ],
+            "knowledge_retrieval_adopted_sources": ["ai-platform-poc", "ai-chat-util"],
+        }
+
+
 class _FakeMissingLogsAnalyzerExecutor:
     @staticmethod
     def execute(_state: dict[str, object]) -> dict[str, object]:
@@ -177,6 +204,41 @@ class SupervisorAgentTests(unittest.TestCase):
 
             self.assertFalse(bool(result.get("escalation_required")))
             self.assertEqual(str(result.get("knowledge_retrieval_final_adopted_source") or ""), "ai-platform-poc")
+
+    def test_supervisor_prefers_explicitly_named_knowledge_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+            read_shared_memory = build_default_read_shared_memory_tool(config)
+            write_shared_memory = build_default_write_shared_memory_tool(config)
+            workspace_path = Path(tmpdir)
+
+            supervisor = SupervisorPhaseExecutor(
+                read_shared_memory_tool=read_shared_memory,
+                write_shared_memory_tool=write_shared_memory,
+                knowledge_retriever_executor=_FakeExplicitSourceKnowledgeRetrieverExecutor(),
+            )
+
+            result = supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-QUERY-001",
+                    "workspace_path": str(workspace_path),
+                    "execution_mode": "action",
+                    "workflow_kind": "specification_inquiry",
+                    "intake_category": "specification_inquiry",
+                    "intake_urgency": "medium",
+                    "raw_issue": "ai-chat-utilの機能一覧を出して",
+                }
+            )
+
+            self.assertEqual(str(result.get("knowledge_retrieval_final_adopted_source") or ""), "ai-chat-util")
 
     def test_supervisor_draft_review_records_compliance_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
