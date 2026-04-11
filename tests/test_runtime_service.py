@@ -20,6 +20,7 @@ from support_ope_agents.agents.objective_evaluation_agent import (
     StructuredCriterionEvaluation,
 )
 from support_ope_agents.agents.roles import (
+    APPROVAL_AGENT,
     BACK_SUPPORT_ESCALATION_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
     DRAFT_WRITER_AGENT,
@@ -28,6 +29,7 @@ from support_ope_agents.agents.roles import (
     LOG_ANALYZER_AGENT,
     OBJECTIVE_EVALUATION_AGENT,
     SUPERVISOR_AGENT,
+    TICKET_UPDATE_AGENT,
 )
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
@@ -281,7 +283,57 @@ class _FakeToolRegistry:
                     target="default-case-memory-writer",
                 ),
             ]
+        if role == APPROVAL_AGENT:
+            return [
+                ToolSpec(
+                    "record_approval_decision",
+                    "Record approval decision",
+                    self._record_approval_decision,
+                    provider="builtin",
+                    target="test-record-approval-decision",
+                )
+            ]
+        if role == TICKET_UPDATE_AGENT:
+            return [
+                ToolSpec(
+                    "prepare_ticket_update",
+                    "Prepare ticket update",
+                    self._prepare_ticket_update,
+                    provider="builtin",
+                    target="test-prepare-ticket-update",
+                ),
+                ToolSpec(
+                    "zendesk_reply",
+                    "Update Zendesk ticket",
+                    self._zendesk_reply,
+                    provider="builtin",
+                    target="test-zendesk-reply",
+                ),
+                ToolSpec(
+                    "redmine_update",
+                    "Update Redmine ticket",
+                    self._redmine_update,
+                    provider="builtin",
+                    target="test-redmine-update",
+                ),
+            ]
         return []
+
+    @staticmethod
+    def _record_approval_decision(*_: object, **__: object) -> str:
+        return "approval decision recorded"
+
+    @staticmethod
+    def _prepare_ticket_update(*_: object, **__: object) -> str:
+        return "ticket update payload prepared"
+
+    @staticmethod
+    def _zendesk_reply(*_: object, **__: object) -> str:
+        return "zendesk updated"
+
+    @staticmethod
+    def _redmine_update(*_: object, **__: object) -> str:
+        return "redmine updated"
 
     def _pii_mask(self, text: str, _: str) -> str:
         self.pii_mask_calls += 1
@@ -1061,7 +1113,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 updated["ticket_update_result"] = "updated"
                 return cast(CaseState, updated)
 
-        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, ticket_update_executor=None, supervisor_executor=None):
+        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, approval_executor=None, ticket_update_executor=None, supervisor_executor=None):
             captured["checkpointer"] = checkpointer
             return _FakeWorkflow()
 
@@ -1117,7 +1169,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 updated["status"] = "WAITING_APPROVAL"
                 return cast(CaseState, updated)
 
-        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, ticket_update_executor=None, supervisor_executor=None):
+        def _fake_build_case_workflow(*, checkpointer=None, intake_executor=None, approval_executor=None, ticket_update_executor=None, supervisor_executor=None):
             captured["checkpointer"] = checkpointer
             return _FakeWorkflow()
 

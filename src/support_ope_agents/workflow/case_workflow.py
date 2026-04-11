@@ -5,12 +5,11 @@ from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
+from support_ope_agents.agents.approval_agent import ApprovalAgent
 from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.ticket_update_agent import TicketUpdateAgent
 from support_ope_agents.agents.roles import (
-    APPROVAL_AGENT,
-    INTAKE_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
     SUPERVISOR_AGENT,
 )
@@ -21,16 +20,16 @@ def build_case_workflow(
     *,
     checkpointer: Any | None = None,
     intake_executor: IntakeAgent,
+    approval_executor: ApprovalAgent,
     ticket_update_executor: TicketUpdateAgent,
-    supervisor_executor: SupervisorPhaseExecutor | None = None,
+    supervisor_executor: SupervisorPhaseExecutor,
 ):
-    resolved_supervisor_executor = supervisor_executor or _NoOpSupervisorExecutor()
     graph = StateGraph(CaseState)
     graph.add_node("receive_case", _receive_case)
     graph.add_node("intake_subgraph", intake_executor.create_node())
-    graph.add_node("supervisor_subgraph", resolved_supervisor_executor.create_node())
-    graph.add_node("wait_for_customer_input", _wait_for_customer_input)
-    graph.add_node("wait_for_approval", _wait_for_approval)
+    graph.add_node("supervisor_subgraph", supervisor_executor.create_node())
+    graph.add_node("wait_for_customer_input", intake_executor.create_wait_node())
+    graph.add_node("wait_for_approval", approval_executor.create_node())
     graph.add_node("ticket_update_subgraph", ticket_update_executor.create_node())
 
     graph.add_edge(START, "receive_case")
@@ -105,128 +104,6 @@ def _receive_case(state: CaseState) -> CaseState:
     return cast(CaseState, update)
 
 
-class _NoOpSupervisorExecutor:
-    @staticmethod
-    def passthrough_state(state: CaseState) -> CaseState:
-        return cast(CaseState, dict(state))
-
-    @staticmethod
-    def route_after_investigation(state: CaseState) -> str:
-        if state.get("escalation_required"):
-            return "escalation_review"
-        return "draft_review"
-
-    @staticmethod
-    def route_entry(state: CaseState) -> str:
-        decision = str(state.get("approval_decision") or "").strip().lower()
-        if decision in {"rejected", "reject"}:
-            return "draft_review"
-        return "investigation"
-
-    def create_node(self):
-        graph = StateGraph(CaseState)
-        graph.add_node("supervisor_entry", self.passthrough_state)
-        graph.add_node("investigation", self.execute_investigation)
-        graph.add_node("draft_review", self.execute_draft_review)
-        graph.add_node("escalation_review", self.execute_escalation_review)
-        graph.add_edge(START, "supervisor_entry")
-        graph.add_conditional_edges(
-            "supervisor_entry",
-            self.route_entry,
-            {
-                "investigation": "investigation",
-                "draft_review": "draft_review",
-            },
-        )
-        graph.add_conditional_edges(
-            "investigation",
-            self.route_after_investigation,
-            {
-                "escalation_review": "escalation_review",
-                "draft_review": "draft_review",
-            },
-        )
-        graph.add_edge("draft_review", END)
-        graph.add_edge("escalation_review", END)
-        return graph.compile()
-
-    def execute_investigation(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        update["status"] = "INVESTIGATING"
-        update["current_agent"] = SUPERVISOR_AGENT
-        update.setdefault("intake_rework_required", False)
-        if update.get("execution_mode") == "action":
-            update["investigation_summary"] = str(update.get("investigation_summary") or "SuperVisorAgent 配下でログ解析とナレッジ探索を開始する準備が整っています。")
-        return cast(CaseState, update)
-
-    def execute_draft_review(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        update["status"] = "DRAFT_READY"
-        update["current_agent"] = SUPERVISOR_AGENT
-        if update.get("execution_mode") == "plan":
-            update["draft_response"] = "plan モードでは SuperVisorAgent がドラフト作成とレビュー方針のみを返却し、action モードで実際の生成へ進みます。"
-        else:
-            update.setdefault("draft_response", "action モードで SuperVisorAgent 配下のドラフト作成とレビューを開始する準備が整っています。")
-        return cast(CaseState, update)
-
-    def execute_escalation_review(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        update["status"] = "DRAFT_READY"
-        update["current_agent"] = BACK_SUPPORT_INQUIRY_WRITER_AGENT
-        update.setdefault("escalation_required", True)
-        update.setdefault("escalation_reason", "調査結果だけでは確実な回答が困難")
-        update.setdefault("escalation_summary", "バックサポート向けエスカレーション要約を準備しました。")
-        update.setdefault(
-            "escalation_draft",
-            "追加ログと再現条件を確認するため、バックサポート向け問い合わせ文案を準備します。",
-        )
-        update["draft_response"] = str(update.get("escalation_draft") or "")
-        return cast(CaseState, update)
-
-
-def _investigation(state: CaseState) -> CaseState:
-    update = dict(state)
-    update["status"] = "INVESTIGATING"
-    update["current_agent"] = SUPERVISOR_AGENT
-    if update.get("execution_mode") == "action":
-        update["investigation_summary"] = str(update.get("investigation_summary") or "SuperVisorAgent 配下でログ解析とナレッジ探索を開始する準備が整っています。")
-    return cast(CaseState, update)
-
-
-def _draft_review(state: CaseState) -> CaseState:
-    update = dict(state)
-    update["status"] = "DRAFT_READY"
-    update["current_agent"] = SUPERVISOR_AGENT
-    if update.get("execution_mode") == "plan":
-        update["draft_response"] = "plan モードでは SuperVisorAgent がドラフト作成とレビュー方針のみを返却し、action モードで実際の生成へ進みます。"
-    else:
-        update.setdefault("draft_response", "action モードで SuperVisorAgent 配下のドラフト作成とレビューを開始する準備が整っています。")
-    return cast(CaseState, update)
-
-
-def _wait_for_approval(state: CaseState) -> CaseState:
-    update = dict(state)
-    update["status"] = "WAITING_APPROVAL"
-    update["current_agent"] = APPROVAL_AGENT
-    update.setdefault("approval_decision", "pending")
-    if update.get("execution_mode") == "plan":
-        update["next_action"] = "この計画で action を実行するか確認してください。"
-    elif update.get("escalation_required"):
-        update["next_action"] = "エスカレーション問い合わせ文案を確認し、送付可否を承認してください。"
-    else:
-        update["next_action"] = "回答ドラフトを確認し、チケット更新を承認してください。"
-    return cast(CaseState, update)
-
-
-def _wait_for_customer_input(state: CaseState) -> CaseState:
-    update = dict(state)
-    update["status"] = "WAITING_CUSTOMER_INPUT"
-    update["current_agent"] = INTAKE_AGENT
-    if not update.get("next_action"):
-        update["next_action"] = "IntakeAgent の質問に回答し、追加情報を提供してください。"
-    return cast(CaseState, update)
-
-
 def _route_after_approval(state: CaseState) -> str:
     decision = str(state.get("approval_decision", "pending")).lower()
     if decision in {"approved", "approve"}:
@@ -245,4 +122,4 @@ def _route_after_intake(state: CaseState) -> str:
 
 
 def _route_after_investigation(state: CaseState) -> str:
-    return SupervisorPhaseExecutor.route_after_investigation(state)
+    return SupervisorPhaseExecutor.route_after_investigation(cast(dict[str, object], state))

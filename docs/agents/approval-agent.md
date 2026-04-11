@@ -61,7 +61,7 @@ ApprovalAgent が参照する使用ツール詳細は次を参照する。
 
 ## 9. 実装方針
 
-- ApprovalAgent は DeepAgent ではなく workflow ノードとして実装する
+- ApprovalAgent は DeepAgent ではなく `create_node()` を持つ軽量 agent として実装し、親 workflow では `wait_for_approval` という node 名を維持して注入する
 - 外部から見える継続識別子は trace_id に統一する
 - 差戻しや再調査時の指示は state と shared/progress.md に残して再開可能にする
 - record_approval_decision の有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools.record_approval_decision で管理する

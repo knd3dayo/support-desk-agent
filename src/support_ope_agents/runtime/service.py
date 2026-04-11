@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from support_ope_agents.agents.approval_agent import ApprovalAgent
 from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
 from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
 from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
@@ -23,6 +24,7 @@ from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
 from support_ope_agents.agents.roles import COMPLIANCE_REVIEWER_AGENT
 from support_ope_agents.agents.roles import DRAFT_WRITER_AGENT
+from support_ope_agents.agents.roles import APPROVAL_AGENT
 from support_ope_agents.agents.roles import INTAKE_AGENT
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT
@@ -102,6 +104,7 @@ class RuntimeService:
         compliance_reviewer_tools = {
             tool.name: tool.handler for tool in context.tool_registry.get_tools(COMPLIANCE_REVIEWER_AGENT)
         }
+        approval_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(APPROVAL_AGENT)}
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
         ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
         self._intake_executor = IntakeAgent(
@@ -113,10 +116,13 @@ class RuntimeService:
             write_shared_memory_tool=intake_tools["write_shared_memory"],
             write_working_memory_tool=intake_tools.get("write_working_memory"),
         )
+        self._approval_executor = ApprovalAgent(
+            record_approval_decision_tool=approval_tools["record_approval_decision"],
+        )
         self._ticket_update_executor = TicketUpdateAgent(
-            prepare_ticket_update_tool=ticket_update_tools.get("prepare_ticket_update") or self._noop_ticket_update_tool,
-            zendesk_reply_tool=ticket_update_tools.get("zendesk_reply") or self._noop_ticket_update_tool,
-            redmine_update_tool=ticket_update_tools.get("redmine_update") or self._noop_ticket_update_tool,
+            prepare_ticket_update_tool=ticket_update_tools["prepare_ticket_update"],
+            zendesk_reply_tool=ticket_update_tools["zendesk_reply"],
+            redmine_update_tool=ticket_update_tools["redmine_update"],
         )
         self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
             detect_log_format_tool=log_analyzer_tools["detect_log_format"],
@@ -158,10 +164,6 @@ class RuntimeService:
             escalation_settings=context.config.agents.BackSupportEscalationAgent.escalation,
             compliance_max_review_loops=context.config.agents.ComplianceReviewerAgent.max_review_loops,
         )
-
-    @staticmethod
-    def _noop_ticket_update_tool(*args: object, **kwargs: object) -> str:
-        return ""
 
     @property
     def context(self) -> RuntimeContext:
@@ -770,6 +772,7 @@ class RuntimeService:
     def print_workflow_nodes(self) -> list[str]:
         graph = build_case_workflow(
             intake_executor=self._intake_executor,
+            approval_executor=self._approval_executor,
             ticket_update_executor=self._ticket_update_executor,
             supervisor_executor=self._supervisor_executor,
         ).get_graph()
@@ -898,6 +901,7 @@ class RuntimeService:
             graph = build_case_workflow(
                 checkpointer=checkpointer,
                 intake_executor=self._intake_executor,
+                approval_executor=self._approval_executor,
                 ticket_update_executor=self._ticket_update_executor,
                 supervisor_executor=self._supervisor_executor,
             )
@@ -916,6 +920,7 @@ class RuntimeService:
             graph = build_case_workflow(
                 checkpointer=checkpointer,
                 intake_executor=self._intake_executor,
+                approval_executor=self._approval_executor,
                 ticket_update_executor=self._ticket_update_executor,
                 supervisor_executor=self._supervisor_executor,
             )

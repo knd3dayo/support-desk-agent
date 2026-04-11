@@ -513,6 +513,13 @@ class IntakeAgent:
         update = self.quality_gate(update)
         return self.finalize_state(update)
 
+    def wait_for_customer_input(self, state: CaseState) -> CaseState:
+        update = dict(state)
+        update["status"] = "WAITING_CUSTOMER_INPUT"
+        update["current_agent"] = INTAKE_AGENT
+        if not update.get("next_action"):
+            update["next_action"] = "IntakeAgent の質問に回答し、追加情報を提供してください。"
+        return cast("CaseState", update)
 
     def create_node(self):
         from support_ope_agents.workflow.state import CaseState
@@ -531,6 +538,15 @@ class IntakeAgent:
         graph.add_edge("intake_classify", "intake_quality_gate")
         graph.add_edge("intake_quality_gate", "intake_finalize")
         graph.add_edge("intake_finalize", END)
+        return graph.compile()
+
+    def create_wait_node(self):
+        from support_ope_agents.workflow.state import CaseState
+
+        graph = StateGraph(CaseState)
+        graph.add_node("wait_for_customer_input", self.wait_for_customer_input)
+        graph.add_edge(START, "wait_for_customer_input")
+        graph.add_edge("wait_for_customer_input", END)
         return graph.compile()
 
 
