@@ -313,6 +313,19 @@ def _render_control_catalog_section(control_catalog: dict[str, object], runtime_
         lines.append(f"  condition: {condition}")
         if effect:
             lines.append(f"  effect: {effect}")
+        config_key = str(item.get("config_key") or "").strip()
+        if config_key:
+            lines.append(f"  config_key: {config_key}")
+        docs_refs = item.get("docs_refs")
+        if isinstance(docs_refs, list):
+            normalized_docs = [str(ref).strip() for ref in docs_refs if str(ref).strip()]
+            if normalized_docs:
+                lines.append(f"  docs_refs: {', '.join(normalized_docs)}")
+        code_refs = item.get("code_refs")
+        if isinstance(code_refs, list):
+            normalized_code = [str(ref).strip() for ref in code_refs if str(ref).strip()]
+            if normalized_code:
+                lines.append(f"  code_refs: {', '.join(normalized_code)}")
     return lines or ["- なし"]
 
 

@@ -235,6 +235,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertIn("sequenceDiagram", content)
         self.assertIn("## 制御一覧", content)
         self.assertIn("[defined] workflow.approval_node", content)
+        self.assertIn("config_key: workflow.approval_node", content)
 
     def test_control_catalog_endpoint_returns_summary(self) -> None:
         response = self.client.get("/control-catalog")
@@ -242,6 +243,10 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertGreaterEqual(int(payload["summary"]["control_point_count"]), 8)
+        first_point = payload["control_points"][0]
+        self.assertEqual(first_point["config_key"], "workflow.approval_node")
+        self.assertIn("docs/configuration.md", first_point["docs_refs"])
+        self.assertIn("src/support_ope_agents/config/models.py", first_point["code_refs"])
 
     def test_runtime_audit_endpoint_returns_trace_audit(self) -> None:
         trace_id = "TRACE-API-AUDIT"
