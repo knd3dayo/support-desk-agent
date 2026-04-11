@@ -24,12 +24,11 @@ def build_case_workflow(
     ticket_update_executor: TicketUpdateAgent,
     supervisor_executor: SupervisorPhaseExecutor | None = None,
 ):
+    resolved_supervisor_executor = supervisor_executor or _NoOpSupervisorExecutor()
     graph = StateGraph(CaseState)
     graph.add_node("receive_case", _receive_case)
     graph.add_node("intake_subgraph", intake_executor.create_node())
-    graph.add_node("investigation", _build_investigation_node(supervisor_executor))
-    graph.add_node("draft_review", _build_draft_review_node(supervisor_executor))
-    graph.add_node("escalation_review", _build_escalation_review_node(supervisor_executor))
+    graph.add_node("supervisor_subgraph", resolved_supervisor_executor.create_node())
     graph.add_node("wait_for_customer_input", _wait_for_customer_input)
     graph.add_node("wait_for_approval", _wait_for_approval)
     graph.add_node("ticket_update_subgraph", ticket_update_executor.create_node())
@@ -40,27 +39,18 @@ def build_case_workflow(
         "intake_subgraph",
         _route_after_intake,
         {
-            "investigation": "investigation",
+            "investigation": "supervisor_subgraph",
             "wait_for_customer_input": "wait_for_customer_input",
         },
     )
-    graph.add_conditional_edges(
-        "investigation",
-        _route_after_investigation,
-        {
-            "escalation_review": "escalation_review",
-            "draft_review": "draft_review",
-        },
-    )
-    graph.add_edge("escalation_review", "wait_for_approval")
-    graph.add_edge("draft_review", "wait_for_approval")
+    graph.add_edge("supervisor_subgraph", "wait_for_approval")
     graph.add_conditional_edges(
         "wait_for_approval",
         _route_after_approval,
         {
             "ticket_update_prepare": "ticket_update_subgraph",
-            "draft_review": "draft_review",
-            "investigation": "investigation",
+            "draft_review": "supervisor_subgraph",
+            "investigation": "supervisor_subgraph",
             "__end__": END,
         },
     )
@@ -115,34 +105,51 @@ def _receive_case(state: CaseState) -> CaseState:
     return cast(CaseState, update)
 
 
-def _build_investigation_node(supervisor_executor: SupervisorPhaseExecutor | None):
-    executor = supervisor_executor or _NoOpSupervisorExecutor()
-
-    def _investigation(state: CaseState) -> CaseState:
-        return cast(CaseState, executor.execute_investigation(state))
-
-    return _investigation
-
-
-def _build_draft_review_node(supervisor_executor: SupervisorPhaseExecutor | None):
-    executor = supervisor_executor or _NoOpSupervisorExecutor()
-
-    def _draft_review(state: CaseState) -> CaseState:
-        return cast(CaseState, executor.execute_draft_review(state))
-
-    return _draft_review
-
-
-def _build_escalation_review_node(supervisor_executor: SupervisorPhaseExecutor | None):
-    executor = supervisor_executor or _NoOpSupervisorExecutor()
-
-    def _escalation_review(state: CaseState) -> CaseState:
-        return cast(CaseState, executor.execute_escalation_review(state))
-
-    return _escalation_review
-
-
 class _NoOpSupervisorExecutor:
+    @staticmethod
+    def passthrough_state(state: CaseState) -> CaseState:
+        return cast(CaseState, dict(state))
+
+    @staticmethod
+    def route_after_investigation(state: CaseState) -> str:
+        if state.get("escalation_required"):
+            return "escalation_review"
+        return "draft_review"
+
+    @staticmethod
+    def route_entry(state: CaseState) -> str:
+        decision = str(state.get("approval_decision") or "").strip().lower()
+        if decision in {"rejected", "reject"}:
+            return "draft_review"
+        return "investigation"
+
+    def create_node(self):
+        graph = StateGraph(CaseState)
+        graph.add_node("supervisor_entry", self.passthrough_state)
+        graph.add_node("investigation", self.execute_investigation)
+        graph.add_node("draft_review", self.execute_draft_review)
+        graph.add_node("escalation_review", self.execute_escalation_review)
+        graph.add_edge(START, "supervisor_entry")
+        graph.add_conditional_edges(
+            "supervisor_entry",
+            self.route_entry,
+            {
+                "investigation": "investigation",
+                "draft_review": "draft_review",
+            },
+        )
+        graph.add_conditional_edges(
+            "investigation",
+            self.route_after_investigation,
+            {
+                "escalation_review": "escalation_review",
+                "draft_review": "draft_review",
+            },
+        )
+        graph.add_edge("draft_review", END)
+        graph.add_edge("escalation_review", END)
+        return graph.compile()
+
     def execute_investigation(self, state: CaseState) -> CaseState:
         update = dict(state)
         update["status"] = "INVESTIGATING"
@@ -238,6 +245,4 @@ def _route_after_intake(state: CaseState) -> str:
 
 
 def _route_after_investigation(state: CaseState) -> str:
-    if state.get("escalation_required"):
-        return "escalation_review"
-    return "draft_review"
+    return SupervisorPhaseExecutor.route_after_investigation(state)

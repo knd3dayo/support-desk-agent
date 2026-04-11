@@ -24,6 +24,7 @@ def build_control_catalog(
         "intake_hydrate_tickets",
         "intake_classify",
         "intake_finalize",
+        "supervisor_subgraph",
         "investigation",
         "draft_review",
         "escalation_review",
@@ -50,11 +51,12 @@ def build_control_catalog(
         },
         {
             "from": "intake_subgraph",
-            "to": "investigation",
+            "to": "supervisor_subgraph",
             "type": "conditional",
             "condition": "otherwise",
             "control_point_id": "workflow.route_after_intake.investigation",
         },
+        {"from": "supervisor_subgraph", "to": "wait_for_approval", "type": "direct"},
         {
             "from": "investigation",
             "to": "escalation_review",
@@ -80,14 +82,14 @@ def build_control_catalog(
         },
         {
             "from": "wait_for_approval",
-            "to": "draft_review",
+            "to": "supervisor_subgraph",
             "type": "conditional",
             "condition": "state.approval_decision in {'rejected', 'reject'}",
             "control_point_id": "workflow.route_after_approval.rejected",
         },
         {
             "from": "wait_for_approval",
-            "to": "investigation",
+            "to": "supervisor_subgraph",
             "type": "conditional",
             "condition": "state.approval_decision == 'reinvestigate'",
             "control_point_id": "workflow.route_after_approval.reinvestigate",

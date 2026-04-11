@@ -36,6 +36,53 @@ class SupervisorPhaseExecutor:
     escalation_settings: EscalationSettings = field(default_factory=EscalationSettings)
     compliance_max_review_loops: int = 3
 
+    @staticmethod
+    def passthrough_state(state: dict[str, object]) -> dict[str, object]:
+        return dict(state)
+
+    @staticmethod
+    def route_after_investigation(state: dict[str, object]) -> str:
+        if state.get("escalation_required"):
+            return "escalation_review"
+        return "draft_review"
+
+    @staticmethod
+    def route_entry(state: dict[str, object]) -> str:
+        decision = str(state.get("approval_decision") or "").strip().lower()
+        if decision in {"rejected", "reject"}:
+            return "draft_review"
+        return "investigation"
+
+    def create_node(self):
+        from langgraph.graph import END, START, StateGraph
+        from support_ope_agents.workflow.state import CaseState
+
+        graph = StateGraph(CaseState)
+        graph.add_node("supervisor_entry", self.passthrough_state)
+        graph.add_node("investigation", self.execute_investigation)
+        graph.add_node("draft_review", self.execute_draft_review)
+        graph.add_node("escalation_review", self.execute_escalation_review)
+        graph.add_edge(START, "supervisor_entry")
+        graph.add_conditional_edges(
+            "supervisor_entry",
+            self.route_entry,
+            {
+                "investigation": "investigation",
+                "draft_review": "draft_review",
+            },
+        )
+        graph.add_conditional_edges(
+            "investigation",
+            self.route_after_investigation,
+            {
+                "escalation_review": "escalation_review",
+                "draft_review": "draft_review",
+            },
+        )
+        graph.add_edge("draft_review", END)
+        graph.add_edge("escalation_review", END)
+        return graph.compile()
+
     def _invoke_tool(self, tool: Callable[..., Any], *args: object) -> str:
         result = tool(*args)
         if inspect.isawaitable(result):
