@@ -19,7 +19,9 @@
 
 ## 5. 既定 builtin の挙動
 
-- agents.ComplianceReviewerAgent.document_sources を検索し、社内規定、政府ガイドライン、法令文書の概要候補を返す
+- agents.ComplianceReviewerAgent.document_sources を DeepAgents backend 経由で検索し、社内規定、政府ガイドライン、法令文書の根拠候補を返す
+- source ごとの `results` には raw snippet ベースの `summary`、`matched_paths`、`evidence` を含める
 - agents.ComplianceReviewerAgent.notice.required が true の場合、ドラフトに required_phrases のいずれかが含まれているか検査する
+- agents.ComplianceReviewerAgent.notice.required が false の場合、注意文不足だけでは差戻しにしない
 - 断定表現や過剰な約束を簡易検出し、revision_required の論点へ加える
 - 結果は JSON で返し、status、issues、results、adopted_sources、notice_check を含む

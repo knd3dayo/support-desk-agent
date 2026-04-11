@@ -47,7 +47,9 @@ support_ope_agents:
 - 各 source は `/knowledge/<source_name>/` に route する
 - default backend は `StateBackend` とし、knowledge 以外の一時ファイルは state 側で扱う
 
-現時点の support-ope-agents では、ignore_patterns は主に既定の `search_documents` 実装で使う。DeepAgents の FilesystemBackend 自体には `.gitignore` を自動解釈する共通設定はないため、support-ope-agents 側で探索候補を絞る。
+現時点の support-ope-agents では、ignore_patterns は既定の `search_documents` / `check_policy` 実装で使う。DeepAgents の FilesystemBackend 自体には `.gitignore` を自動解釈する共通設定はないため、support-ope-agents 側で探索候補を絞る。
+
+検索結果 payload の組み立ては各 caller が担当する。共通化するのは backend mount、ignore pattern 適用、候補 Markdown path の抽出までに留め、`summary` には生成要約ではなく該当 Markdown からの raw snippet を入れる。
 
 例:
 
@@ -75,7 +77,7 @@ ComplianceReviewerAgent でも同様に `CompositeBackend` を使い、各 sourc
 - required_phrases: いずれか 1 つ以上を含めば通過と判定する文言候補
 - max_review_loops: DraftWriterAgent への再生成を何回まで自動で繰り返すか。既定値は 3
 
-注意文設定は ComplianceReviewerAgent 側を正本とし、DraftWriterAgent はその設定を参照して初回ドラフト生成時から required_phrases を入れる。DraftWriterAgent 側へ同等設定は重複定義しない。
+注意文設定は ComplianceReviewerAgent 側を正本とし、DraftWriterAgent はその設定を参照する。`required: false` が既定であり、その場合は注意文不足だけでは差戻しにしない。DraftWriterAgent 側へ同等設定は重複定義しない。
 
 例:
 
@@ -298,12 +300,14 @@ KnowledgeRetrieverAgent は source ごとに次のような結果を返す方針
 
 - source_name
 - source_description
-- summary
+- summary: 生成要約ではなく raw snippet
 - matched_paths
 - evidence
 
+feature list 系の問い合わせでは、`feature_bullets` も返し、DraftWriterAgent がそのまま箇条書き回答へ変換できるようにする。
+
 Supervisor はこの結果から採用 source を選び、shared/context.md に採用した source 名を残す。
-また、最終採用した 1 件は CaseState の `knowledge_retrieval_final_adopted_source` に保持する。
+また、最終採用した 1 件は CaseState の `knowledge_retrieval_final_adopted_source` に保持する。working memory には source ごとの raw result も追記する。
 
 ComplianceReviewerAgent も同様に source 単位の結果を返し、`compliance_review_adopted_sources` に採用 source を保持する。
 

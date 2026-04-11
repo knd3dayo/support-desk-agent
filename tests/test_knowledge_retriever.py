@@ -198,8 +198,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertTrue(matched_paths)
         self.assertIn("/knowledge/ai-platform-poc/README.md", matched_paths)
         self.assertTrue(evidence)
-        self.assertIn("Application層", summary)
-        self.assertIn("AIガバナンス層", summary)
+        self.assertIn("業務適用を見据えた生成AI基盤の PoC リポジトリです", summary)
         retrieval_summary = cast(str, result["knowledge_retrieval_summary"])
         self.assertIn("検索しました", retrieval_summary)
         self.assertIn("生成AI基盤のアーキテクチャの概要を返してください", retrieval_summary)
@@ -287,7 +286,80 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertEqual(document_results[0]["source_name"], "ai-chat-util")
         self.assertEqual(cast(list[str], result["knowledge_retrieval_adopted_sources"])[0], "ai-chat-util")
         retrieval_summary = cast(str, result["knowledge_retrieval_summary"])
-        self.assertIn("代表的な根拠: ai-chat-util は利用可能な機能と API をまとめた資料です。", retrieval_summary)
+        self.assertIn("代表的な抜粋: ai-chat-util は利用可能な機能と API をまとめた資料です。", retrieval_summary)
+
+    def test_extracts_feature_bullets_for_feature_list_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            readme = root / "README.md"
+            readme.write_text(
+                "# sample\n\n概要です。\n\n## できること\n\n- テキストチャットを LLM に送る\n- Excel 入力でバッチ処理を回す\n- MCP サーバーとしてツール提供する\n",
+                encoding="utf-8",
+            )
+
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "sample", "description": "sample docs", "path": str(root)}]}},
+                    "interfaces": {},
+                }
+            )
+            executor = KnowledgeRetrieverPhaseExecutor(
+                search_documents_tool=build_default_search_documents_tool(config),
+                external_ticket_tool=lambda: "external_ticket tool is not configured.",
+                internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
+            )
+
+            result = executor.execute({"raw_issue": "sampleの機能一覧を出して"})
+
+            source_result = next(
+                item for item in cast(list[dict[str, object]], result["knowledge_retrieval_results"]) if item.get("source_name") == "sample"
+            )
+            self.assertEqual(
+                cast(list[str], source_result["feature_bullets"]),
+                ["テキストチャットを LLM に送る", "Excel 入力でバッチ処理を回す", "MCP サーバーとしてツール提供する"],
+            )
+
+    def test_writes_raw_backend_like_results_to_working_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir)
+            source_root = workspace_path / "docs"
+            source_root.mkdir()
+            (source_root / "README.md").write_text(
+                "# sample\n\n概要です。\n\n## できること\n\n- テキストチャットを LLM に送る\n",
+                encoding="utf-8",
+            )
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "sample", "description": "sample docs", "path": str(source_root)}]}},
+                    "interfaces": {},
+                }
+            )
+            executor = KnowledgeRetrieverPhaseExecutor(
+                search_documents_tool=build_default_search_documents_tool(config),
+                external_ticket_tool=lambda: "external_ticket tool is not configured.",
+                internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
+                write_working_memory_tool=ToolRegistry(config).get_tools("KnowledgeRetrieverAgent")[-1].handler,
+            )
+
+            executor.execute(
+                {
+                    "case_id": "CASE-TEST-WM-001",
+                    "workspace_path": str(workspace_path),
+                    "raw_issue": "sampleの機能一覧を出して",
+                }
+            )
+
+            working_path = workspace_path / ".memory" / "agents" / "KnowledgeRetrieverAgent" / "working.md"
+            content = working_path.read_text(encoding="utf-8")
+            self.assertIn("## Result: sample", content)
+            self.assertIn("Raw result:", content)
+            self.assertIn('"source_name": "sample"', content)
 
 
 if __name__ == "__main__":

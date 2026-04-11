@@ -43,7 +43,7 @@ DraftWriterAgent が参照する使用ツール詳細は次を参照する。
 1. 材料整理
    調査結果から顧客に伝えるべき事実、未確定事項、次アクションを仕分ける。
 2. ドラフト生成
-   事実を過不足なく含みつつ、断定過剰や説明不足を避けた文面を作る。
+   事実を過不足なく含みつつ、断定過剰や説明不足を避けた文面を作る。仕様問い合わせでは最終採用 source と検索結果を優先し、feature_bullets があれば箇条書きで返す。
 3. 差戻し対応
    ComplianceReviewerAgent や Supervisor の指摘を受けて修正する。
 4. 再生成ループ対応
@@ -64,7 +64,9 @@ DraftWriterAgent が参照する使用ツール詳細は次を参照する。
 - DraftWriterAgent は最終回答生成に近い責務を持つため、Supervisor の review_focus を強く反映する
 - コンプライアンス差戻し前提で、単発生成ではなく再生成しやすい入力構造を保つ
 - 注意文設定は DraftWriterAgent 側へ重複定義せず、agents.ComplianceReviewerAgent.notice.required / required_phrases を参照する
-- notice.required が true の場合は required_phrases のいずれかを含むドラフトを初回生成時から優先生成する
+- notice.required が true の場合は required_phrases のいずれかを含むドラフトを差戻し時または初回生成時から優先生成する
+- 根拠資料を顧客へ示す場合は Markdown リンク形式を使う
+- internal agent 名、共有メモリ語彙、review comment などの内部表現は顧客向けドラフトへ混入させない
 
 ## 10. 未決事項
 

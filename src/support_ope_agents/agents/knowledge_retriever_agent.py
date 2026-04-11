@@ -67,6 +67,7 @@ class KnowledgeRetrieverPhaseExecutor:
                     "route_prefix": str(item.get("route_prefix") or ""),
                     "matched_paths": list(item.get("matched_paths") or []),
                     "evidence": list(item.get("evidence") or []),
+                    "feature_bullets": list(item.get("feature_bullets") or []),
                 }
             )
         return message, normalized
@@ -132,7 +133,7 @@ class KnowledgeRetrieverPhaseExecutor:
             summary += f" 一致したソース数: {len(matched_results)}、参照候補ファイル数: {matched_path_count}。"
             first_summary = str(matched_results[0].get("summary") or "").strip()
             if first_summary:
-                summary += f" 代表的な根拠: {first_summary}"
+                summary += f" 代表的な抜粋: {first_summary}"
         if adopted_sources:
             summary += f" 採用した根拠ソース: {', '.join(adopted_sources)}。"
         return summary.strip()
@@ -153,6 +154,21 @@ class KnowledgeRetrieverPhaseExecutor:
     @classmethod
     def _prioritize_document_results(cls, raw_issue: str, document_results: list[dict[str, object]]) -> list[dict[str, object]]:
         return sorted(document_results, key=lambda item: cls._rank_document_result(raw_issue, item), reverse=True)
+
+    @staticmethod
+    def _build_working_memory_sections(results: list[dict[str, object]]) -> list[dict[str, object]]:
+        sections: list[dict[str, object]] = []
+        for item in results:
+            source_name = str(item.get("source_name") or "unknown").strip() or "unknown"
+            sections.append(
+                {
+                    "title": f"Result: {source_name}",
+                    "bullets": [
+                        f"Raw result: {json.dumps(item, ensure_ascii=False)}",
+                    ],
+                }
+            )
+        return sections
 
     def execute(self, state: Mapping[str, object]) -> dict[str, object]:
         raw_issue = str(state.get("raw_issue") or "")
@@ -219,6 +235,7 @@ class KnowledgeRetrieverPhaseExecutor:
                     f"Summary: {summary}",
                     f"Adopted sources: {', '.join(adopted_sources) if adopted_sources else 'none'}",
                 ],
+                "sections": self._build_working_memory_sections(results),
             }
             self._invoke_tool(self.write_working_memory_tool, case_id, workspace_path, payload, "append")
 

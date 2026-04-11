@@ -10,15 +10,12 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.tools import ToolRegistry
+from support_ope_agents.tools.document_source_backend import build_document_source_backend, describe_document_source_backend
 
 try:
     from deepagents import create_deep_agent
-    from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 except Exception:  # pragma: no cover
     create_deep_agent = None
-    CompositeBackend = None
-    FilesystemBackend = None
-    StateBackend = None
 
 
 class DeepAgentFactory:
@@ -96,27 +93,15 @@ class DeepAgentFactory:
     def _build_backend_for_role(self, role: str) -> Any | None:
         if role not in {KNOWLEDGE_RETRIEVER_AGENT, COMPLIANCE_REVIEWER_AGENT}:
             return None
-        if CompositeBackend is None or FilesystemBackend is None or StateBackend is None:
-            return None
-
-        routes: dict[str, Any] = {}
         route_base = "knowledge" if role == KNOWLEDGE_RETRIEVER_AGENT else "policy"
         settings = (
             self._config.agents.KnowledgeRetrieverAgent
             if role == KNOWLEDGE_RETRIEVER_AGENT
             else self._config.agents.ComplianceReviewerAgent
         )
-        for source in settings.document_sources:
-            source_path = Path(source.path).expanduser().resolve()
-            route_prefix = f"/{route_base}/{source.name}/"
-            routes[route_prefix] = FilesystemBackend(root_dir=str(source_path), virtual_mode=True)
-
-        if not routes:
-            return None
-
-        return CompositeBackend(
-            default=StateBackend(),
-            routes=routes,
+        return build_document_source_backend(
+            document_sources=settings.document_sources,
+            route_base=route_base,
         )
 
     def _describe_backend_for_role(self, role: str) -> dict[str, Any] | None:
@@ -128,16 +113,7 @@ class DeepAgentFactory:
             if role == KNOWLEDGE_RETRIEVER_AGENT
             else self._config.agents.ComplianceReviewerAgent.document_sources
         )
-        if not document_sources:
-            return None
-        return {
-            "type": "CompositeBackend",
-            "default": "StateBackend",
-            "routes": {
-                f"/{route_base}/{source.name}/": str(Path(source.path).expanduser().resolve())
-                for source in document_sources
-            },
-        }
+        return describe_document_source_backend(document_sources=document_sources, route_base=route_base)
 
     def build_default_definitions(self) -> list[AgentDefinition]:
         return build_default_agent_definitions()

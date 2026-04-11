@@ -126,6 +126,11 @@ class DraftWriterPhaseExecutor:
         return "、".join(deduplicated[:3])
 
     @staticmethod
+    def _is_feature_list_request(state: Mapping[str, object]) -> bool:
+        raw_issue = str(state.get("raw_issue") or "").lower()
+        return any(token in raw_issue for token in ["機能", "一覧", "できること", "features", "feature"])
+
+    @staticmethod
     def _select_primary_knowledge_result(state: Mapping[str, object]) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
         raw_results = state.get("knowledge_retrieval_results")
         if not isinstance(raw_results, list):
@@ -150,11 +155,16 @@ class DraftWriterPhaseExecutor:
         source_name = str(primary_result.get("source_name") or "対象資料").strip()
         summary = str(primary_result.get("summary") or "").strip()
         summary = self._sanitize_customer_summary(summary)
-        links = self._format_markdown_links(document_results)
+        feature_bullets = [str(item).strip() for item in list(primary_result.get("feature_bullets") or []) if str(item).strip()]
+        is_feature_list_request = self._is_feature_list_request(state)
+        links = self._format_markdown_links([primary_result] if feature_bullets and is_feature_list_request else document_results)
 
         lines = ["お問い合わせありがとうございます。"]
         lines.append(f"{source_name} について、現時点で確認できた内容は以下のとおりです。")
-        if summary:
+        if feature_bullets and is_feature_list_request:
+            lines.append("主な機能:")
+            lines.extend(f"- {bullet}" for bullet in feature_bullets)
+        elif summary:
             lines.append(summary)
         if links:
             lines.append(f"根拠資料: {links}")

@@ -79,15 +79,24 @@ class DraftWriterTests(unittest.TestCase):
                             "status": "matched",
                             "summary": "ai_chat_util は、生成AIを使ったチャット、文書解析、バッチ処理、MCP 連携をまとめて扱うためのユーティリティです。",
                             "matched_paths": ["/knowledge/ai-chat-util/README.md"],
+                            "feature_bullets": [
+                                "テキストチャットを LLM に送る",
+                                "Excel 入力でバッチ処理を回す",
+                                "画像、PDF、Office 文書を解析する",
+                            ],
                         }
                     ],
+                    "raw_issue": "ai-chat-utilの機能一覧を出して",
                     "investigation_summary": "SuperVisorAgent は共有メモリを参照し、KnowledgeRetrieverAgent を使って調査を進めます。",
                 }
             )
 
             draft = str(result.get("draft_response") or "")
             self.assertIn("ai-chat-util について、現時点で確認できた内容は以下のとおりです。", draft)
+            self.assertIn("主な機能:", draft)
+            self.assertIn("- テキストチャットを LLM に送る", draft)
             self.assertIn("[ai-chat-util](/knowledge/ai-chat-util/README.md)", draft)
+            self.assertNotIn("[ai-platform-poc]", draft)
             self.assertNotIn("SuperVisorAgent", draft)
             self.assertNotIn("KnowledgeRetrieverAgent", draft)
 

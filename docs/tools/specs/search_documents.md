@@ -17,3 +17,11 @@
 ## 4. 実装状況
 
 - 実装済み
+
+## 5. 既定 builtin の挙動
+
+- DeepAgents backend の `/knowledge/<source_name>/` を `glob` / `read` / `grep` して候補 Markdown を探索する
+- ignore_patterns と ignore_patterns_file を適用して探索対象を絞る
+- source ごとに `source_name`、`summary`、`matched_paths`、`evidence`、`feature_bullets` を JSON で返す
+- `summary` には生成要約ではなく、該当 Markdown から抽出した raw snippet を入れる
+- feature list 系の問い合わせでは `feature_bullets` を優先的に返す
