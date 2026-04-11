@@ -117,6 +117,7 @@ class RuntimeService:
             search_documents_tool=knowledge_retriever_tools["search_documents"],
             external_ticket_tool=knowledge_retriever_tools["external_ticket"],
             internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
+            write_shared_memory_tool=knowledge_retriever_tools.get("write_shared_memory"),
             write_working_memory_tool=knowledge_retriever_tools["write_working_memory"],
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(

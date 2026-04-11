@@ -29,6 +29,30 @@ DEFAULT_DOCUMENT_IGNORE_PATTERNS = [
     "**/dist/**",
 ]
 
+DEFAULT_KNOWLEDGE_SEARCH_KEYWORDS = [
+    "アーキテクチャ",
+    "生成AI",
+    "Application層",
+    "Tool層",
+    "AIガバナンス層",
+]
+
+DEFAULT_POLICY_SEARCH_KEYWORDS = [
+    "規定",
+    "ガイドライン",
+    "法令",
+    "注意",
+    "免責",
+    "生成AI",
+]
+
+DEFAULT_FEATURE_HEADING_KEYWORDS = [
+    "できること",
+    "主な機能",
+    "よく使う入口",
+    "features",
+]
+
 
 class StrictConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -153,12 +177,32 @@ class KnowledgeRetrieverAgentSettings(AgentSettings):
     document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
     ignore_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DOCUMENT_IGNORE_PATTERNS.copy())
     ignore_patterns_file: Path | None = None
+    search_keywords: list[str] = Field(default_factory=lambda: DEFAULT_KNOWLEDGE_SEARCH_KEYWORDS.copy())
+    search_keyword_expansion_enabled: bool = False
+    search_keyword_expansion_count: int = 12
+    max_evidence_count: int = 3
+    candidate_path_limit: int = 5
+    backend_read_char_limit: int | None = 8000
+    summary_max_chars: int | None = 600
+    feature_bullet_max_items: int = 5
+    feature_heading_keywords: list[str] = Field(default_factory=lambda: DEFAULT_FEATURE_HEADING_KEYWORDS.copy())
+    extraction_mode: Literal["limited", "relaxed", "raw_backend"] = "limited"
+    raw_backend_max_matches: int | None = 50
 
 
 class ComplianceReviewerAgentSettings(AgentSettings):
     document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
     ignore_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DOCUMENT_IGNORE_PATTERNS.copy())
     ignore_patterns_file: Path | None = None
+    policy_keywords: list[str] = Field(default_factory=lambda: DEFAULT_POLICY_SEARCH_KEYWORDS.copy())
+    policy_keyword_expansion_enabled: bool = False
+    policy_keyword_expansion_count: int = 12
+    max_evidence_count: int = 3
+    candidate_path_limit: int = 5
+    backend_read_char_limit: int | None = 8000
+    summary_max_chars: int | None = 600
+    extraction_mode: Literal["limited", "relaxed", "raw_backend"] = "limited"
+    raw_backend_max_matches: int | None = 50
     notice: ComplianceNoticeSettings = Field(default_factory=ComplianceNoticeSettings)
     max_review_loops: int = 3
 

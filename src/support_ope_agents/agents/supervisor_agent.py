@@ -628,6 +628,20 @@ class SupervisorPhaseExecutor:
                     f"Next transition: {str(update.get('next_action') or 'wait_for_approval')}",
                 ],
             }
+            compliance_review_issues = [
+                str(item).strip() for item in cast(list[str], update.get('compliance_review_issues') or []) if str(item).strip()
+            ]
+            if compliance_review_issues:
+                context_payload["bullets"].append(
+                    f"Compliance review issues: {' | '.join(compliance_review_issues)}"
+                )
+                progress_payload["bullets"].append(
+                    f"Compliance review issues: {' | '.join(compliance_review_issues)}"
+                )
+            compliance_revision_request = str(update.get('compliance_revision_request') or '').strip()
+            if compliance_revision_request:
+                context_payload["bullets"].append(f"Compliance revision request: {compliance_revision_request}")
+                progress_payload["bullets"].append(f"Compliance revision request: {compliance_revision_request}")
             self._invoke_tool(
                 self.write_shared_memory_tool,
                 case_id,

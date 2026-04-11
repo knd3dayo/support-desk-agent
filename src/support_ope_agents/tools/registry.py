@@ -199,6 +199,13 @@ class ToolRegistry:
                     ),
                 ),
                 ToolSpec(
+                    "write_shared_memory",
+                    "Write shared memory",
+                    build_default_write_shared_memory_tool(self._config),
+                    provider="builtin",
+                    target="default-case-memory-writer",
+                ),
+                ToolSpec(
                     "write_working_memory",
                     "Write agent working memory",
                     build_default_write_working_memory_tool(self._config, KNOWLEDGE_RETRIEVER_AGENT),

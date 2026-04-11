@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
 from support_ope_agents.config import load_config
@@ -212,6 +213,91 @@ support_ope_agents:
         )
 
         self.assertFalse(config.agents.ComplianceReviewerAgent.notice.required)
+
+    def test_check_policy_raw_backend_mode_includes_backend_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            policy_root = Path(tmpdir) / "policy"
+            policy_root.mkdir()
+            (policy_root / "guideline.md").write_text(
+                "# 回答ガイドライン\n\n生成AIを利用した回答には注意書きを含める。断定的な表現は避ける。",
+                encoding="utf-8",
+            )
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "ComplianceReviewerAgent": {
+                            "document_sources": [
+                                {
+                                    "name": "internal_policy",
+                                    "description": "社内回答ガイドライン",
+                                    "path": str(policy_root),
+                                }
+                            ],
+                            "extraction_mode": "raw_backend",
+                        }
+                    },
+                }
+            )
+
+            tool = build_default_check_policy_tool(config)
+            raw = asyncio.run(tool(draft_response="この回答は必ず正しいです。", review_focus="注意文と断定表現を確認する"))
+            result = json.loads(raw)
+
+            self.assertIn("raw_backend", result["results"][0])
+            self.assertEqual(result["results"][0]["raw_backend"]["mode"], "raw_backend")
+
+    def test_check_policy_can_expand_keywords_with_llm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            policy_root = Path(tmpdir) / "policy"
+            policy_root.mkdir()
+            (policy_root / "guideline.md").write_text(
+                "# 回答ガイドライン\n\n独自注記を含む回答は禁止です。",
+                encoding="utf-8",
+            )
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "ComplianceReviewerAgent": {
+                            "document_sources": [
+                                {
+                                    "name": "internal_policy",
+                                    "description": "社内回答ガイドライン",
+                                    "path": str(policy_root),
+                                }
+                            ],
+                            "policy_keywords": [],
+                            "policy_keyword_expansion_enabled": True,
+                            "policy_keyword_expansion_count": 3,
+                        }
+                    },
+                }
+            )
+
+            class _FakeResponse:
+                def __init__(self, content: str):
+                    self.content = content
+
+            class _FakeModel:
+                async def ainvoke(self, messages):
+                    prompt = str(messages[0].content)
+                    if "Expand the review query" in prompt:
+                        return _FakeResponse('{"keywords": ["独自注記"]}')
+                    return _FakeResponse('{"summary": "reviewed", "issues": []}')
+
+            with patch("support_ope_agents.tools.default_check_policy._get_chat_model", return_value=_FakeModel()):
+                tool = build_default_check_policy_tool(config)
+                raw = asyncio.run(tool(draft_response="この回答は必ず正しいです。", review_focus="注意文と断定表現を確認する"))
+
+            result = json.loads(raw)
+            self.assertIn("独自注記を含む回答は禁止です。", result["results"][0]["evidence"][0])
 
 
 if __name__ == "__main__":

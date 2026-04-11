@@ -13,6 +13,7 @@ from langchain_openai import ChatOpenAI
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import DRAFT_WRITER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.tools.document_source_backend import extract_feature_bullets_with_options, extract_relevant_snippet_with_limit
 
 
 def _get_chat_model(config: AppConfig) -> ChatOpenAI | None:
@@ -128,7 +129,58 @@ class DraftWriterPhaseExecutor:
     @staticmethod
     def _is_feature_list_request(state: Mapping[str, object]) -> bool:
         raw_issue = str(state.get("raw_issue") or "").lower()
-        return any(token in raw_issue for token in ["機能", "一覧", "できること", "features", "feature"])
+        if any(token in raw_issue for token in ["機能", "一覧", "できること", "features", "feature"]):
+            return True
+        detailed_request = any(token in raw_issue for token in ["詳細", "詳しく", "教えて", "まとめて"])
+        if not detailed_request:
+            return False
+        raw_results = state.get("knowledge_retrieval_results")
+        if not isinstance(raw_results, list):
+            return False
+        return any(
+            isinstance(item, dict)
+            and str(item.get("source_type") or "") == "document_source"
+            and (
+                bool(list(item.get("feature_bullets") or []))
+                or isinstance(item.get("raw_backend"), dict)
+            )
+            for item in raw_results
+        )
+
+    def _raw_backend_content(self, result: Mapping[str, object]) -> str:
+        raw_backend = result.get("raw_backend")
+        if not isinstance(raw_backend, dict):
+            return ""
+        file_data = raw_backend.get("file_data")
+        if not isinstance(file_data, dict):
+            return ""
+        return str(file_data.get("content") or "")
+
+    def _feature_bullets_from_result(self, state: Mapping[str, object], result: Mapping[str, object]) -> list[str]:
+        raw_feature_bullets = result.get("feature_bullets")
+        feature_values = raw_feature_bullets if isinstance(raw_feature_bullets, list) else []
+        feature_bullets = [str(item).strip() for item in feature_values if str(item).strip()]
+        if feature_bullets:
+            return feature_bullets
+        raw_content = self._raw_backend_content(result)
+        if not raw_content:
+            return []
+        return extract_feature_bullets_with_options(
+            raw_content,
+            str(state.get("raw_issue") or ""),
+            require_query_match=False,
+            heading_keywords=self.config.agents.KnowledgeRetrieverAgent.feature_heading_keywords,
+            max_items=max(1, self.config.agents.KnowledgeRetrieverAgent.feature_bullet_max_items),
+        )
+
+    def _summary_from_result(self, state: Mapping[str, object], result: Mapping[str, object]) -> str:
+        raw_content = self._raw_backend_content(result)
+        if raw_content:
+            return self._sanitize_customer_summary(
+                extract_relevant_snippet_with_limit(raw_content, str(state.get("raw_issue") or ""), 1200)
+            )
+        summary = str(result.get("summary") or "").strip()
+        return self._sanitize_customer_summary(summary)
 
     @staticmethod
     def _select_primary_knowledge_result(state: Mapping[str, object]) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
@@ -153,9 +205,8 @@ class DraftWriterPhaseExecutor:
             return ""
 
         source_name = str(primary_result.get("source_name") or "対象資料").strip()
-        summary = str(primary_result.get("summary") or "").strip()
-        summary = self._sanitize_customer_summary(summary)
-        feature_bullets = [str(item).strip() for item in list(primary_result.get("feature_bullets") or []) if str(item).strip()]
+        summary = self._summary_from_result(state, primary_result)
+        feature_bullets = self._feature_bullets_from_result(state, primary_result)
         is_feature_list_request = self._is_feature_list_request(state)
         links = self._format_markdown_links([primary_result] if feature_bullets and is_feature_list_request else document_results)
 

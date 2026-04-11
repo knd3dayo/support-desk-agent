@@ -12,10 +12,12 @@ from support_ope_agents.config.models import AppConfig
 from .document_source_backend import (
     build_document_source_backend,
     candidate_virtual_paths_for_source,
-    extract_relevant_snippet,
-    grep_backend_evidence,
+    extract_relevant_snippet_with_limit,
+    glob_backend_matches,
+    grep_backend_matches,
     load_ignore_patterns,
-    read_backend_content,
+    read_backend_content_with_limit,
+    read_backend_file_data,
 )
 
 
@@ -61,12 +63,69 @@ def _stringify_response_content(content: Any) -> str:
     return str(content).strip()
 
 
+def _normalize_keywords(values: list[str], limit: int) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_value in values:
+        value = str(raw_value).strip()
+        if len(value) < 2:
+            continue
+        lowered = value.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        normalized.append(value)
+        if len(normalized) >= limit:
+            break
+    return normalized
+
+
+async def _expand_policy_keywords(model: ChatOpenAI | None, query: str, limit: int) -> list[str]:
+    if model is None or not query.strip() or limit <= 0:
+        return []
+
+    prompt = {
+        "task": "Expand the review query into related policy search keywords.",
+        "query": query,
+        "max_keywords": limit,
+        "output_format": {"keywords": ["string"]},
+    }
+    try:
+        response = await model.ainvoke(
+            [HumanMessage(content="Return JSON only. Generate concise policy search keywords.\n" + json.dumps(prompt, ensure_ascii=False))]
+        )
+        content = _stringify_response_content(response.content)
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            return _normalize_keywords(list(parsed.get("keywords") or []), limit)
+    except Exception:
+        return []
+    return []
+
+
 def build_default_check_policy_tool(config: AppConfig):
     settings = config.agents.ComplianceReviewerAgent
     ignore_patterns = load_ignore_patterns(settings.ignore_patterns, settings.ignore_patterns_file)
 
+    def _effective_limit(current: int | None, relaxed_floor: int | None) -> int | None:
+        if settings.extraction_mode == "raw_backend":
+            return None if relaxed_floor is None else current
+        if settings.extraction_mode == "relaxed" and current is not None and relaxed_floor is not None:
+            return max(current, relaxed_floor)
+        return current
+
     async def _check_policy(*, draft_response: str = "", review_focus: str = "") -> str:
         query = "\n".join(part for part in [review_focus.strip(), draft_response.strip()] if part).strip()
+        model = _get_chat_model(config)
+        expanded_keywords = (
+            await _expand_policy_keywords(model, query, settings.policy_keyword_expansion_count)
+            if settings.policy_keyword_expansion_enabled
+            else []
+        )
+        search_keywords = _normalize_keywords(
+            [*settings.policy_keywords, *expanded_keywords],
+            max(1, len(settings.policy_keywords) + settings.policy_keyword_expansion_count),
+        )
         if not settings.document_sources:
             search_result = {
                 "status": "unavailable",
@@ -98,6 +157,7 @@ def build_default_check_policy_tool(config: AppConfig):
                         source=source,
                         route_base="policy",
                         ignore_patterns=ignore_patterns,
+                        limit=_effective_limit(settings.candidate_path_limit, 20),
                     )
                     if not candidate_paths:
                         results.append(
@@ -115,25 +175,46 @@ def build_default_check_policy_tool(config: AppConfig):
                         )
                         continue
 
-                    primary_content = read_backend_content(backend, candidate_paths[0])[:8000]
-                    results.append(
-                        {
-                            "source_name": source.name,
-                            "source_description": source.description,
-                            "source_type": "policy_source",
-                            "status": "matched",
-                            "summary": extract_relevant_snippet(primary_content, query) or f"{source.name} から関連箇所を抽出しました。",
-                            "path": str(source.path),
-                            "route_prefix": route_prefix,
-                            "matched_paths": candidate_paths[:3],
-                            "evidence": grep_backend_evidence(
-                                backend,
-                                query,
-                                route_prefix,
-                                extra_keywords=["規定", "ガイドライン", "法令", "注意", "免責", "生成AI"],
-                            ),
-                        }
+                    primary_content = read_backend_content_with_limit(
+                        backend,
+                        candidate_paths[0],
+                        _effective_limit(settings.backend_read_char_limit, 32000),
                     )
+                    raw_matches = grep_backend_matches(
+                        backend,
+                        query,
+                        route_prefix,
+                        extra_keywords=search_keywords,
+                        max_items=settings.raw_backend_max_matches if settings.extraction_mode == "raw_backend" else _effective_limit(settings.max_evidence_count, 20),
+                    )
+                    payload: dict[str, object] = {
+                        "source_name": source.name,
+                        "source_description": source.description,
+                        "source_type": "policy_source",
+                        "status": "matched",
+                        "summary": (
+                            primary_content.strip()
+                            if settings.extraction_mode == "raw_backend"
+                            else extract_relevant_snippet_with_limit(
+                                primary_content,
+                                query,
+                                _effective_limit(settings.summary_max_chars, 2000),
+                            )
+                            or f"{source.name} から関連箇所を抽出しました。"
+                        ),
+                        "path": str(source.path),
+                        "route_prefix": route_prefix,
+                        "matched_paths": candidate_paths[:3] if settings.extraction_mode != "raw_backend" else candidate_paths,
+                        "evidence": [str(match.get("text") or "").strip() for match in raw_matches],
+                    }
+                    if settings.extraction_mode == "raw_backend":
+                        payload["raw_backend"] = {
+                            "mode": settings.extraction_mode,
+                            "file_data": read_backend_file_data(backend, candidate_paths[0]),
+                            "grep_matches": raw_matches,
+                            "glob_matches": glob_backend_matches(backend, "**/*.md", route_prefix, settings.raw_backend_max_matches),
+                        }
+                    results.append(payload)
                 search_result = {
                     "status": "matched",
                     "message": "document_sources から関連箇所を抽出しました。",
@@ -168,13 +249,13 @@ def build_default_check_policy_tool(config: AppConfig):
             issues.append("確認根拠となるポリシー文書を取得できませんでした。document_sources の設定と配置を確認してください。")
 
         llm_review_summary = ""
-        model = _get_chat_model(config)
         if model is not None:
             policy_summaries = [
                 {
                     "source_name": str(item.get("source_name") or ""),
                     "summary": str(item.get("summary") or ""),
                     "evidence": list(item.get("evidence") or []),
+                    "raw_backend": item.get("raw_backend") if isinstance(item.get("raw_backend"), dict) else None,
                 }
                 for item in results
                 if isinstance(item, dict)

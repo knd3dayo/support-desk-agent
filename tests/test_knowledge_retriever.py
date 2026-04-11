@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
@@ -360,6 +361,78 @@ class KnowledgeRetrieverTests(unittest.TestCase):
             self.assertIn("## Result: sample", content)
             self.assertIn("Raw result:", content)
             self.assertIn('"source_name": "sample"', content)
+
+    def test_search_documents_raw_backend_mode_includes_backend_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            readme = root / "README.md"
+            readme.write_text(
+                "# sample\n\n概要です。\n\n## できること\n\n- テキストチャットを LLM に送る\n",
+                encoding="utf-8",
+            )
+
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "agents": {
+                        "KnowledgeRetrieverAgent": {
+                            "document_sources": [{"name": "sample", "description": "sample docs", "path": str(root)}],
+                            "extraction_mode": "raw_backend",
+                        }
+                    },
+                    "interfaces": {},
+                }
+            )
+
+            parsed = json.loads(build_default_search_documents_tool(config)(query="sampleの機能一覧を出して"))
+
+            source_result = parsed["results"][0]
+            self.assertIn("raw_backend", source_result)
+            self.assertEqual(source_result["raw_backend"]["mode"], "raw_backend")
+            self.assertIn("file_data", source_result["raw_backend"])
+            self.assertTrue(source_result["raw_backend"]["glob_matches"])
+
+    def test_search_documents_can_expand_keywords_with_llm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            readme = root / "README.md"
+            readme.write_text(
+                "# sample\n\nこの資料はユーティリティ群の説明です。\n",
+                encoding="utf-8",
+            )
+
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "agents": {
+                        "KnowledgeRetrieverAgent": {
+                            "document_sources": [{"name": "sample", "description": "sample docs", "path": str(root)}],
+                            "search_keywords": [],
+                            "search_keyword_expansion_enabled": True,
+                            "search_keyword_expansion_count": 3,
+                        }
+                    },
+                    "interfaces": {},
+                }
+            )
+
+            class _FakeResponse:
+                def __init__(self, content: str):
+                    self.content = content
+
+            class _FakeModel:
+                def invoke(self, _messages):
+                    return _FakeResponse('{"keywords": ["ユーティリティ"]}')
+
+            with patch("support_ope_agents.tools.default_search_documents._get_chat_model", return_value=_FakeModel()):
+                parsed = json.loads(build_default_search_documents_tool(config)(query="sampleの詳細を教えて"))
+
+            source_result = parsed["results"][0]
+            self.assertIn("ユーティリティ群の説明です。", source_result["evidence"][0])
 
 
 if __name__ == "__main__":

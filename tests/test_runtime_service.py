@@ -107,6 +107,13 @@ class _FakeToolRegistry:
                 ToolSpec("external_ticket", "External ticket", self._external_ticket, provider="builtin", target="test-external-ticket"),
                 ToolSpec("internal_ticket", "Internal ticket", self._internal_ticket, provider="builtin", target="test-internal-ticket"),
                 ToolSpec(
+                    "write_shared_memory",
+                    "Write shared memory",
+                    self._write_shared_memory,
+                    provider="builtin",
+                    target="default-case-memory-writer",
+                ),
+                ToolSpec(
                     "write_working_memory",
                     "Write working memory",
                     self._write_knowledge_working_memory,

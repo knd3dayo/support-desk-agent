@@ -223,6 +223,37 @@ support_ope_agents:
   #   KnowledgeRetrieverAgent:
   #     enabled: true
   #     auto_compress: true
+  #     # 文書抽出の挙動です。limited / relaxed / raw_backend を指定できます。
+  #     # limited: 既定の安全寄り制限を使います。
+  #     # relaxed: より多くの候補パス・抜粋・evidence を返します。
+  #     # raw_backend: DeepAgents backend の read / glob / grep 結果を追加 payload として返します。
+  #     extraction_mode: limited
+  #     # grep で追加検索に使う固定キーワードです。
+  #     search_keywords:
+  #       - アーキテクチャ
+  #       - 生成AI
+  #       - Application層
+  #     # true の場合、query から追加検索語を LLM で生成します。
+  #     search_keyword_expansion_enabled: false
+  #     # 生成する追加検索語の最大件数です。
+  #     search_keyword_expansion_count: 12
+  #     # 収集する evidence の最大件数です。raw_backend では raw_backend_max_matches を優先します。
+  #     max_evidence_count: 3
+  #     # 候補に残す Markdown パス数の上限です。
+  #     candidate_path_limit: 5
+  #     # backend.read の結果をさらに切り詰める最大文字数です。null で無制限です。
+  #     backend_read_char_limit: 8000
+  #     # summary に使う抜粋の最大文字数です。null で無制限です。
+  #     summary_max_chars: 600
+  #     # feature bullets として拾う最大件数です。
+  #     feature_bullet_max_items: 5
+  #     # feature bullets 抽出対象とみなす見出し候補です。
+  #     feature_heading_keywords:
+  #       - できること
+  #       - 主な機能
+  #       - features
+  #     # raw_backend の grep / glob payload に残す最大件数です。null で無制限です。
+  #     raw_backend_max_matches: 50
   #     # 文書探索時に除外する既定 glob パターンです。
   #     # 未指定時は .git や node_modules、.venv、__pycache__ などを除外します。
   #     # 指定すると既定値ごと上書きします。
@@ -264,6 +295,27 @@ support_ope_agents:
   #   ComplianceReviewerAgent:
   #     enabled: true
   #     auto_compress: true
+  #     # 文書抽出の挙動です。limited / relaxed / raw_backend を指定できます。
+  #     extraction_mode: limited
+  #     # ポリシー検索で追加検索に使う固定キーワードです。
+  #     policy_keywords:
+  #       - 規定
+  #       - ガイドライン
+  #       - 法令
+  #     # true の場合、review_focus と draft_response から追加検索語を LLM で生成します。
+  #     policy_keyword_expansion_enabled: false
+  #     # 生成する追加検索語の最大件数です。
+  #     policy_keyword_expansion_count: 12
+  #     # 収集する evidence の最大件数です。
+  #     max_evidence_count: 3
+  #     # 候補に残す Markdown パス数の上限です。
+  #     candidate_path_limit: 5
+  #     # backend.read の結果をさらに切り詰める最大文字数です。null で無制限です。
+  #     backend_read_char_limit: 8000
+  #     # summary に使う抜粋の最大文字数です。null で無制限です。
+  #     summary_max_chars: 600
+  #     # raw_backend の grep / glob payload に残す最大件数です。null で無制限です。
+  #     raw_backend_max_matches: 50
   #     # DraftWriterAgent への差戻しを最大何回まで自動で回すかです。
   #     # 既定値は 3 です。
   #     max_review_loops: 3

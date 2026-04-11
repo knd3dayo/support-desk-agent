@@ -51,6 +51,7 @@ support_ope_agents:
     KnowledgeRetrieverAgent:
       enabled: true
       auto_compress: true
+      extraction_mode: raw_backend
       document_sources:
         - name: ai-platform-poc
           description: ai-platform-poc の技術検証資料と設計資料

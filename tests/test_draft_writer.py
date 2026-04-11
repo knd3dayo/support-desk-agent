@@ -138,6 +138,104 @@ class DraftWriterTests(unittest.TestCase):
             self.assertNotIn("document_sources", draft)
             self.assertIn("回避策候補", draft)
 
+    def test_specification_fallback_treats_detailed_request_with_feature_bullets_as_list_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir)
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+            executor = DraftWriterPhaseExecutor(
+                config=config,
+                write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
+            )
+
+            result = executor.execute(
+                {
+                    "case_id": "CASE-TEST-DETAIL-001",
+                    "workspace_path": str(workspace_path),
+                    "workflow_kind": "ambiguous_case",
+                    "intake_category": "specification_inquiry",
+                    "knowledge_retrieval_final_adopted_source": "ai-chat-util",
+                    "knowledge_retrieval_results": [
+                        {
+                            "source_name": "ai-chat-util",
+                            "source_type": "document_source",
+                            "status": "matched",
+                            "summary": "ai_chat_util は生成AI関連ユーティリティです。",
+                            "matched_paths": ["/knowledge/ai-chat-util/README.md"],
+                            "feature_bullets": [
+                                "テキストチャットを LLM に送る",
+                                "Excel 入力でバッチ処理を回す",
+                            ],
+                        }
+                    ],
+                    "raw_issue": "ai-chat-utilについて詳細に教えて",
+                    "investigation_summary": "関連資料を確認しました。",
+                }
+            )
+
+            draft = str(result.get("draft_response") or "")
+            self.assertIn("主な機能:", draft)
+            self.assertIn("- テキストチャットを LLM に送る", draft)
+
+    def test_specification_fallback_uses_raw_backend_payload_for_detailed_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir)
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "dummy"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+            executor = DraftWriterPhaseExecutor(
+                config=config,
+                write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
+            )
+
+            result = executor.execute(
+                {
+                    "case_id": "CASE-TEST-DETAIL-RAW-001",
+                    "workspace_path": str(workspace_path),
+                    "workflow_kind": "specification_inquiry",
+                    "intake_category": "specification_inquiry",
+                    "knowledge_retrieval_final_adopted_source": "ai-chat-util",
+                    "knowledge_retrieval_results": [
+                        {
+                            "source_name": "ai-chat-util",
+                            "source_type": "document_source",
+                            "status": "matched",
+                            "summary": "# ai-chat-util\n\n## できること\n- テキストチャットを LLM に送る",
+                            "matched_paths": ["/knowledge/ai-chat-util/README.md"],
+                            "feature_bullets": [],
+                            "raw_backend": {
+                                "mode": "raw_backend",
+                                "file_data": {
+                                    "content": "# ai-chat-util\n\n## できること\n\n- テキストチャットを LLM に送る\n- Excel 入力でバッチ処理を回す\n",
+                                    "encoding": "utf-8",
+                                },
+                                "grep_matches": [],
+                                "glob_matches": [],
+                            },
+                        }
+                    ],
+                    "raw_issue": "ai-chat-utilについて詳細に教えて",
+                    "investigation_summary": "関連資料を確認しました。",
+                }
+            )
+
+            draft = str(result.get("draft_response") or "")
+            self.assertIn("主な機能:", draft)
+            self.assertIn("- テキストチャットを LLM に送る", draft)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -109,6 +109,10 @@ def score_relative_markdown_path(relative_path: str) -> tuple[int, int, str]:
 
 
 def extract_relevant_snippet(content: str, query: str) -> str:
+    return extract_relevant_snippet_with_limit(content, query, max_chars=600)
+
+
+def extract_relevant_snippet_with_limit(content: str, query: str, max_chars: int | None) -> str:
     paragraphs = [block.strip() for block in re.split(r"\n\s*\n", content) if block.strip()]
     filtered = [paragraph for paragraph in paragraphs if not paragraph.startswith("#")]
     query_tokens = [token for token in re.split(r"[\s/,:()]+", query.lower()) if len(token) >= 2]
@@ -116,21 +120,34 @@ def extract_relevant_snippet(content: str, query: str) -> str:
     for paragraph in filtered:
         normalized = paragraph.lower()
         if query_tokens and any(token in normalized for token in query_tokens):
-            return paragraph[:600]
+            return paragraph if max_chars is None else paragraph[:max_chars]
 
     for paragraph in filtered:
         if len(paragraph) >= 20:
-            return paragraph[:600]
+            return paragraph if max_chars is None else paragraph[:max_chars]
 
-    return filtered[0][:600] if filtered else ""
+    if not filtered:
+        return ""
+    return filtered[0] if max_chars is None else filtered[0][:max_chars]
 
 
 def extract_feature_bullets(content: str, query: str) -> list[str]:
+    return extract_feature_bullets_with_options(content, query, require_query_match=True, heading_keywords=None, max_items=5)
+
+
+def extract_feature_bullets_with_options(
+    content: str,
+    query: str,
+    *,
+    require_query_match: bool,
+    heading_keywords: list[str] | None,
+    max_items: int | None,
+) -> list[str]:
     normalized_query = query.lower()
-    if not any(token in normalized_query for token in ["機能", "一覧", "できること", "features", "feature"]):
+    if require_query_match and not any(token in normalized_query for token in ["機能", "一覧", "できること", "features", "feature"]):
         return []
 
-    section_heading_keywords = ["できること", "主な機能", "よく使う入口", "features"]
+    section_heading_keywords = [keyword.lower() for keyword in (heading_keywords or ["できること", "主な機能", "よく使う入口", "features"])]
     lines = content.splitlines()
     bullets: list[str] = []
     capturing = False
@@ -152,24 +169,44 @@ def extract_feature_bullets(content: str, query: str) -> list[str]:
             continue
         if capturing and stripped.startswith("- "):
             bullets.append(stripped[2:].strip())
-            if len(bullets) >= 5:
+            if max_items is not None and len(bullets) >= max_items:
                 break
 
     return bullets
 
 
-def read_backend_content(backend: Any, path: str) -> str:
+def read_backend_file_data(backend: Any, path: str) -> dict[str, Any] | None:
     result = backend.read(path)
     file_data = getattr(result, "file_data", None)
+    if not isinstance(file_data, dict):
+        return None
+    return dict(file_data)
+
+
+def read_backend_content(backend: Any, path: str) -> str:
+    file_data = read_backend_file_data(backend, path)
     if not isinstance(file_data, dict):
         return ""
     return str(file_data.get("content") or "")
 
 
-def grep_backend_evidence(backend: Any, query: str, path: str, extra_keywords: list[str] | None = None) -> list[str]:
+def read_backend_content_with_limit(backend: Any, path: str, char_limit: int | None) -> str:
+    content = read_backend_content(backend, path)
+    if char_limit is None:
+        return content
+    return content[:char_limit]
+
+
+def grep_backend_matches(
+    backend: Any,
+    query: str,
+    path: str,
+    extra_keywords: list[str] | None = None,
+    max_items: int | None = 3,
+) -> list[dict[str, Any]]:
     query_tokens = [token for token in re.split(r"[\s/,:()]+", query) if len(token) >= 2]
     keywords = [*query_tokens, *(extra_keywords or [])]
-    evidence: list[str] = []
+    matches: list[dict[str, Any]] = []
     seen: set[tuple[str, int]] = set()
     for keyword in keywords:
         try:
@@ -180,15 +217,37 @@ def grep_backend_evidence(backend: Any, query: str, path: str, extra_keywords: l
             if not isinstance(match, dict):
                 continue
             line_no = int(match.get("line") or 0)
-            text = str(match.get("text") or "").strip()
             key = (str(match.get("path") or ""), line_no)
+            text = str(match.get("text") or "").strip()
             if not text or key in seen:
                 continue
             seen.add(key)
-            evidence.append(text)
-            if len(evidence) >= 3:
-                return evidence
-    return evidence
+            matches.append(dict(match))
+            if max_items is not None and len(matches) >= max_items:
+                return matches
+    return matches
+
+
+def grep_backend_evidence(backend: Any, query: str, path: str, extra_keywords: list[str] | None = None) -> list[str]:
+    return grep_backend_evidence_with_limit(backend, query, path, extra_keywords=extra_keywords, max_items=3)
+
+
+def grep_backend_evidence_with_limit(
+    backend: Any,
+    query: str,
+    path: str,
+    extra_keywords: list[str] | None = None,
+    max_items: int | None = 3,
+) -> list[str]:
+    return [str(match.get("text") or "").strip() for match in grep_backend_matches(backend, query, path, extra_keywords=extra_keywords, max_items=max_items)]
+
+
+def glob_backend_matches(backend: Any, pattern: str, path: str, max_items: int | None = None) -> list[dict[str, Any]]:
+    glob_result = backend.glob(pattern, path=path)
+    matches = [dict(match) for match in list(getattr(glob_result, "matches", None) or []) if isinstance(match, dict)]
+    if max_items is None:
+        return matches
+    return matches[:max_items]
 
 
 def candidate_virtual_paths_for_source(
@@ -197,6 +256,7 @@ def candidate_virtual_paths_for_source(
     source: DocumentSourceLike,
     route_base: str,
     ignore_patterns: list[str],
+    limit: int | None = 5,
 ) -> list[str]:
     normalized_route_base = route_base.strip("/")
     route_prefix = f"/{normalized_route_base}/{source.name}/"
@@ -225,4 +285,7 @@ def candidate_virtual_paths_for_source(
         candidates.append((candidate_path, relative_path))
 
     ranked = sorted(candidates, key=lambda item: score_relative_markdown_path(item[1]))
-    return [virtual_path for virtual_path, _ in ranked[:5]]
+    ordered_paths = [virtual_path for virtual_path, _ in ranked]
+    if limit is None:
+        return ordered_paths
+    return ordered_paths[:limit]

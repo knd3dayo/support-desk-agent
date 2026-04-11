@@ -730,6 +730,7 @@ def _should_ignore_private_memory_line(normalized_line: str) -> bool:
     ignored_prefixes = (
         "external ticket id: ext-trace-",
         "internal ticket id: int-trace-",
+        "raw result: {",
     )
     ignored_exact = {
         "review focus: n/a",

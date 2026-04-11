@@ -18,6 +18,7 @@ class KnowledgeRetrieverPhaseExecutor:
     search_documents_tool: Callable[..., Any]
     external_ticket_tool: Callable[..., Any]
     internal_ticket_tool: Callable[..., Any]
+    write_shared_memory_tool: Callable[..., Any] | None = None
     write_working_memory_tool: Callable[..., Any] | None = None
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
@@ -68,6 +69,7 @@ class KnowledgeRetrieverPhaseExecutor:
                     "matched_paths": list(item.get("matched_paths") or []),
                     "evidence": list(item.get("evidence") or []),
                     "feature_bullets": list(item.get("feature_bullets") or []),
+                    "raw_backend": item.get("raw_backend") if isinstance(item.get("raw_backend"), dict) else None,
                 }
             )
         return message, normalized
@@ -238,6 +240,37 @@ class KnowledgeRetrieverPhaseExecutor:
                 "sections": self._build_working_memory_sections(results),
             }
             self._invoke_tool(self.write_working_memory_tool, case_id, workspace_path, payload, "append")
+
+        if self.write_shared_memory_tool is not None and case_id and workspace_path:
+            context_payload: SharedMemoryDocumentPayload = {
+                "title": "Knowledge Retrieval Result",
+                "heading_level": 2,
+                "bullets": [
+                    f"Knowledge retrieval summary: {summary}",
+                    f"External ticket lookup: {'enabled' if external_ticket_lookup_enabled else 'skipped'}",
+                    f"Internal ticket lookup: {'enabled' if internal_ticket_lookup_enabled else 'skipped'}",
+                ],
+            }
+            if adopted_sources:
+                context_payload["bullets"].append(f"Adopted sources: {', '.join(adopted_sources)}")
+            progress_payload: SharedMemoryDocumentPayload = {
+                "title": "Knowledge Retrieval Result",
+                "heading_level": 2,
+                "bullets": [
+                    f"Knowledge retrieval completed: {'yes' if results else 'no'}",
+                    f"External ticket lookup: {'enabled' if external_ticket_lookup_enabled else 'skipped'}",
+                    f"Internal ticket lookup: {'enabled' if internal_ticket_lookup_enabled else 'skipped'}",
+                ],
+            }
+            self._invoke_tool(
+                self.write_shared_memory_tool,
+                case_id,
+                workspace_path,
+                context_payload,
+                progress_payload,
+                None,
+                "append",
+            )
 
         return {
             "knowledge_retrieval_summary": summary,
