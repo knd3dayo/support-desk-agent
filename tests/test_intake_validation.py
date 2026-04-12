@@ -6,6 +6,17 @@ from support_ope_agents.agents.intake_agent import IntakeAgent
 
 
 class IntakeAgentValidationApiTests(unittest.TestCase):
+    def test_parse_classification_accepts_fenced_json(self) -> None:
+        result = IntakeAgent._parse_classification(
+            "```json\n"
+            '{"category":"incident_investigation","urgency":"high","investigation_focus":"Denodo vdp.log error analysis","reason":"mocked"}'
+            "\n```"
+        )
+
+        self.assertEqual(result["category"], "incident_investigation")
+        self.assertEqual(result["urgency"], "high")
+        self.assertEqual(result["investigation_focus"], "Denodo vdp.log error analysis")
+
     def test_validate_intake_requires_incident_timeframe_for_incident_cases(self) -> None:
         result = IntakeAgent.validate_intake(
             {
