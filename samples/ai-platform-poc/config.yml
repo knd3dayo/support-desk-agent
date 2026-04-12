@@ -82,7 +82,7 @@ support_ope_agents:
     ComplianceReviewerAgent:
       enabled: true
       auto_compress: true
-      constraint_mode: default
+      # constraint_mode: default
     BackSupportEscalationAgent:
       enabled: true
       auto_compress: true

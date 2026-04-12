@@ -67,6 +67,14 @@ export type WorkspaceUploadResponse = {
 };
 
 export type UiConfigResponse = {
+  knowledge_sources: Array<{
+    name: string;
+    path: string;
+  }>;
+  policy_sources: Array<{
+    name: string;
+    path: string;
+  }>;
   app_name: string;
   target_label?: string | null;
   target_description?: string | null;

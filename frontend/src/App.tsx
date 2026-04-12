@@ -124,7 +124,16 @@ function MermaidBlock({ chart }: { chart: string }) {
 type MarkdownContentProps = {
   content: string;
   basePath?: string;
-  onWorkspaceLinkClick?: (path: string) => void | Promise<void>;
+  workspacePath?: string;
+  documentSources?: Array<{ routeBase: 'knowledge' | 'policy'; name: string; path: string }>;
+  onWorkspaceLinkClick?: (link: { workspacePath: string; path: string }) => void | Promise<void>;
+  getWorkspaceLinkHref?: (link: { workspacePath: string; path: string }) => string;
+  openWorkspaceLinksInNewTab?: boolean;
+};
+
+type ResolvedWorkspaceLink = {
+  workspacePath: string;
+  path: string;
 };
 
 function normalizeWorkspacePath(path: string): string | null {
@@ -156,15 +165,19 @@ function dirname(path: string): string {
   return lastSlash >= 0 ? path.slice(0, lastSlash) || '.' : '.';
 }
 
-function resolveWorkspaceLink(href: string, basePath?: string): string | null {
+function resolveWorkspaceLink(
+  href: string,
+  options: {
+    basePath?: string;
+    workspacePath?: string;
+    documentSources?: Array<{ routeBase: 'knowledge' | 'policy'; name: string; path: string }>;
+  }
+): ResolvedWorkspaceLink | null {
   const trimmedHref = href.trim();
   if (!trimmedHref || trimmedHref.startsWith('#')) {
     return null;
   }
   if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(trimmedHref) || trimmedHref.startsWith('mailto:') || trimmedHref.startsWith('tel:')) {
-    return null;
-  }
-  if (trimmedHref.startsWith('/knowledge/')) {
     return null;
   }
 
@@ -173,28 +186,72 @@ function resolveWorkspaceLink(href: string, basePath?: string): string | null {
     return null;
   }
 
+  const documentRouteMatch = pathOnly.match(/^\/(knowledge|policy)\/([^/]+)\/(.+)$/);
+  if (documentRouteMatch) {
+    const [, routeBase, sourceName, sourceRelativePath] = documentRouteMatch;
+    const source = options.documentSources?.find(
+      (item) => item.routeBase === routeBase && item.name === sourceName
+    );
+    const normalizedPath = normalizeWorkspacePath(sourceRelativePath);
+    if (!source || !normalizedPath) {
+      return null;
+    }
+    return {
+      workspacePath: source.path,
+      path: normalizedPath,
+    };
+  }
+
+  if (!options.workspacePath) {
+    return null;
+  }
+
   const candidate = pathOnly.startsWith('/')
     ? pathOnly.slice(1)
-    : `${dirname(basePath || '.').replace(/\/$/, '')}/${pathOnly}`;
-  return normalizeWorkspacePath(candidate);
+    : `${dirname(options.basePath || '.').replace(/\/$/, '')}/${pathOnly}`;
+  const normalizedPath = normalizeWorkspacePath(candidate);
+  if (!normalizedPath) {
+    return null;
+  }
+  return {
+    workspacePath: options.workspacePath,
+    path: normalizedPath,
+  };
 }
 
-function MarkdownContent({ content, basePath, onWorkspaceLinkClick }: MarkdownContentProps) {
+function MarkdownContent({
+  content,
+  basePath,
+  workspacePath,
+  documentSources,
+  onWorkspaceLinkClick,
+  getWorkspaceLinkHref,
+  openWorkspaceLinksInNewTab,
+}: MarkdownContentProps) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
         a({ href, children, ...props }) {
-          const resolvedPath = href ? resolveWorkspaceLink(href, basePath) : null;
-          if (resolvedPath && onWorkspaceLinkClick) {
+          const resolvedLink = href
+            ? resolveWorkspaceLink(href, { basePath, workspacePath, documentSources })
+            : null;
+          if (resolvedLink) {
+            const resolvedHref = getWorkspaceLinkHref?.(resolvedLink) || href;
             return (
               <a
-                href={href}
+                href={resolvedHref}
                 {...props}
-                onClick={(event) => {
-                  event.preventDefault();
-                  void onWorkspaceLinkClick(resolvedPath);
-                }}
+                target={openWorkspaceLinksInNewTab ? '_blank' : props.target}
+                rel={openWorkspaceLinksInNewTab ? 'noreferrer' : props.rel}
+                onClick={
+                  onWorkspaceLinkClick
+                    ? (event) => {
+                        event.preventDefault();
+                        void onWorkspaceLinkClick(resolvedLink);
+                      }
+                    : props.onClick
+                }
               >
                 {children}
               </a>
@@ -313,9 +370,17 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
   const [preview, setPreview] = useState<WorkspaceFileResponse | null>(null);
   const [inlinePreviewUrl, setInlinePreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState('プレビューを読み込み中です。');
+  const [uiConfig, setUiConfig] = useState<UiConfigResponse>({
+    app_name: 'Support Desk',
+    target_label: null,
+    target_description: null,
+    auth_required: false,
+    knowledge_sources: [],
+    policy_sources: [],
+  });
 
-  async function openLinkedPreview(targetPath: string) {
-    window.location.href = renderedPreviewUrl(caseId, workspacePath, targetPath);
+  async function openLinkedPreview(target: { workspacePath: string; path: string }) {
+    window.location.href = renderedPreviewUrl(caseId, target.workspacePath, target.path);
   }
 
   useEffect(() => {
@@ -323,7 +388,10 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
 
     async function run() {
       try {
-        const nextPreview = await loadFile(caseId, workspacePath, path, { maxChars: 200000 });
+        const [nextPreview, nextUiConfig] = await Promise.all([
+          loadFile(caseId, workspacePath, path, { maxChars: 200000 }),
+          loadUiConfig(),
+        ]);
         if (cancelled) {
           return;
         }
@@ -336,6 +404,7 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
         }
 
         setPreview(nextPreview);
+        setUiConfig(nextUiConfig);
         setStatus(nextPreview.name);
       } catch {
         if (!cancelled) {
@@ -376,7 +445,17 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
           preview.preview_available ? (
             isMarkdownFile(preview.name, preview.mime_type) ? (
               <div className="preview-markdown standalone-preview-content markdown-body">
-                <MarkdownContent content={preview.content || ''} basePath={preview.path} onWorkspaceLinkClick={openLinkedPreview} />
+                <MarkdownContent
+                  content={preview.content || ''}
+                  basePath={preview.path}
+                  workspacePath={preview.workspace_path}
+                  documentSources={[
+                    ...uiConfig.knowledge_sources.map((item) => ({ ...item, routeBase: 'knowledge' as const })),
+                    ...uiConfig.policy_sources.map((item) => ({ ...item, routeBase: 'policy' as const })),
+                  ]}
+                  getWorkspaceLinkHref={(target) => renderedPreviewUrl(caseId, target.workspacePath, target.path)}
+                  onWorkspaceLinkClick={openLinkedPreview}
+                />
               </div>
             ) : (
               <pre className="standalone-preview-content">{preview.content}</pre>
@@ -440,7 +519,14 @@ export default function App() {
     target_label: null,
     target_description: null,
     auth_required: false,
+    knowledge_sources: [],
+    policy_sources: [],
   });
+
+  const documentSources = [
+    ...uiConfig.knowledge_sources.map((item) => ({ ...item, routeBase: 'knowledge' as const })),
+    ...uiConfig.policy_sources.map((item) => ({ ...item, routeBase: 'policy' as const })),
+  ];
 
   useEffect(() => {
     void refreshUiConfig();
@@ -603,7 +689,7 @@ export default function App() {
     setPreview(nextPreview);
   }
 
-  async function openWorkspaceFileFromLink(path: string) {
+  async function openWorkspaceFileFromLink(target: { workspacePath: string; path: string }) {
     if (!selectedCase) {
       return;
     }
@@ -611,27 +697,27 @@ export default function App() {
     try {
       setActiveSidebarView('files');
       setWorkspaceCollapsed(false);
-      const nextPreview = await loadFile(selectedCase.case_id, selectedCase.workspace_path, path);
-      const containerPath = dirname(path);
-      const nextWorkspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, containerPath);
+      const nextPreview = await loadFile(selectedCase.case_id, target.workspacePath, target.path);
+      const containerPath = dirname(target.path);
+      const nextWorkspace = await browseWorkspace(selectedCase.case_id, target.workspacePath, containerPath);
 
       if (inlinePreviewUrl) {
         URL.revokeObjectURL(inlinePreviewUrl);
         setInlinePreviewUrl(null);
       }
       if ((nextPreview.mime_type || '').startsWith('image/') || nextPreview.mime_type === 'application/pdf') {
-        const blob = await loadRawFileBlob(selectedCase.case_id, selectedCase.workspace_path, path);
+        const blob = await loadRawFileBlob(selectedCase.case_id, target.workspacePath, target.path);
         setInlinePreviewUrl(URL.createObjectURL(blob));
       }
 
       startTransition(() => {
         setWorkspaceView(nextWorkspace);
-        setSelectedEntry(nextWorkspace.entries.find((entry) => entry.path === path) ?? { name: nextPreview.name, path, kind: 'file' });
+        setSelectedEntry(nextWorkspace.entries.find((entry) => entry.path === target.path) ?? { name: nextPreview.name, path: target.path, kind: 'file' });
         setPreview(nextPreview);
       });
       setStatusLine(`${nextPreview.name} をプレビューしています。`);
     } catch {
-      setStatusLine(`ワークスペース内のリンク先 ${path} を開けませんでした。`);
+      setStatusLine(`リンク先 ${target.path} を開けませんでした。`);
     }
   }
 
@@ -1166,7 +1252,17 @@ export default function App() {
                   </button>
                 </div>
                 <div className="message-body markdown-body">
-                  <MarkdownContent content={message.content} onWorkspaceLinkClick={selectedCase ? openWorkspaceFileFromLink : undefined} />
+                  <MarkdownContent
+                    content={message.content}
+                    workspacePath={selectedCase?.workspace_path}
+                    documentSources={documentSources}
+                    getWorkspaceLinkHref={
+                      selectedCase
+                        ? (target) => renderedPreviewUrl(selectedCase.case_id, target.workspacePath, target.path)
+                        : undefined
+                    }
+                    openWorkspaceLinksInNewTab
+                  />
                 </div>
                 <span className="message-meta">{formatTimestamp(message.created_at)} {message.event ? `· ${message.event}` : ''}</span>
               </article>
@@ -1308,7 +1404,18 @@ export default function App() {
                 {preview.preview_available ? (
                   isMarkdownFile(preview.name, preview.mime_type) ? (
                     <div className="preview-markdown markdown-body">
-                      <MarkdownContent content={preview.content || ''} basePath={preview.path} onWorkspaceLinkClick={openWorkspaceFileFromLink} />
+                      <MarkdownContent
+                        content={preview.content || ''}
+                        basePath={preview.path}
+                        workspacePath={preview.workspace_path}
+                        documentSources={documentSources}
+                        getWorkspaceLinkHref={
+                          selectedCase
+                            ? (target) => renderedPreviewUrl(selectedCase.case_id, target.workspacePath, target.path)
+                            : undefined
+                        }
+                        onWorkspaceLinkClick={openWorkspaceFileFromLink}
+                      />
                     </div>
                   ) : (
                     <pre>{preview.content}</pre>

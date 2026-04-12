@@ -106,6 +106,14 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             target_label=interfaces.ui_target_label,
             target_description=interfaces.ui_target_description,
             auth_required=interfaces.auth_required,
+            knowledge_sources=[
+                UiConfigResponse.DocumentSourceRoute(name=source.name, path=str(source.path))
+                for source in context.config.agents.KnowledgeRetrieverAgent.document_sources
+            ],
+            policy_sources=[
+                UiConfigResponse.DocumentSourceRoute(name=source.name, path=str(source.path))
+                for source in context.config.agents.ComplianceReviewerAgent.document_sources
+            ],
         )
 
     @app.get("/cases", response_model=list[CaseSummary])

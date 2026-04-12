@@ -154,8 +154,14 @@ class WorkspaceUploadResponse(BaseModel):
 
 
 class UiConfigResponse(BaseModel):
+    class DocumentSourceRoute(BaseModel):
+        name: str
+        path: str
+
     app_name: str
     target_label: str | None = None
     target_description: str | None = None
     auth_required: bool = False
+    knowledge_sources: list[DocumentSourceRoute] = Field(default_factory=list)
+    policy_sources: list[DocumentSourceRoute] = Field(default_factory=list)
 
