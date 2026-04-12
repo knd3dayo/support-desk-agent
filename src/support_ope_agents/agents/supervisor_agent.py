@@ -37,6 +37,7 @@ class SupervisorPhaseExecutor:
     compliance_max_review_loops: int = 3
     constraint_mode: str = "default"
     max_investigation_loops: int = 1
+    review_excerpt_max_chars: int | None = None
 
     def _runtime_constraints_enabled(self) -> bool:
         return self.constraint_mode in {"default", "runtime_only"}
@@ -540,8 +541,10 @@ class SupervisorPhaseExecutor:
         return any(marker.lower() in combined for marker in blocking_markers)
 
     @staticmethod
-    def _summarize_text(text: str, limit: int = 220) -> str:
+    def _summarize_text(text: str, limit: int | None = None) -> str:
         normalized = re.sub(r"\s+", " ", str(text or "").strip())
+        if limit is None or limit <= 0:
+            return normalized
         if len(normalized) <= limit:
             return normalized
         return normalized[: limit - 1].rstrip() + "…"
@@ -561,6 +564,7 @@ class SupervisorPhaseExecutor:
         compliance_review_passed: bool,
         compliance_review_adopted_sources: list[str],
         compliance_notice_present: bool,
+        excerpt_limit: int | None = None,
     ) -> None:
         history = [item for item in cast(list[dict[str, object]], state.get("compliance_review_history") or []) if isinstance(item, dict)]
         history.append(
@@ -569,7 +573,7 @@ class SupervisorPhaseExecutor:
                 "review_focus": review_focus,
                 "addressed_revision_request": addressed_revision_request,
                 "draft_response": draft_response,
-                "draft_excerpt": cls._summarize_text(draft_response),
+                "draft_excerpt": cls._summarize_text(draft_response, limit=excerpt_limit),
                 "compliance_review_summary": compliance_review_summary,
                 "compliance_review_issues": list(compliance_review_issues),
                 "compliance_revision_request": compliance_revision_request,
@@ -581,7 +585,7 @@ class SupervisorPhaseExecutor:
         state["compliance_review_history"] = history
 
     @classmethod
-    def _latest_compliance_history_bullets(cls, state: "CaseState") -> list[str]:
+    def _latest_compliance_history_bullets(cls, state: "CaseState", excerpt_limit: int | None = None) -> list[str]:
         history = [item for item in cast(list[dict[str, object]], state.get("compliance_review_history") or []) if isinstance(item, dict)]
         if not history:
             return []
@@ -592,11 +596,11 @@ class SupervisorPhaseExecutor:
         draft_excerpt = str(latest.get("draft_excerpt") or "").strip()
         bullets = [f"Compliance review history entries: {len(history)}"]
         if addressed_revision_request:
-            bullets.append(f"Latest compliance addressed request: {cls._summarize_text(addressed_revision_request)}")
+            bullets.append(f"Latest compliance addressed request: {cls._summarize_text(addressed_revision_request, limit=excerpt_limit)}")
         if issues:
             bullets.append(f"Latest compliance issues: {' | '.join(issues)}")
         if latest_revision_request:
-            bullets.append(f"Latest compliance revision request: {cls._summarize_text(latest_revision_request)}")
+            bullets.append(f"Latest compliance revision request: {cls._summarize_text(latest_revision_request, limit=excerpt_limit)}")
         if draft_excerpt:
             bullets.append(f"Latest compliance response draft: {draft_excerpt}")
         return bullets
@@ -956,6 +960,7 @@ class SupervisorPhaseExecutor:
                             compliance_review_passed=True,
                             compliance_review_adopted_sources=[],
                             compliance_notice_present=bool(update.get("compliance_notice_present")),
+                            excerpt_limit=self.review_excerpt_max_chars,
                         )
                         update["next_action"] = "ApprovalAgent へドラフトを回付する"
                         break
@@ -995,6 +1000,7 @@ class SupervisorPhaseExecutor:
                         compliance_review_passed=bool(update.get("compliance_review_passed")),
                         compliance_review_adopted_sources=cast(list[str], update.get("compliance_review_adopted_sources") or []),
                         compliance_notice_present=bool(update.get("compliance_notice_present")),
+                        excerpt_limit=self.review_excerpt_max_chars,
                     )
                     pending_revision_request = str(update.get("compliance_revision_request") or "").strip()
                     if (
@@ -1050,7 +1056,7 @@ class SupervisorPhaseExecutor:
                     f"Compliance notice present: {'yes' if bool(update.get('compliance_notice_present')) else 'no'}",
                     f"Compliance adopted sources: {', '.join(cast(list[str], update.get('compliance_review_adopted_sources') or [])) or 'n/a'}",
                     "Managed child agents: DraftWriterAgent, ComplianceReviewerAgent",
-                    *self._latest_compliance_history_bullets(update),
+                    *self._latest_compliance_history_bullets(update, excerpt_limit=self.review_excerpt_max_chars),
                 ],
             }
             progress_payload: SharedMemoryDocumentPayload = {
@@ -1062,7 +1068,7 @@ class SupervisorPhaseExecutor:
                     f"Review loop count: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or self.compliance_max_review_loops)}",
                     f"Compliance review passed: {'yes' if bool(update.get('compliance_review_passed')) else 'no'}",
                     f"Next transition: {str(update.get('next_action') or 'wait_for_approval')}",
-                    *self._latest_compliance_history_bullets(update),
+                    *self._latest_compliance_history_bullets(update, excerpt_limit=self.review_excerpt_max_chars),
                 ],
             }
             compliance_review_issues = [

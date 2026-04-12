@@ -40,6 +40,7 @@ from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages, deserialize_langchain_messages, extract_serialized_messages_from_history
 from support_ope_agents.runtime.control_catalog import build_control_catalog, build_runtime_audit
 from support_ope_agents.runtime.reporting import build_support_improvement_report
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
@@ -60,6 +61,7 @@ from support_ope_agents.workflow.state import CaseState, WorkflowKind
 class RuntimeContext:
     config: AppConfig
     memory_store: CaseMemoryStore
+    runtime_harness_manager: RuntimeHarnessManager
     instruction_loader: InstructionLoader
     tool_registry: ToolRegistry
     agent_factory: DeepAgentFactory
@@ -69,17 +71,19 @@ class RuntimeContext:
 def build_runtime_context(config_path: str) -> RuntimeContext:
     config = load_config(config_path)
     memory_store = CaseMemoryStore(config)
-    instruction_loader = InstructionLoader(config, memory_store)
+    runtime_harness_manager = RuntimeHarnessManager(config)
+    instruction_loader = InstructionLoader(config, memory_store, runtime_harness_manager)
     mcp_override_resolver = (
         McpToolOverrideResolver.from_config(config)
         if config.tools.has_enabled_mcp_tools()
         else None
     )
     tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
-    agent_factory = DeepAgentFactory(config, instruction_loader, tool_registry, memory_store)
+    agent_factory = DeepAgentFactory(config, instruction_loader, tool_registry, memory_store, runtime_harness_manager)
     return RuntimeContext(
         config=config,
         memory_store=memory_store,
+        runtime_harness_manager=runtime_harness_manager,
         instruction_loader=instruction_loader,
         tool_registry=tool_registry,
         agent_factory=agent_factory,
@@ -117,6 +121,7 @@ class RuntimeService:
             classify_ticket_tool=intake_tools["classify_ticket"],
             write_shared_memory_tool=intake_tools["write_shared_memory"],
             write_working_memory_tool=intake_tools.get("write_working_memory"),
+            runtime_harness_manager=context.runtime_harness_manager,
         )
         self._approval_executor = ApprovalAgent(
             record_approval_decision_tool=approval_tools["record_approval_decision"],
@@ -136,7 +141,11 @@ class RuntimeService:
             internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
             write_shared_memory_tool=knowledge_retriever_tools.get("write_shared_memory"),
             write_working_memory_tool=knowledge_retriever_tools["write_working_memory"],
-            constraint_mode=context.config.agents.resolve_constraint_mode(KNOWLEDGE_RETRIEVER_AGENT),
+            constraint_mode=context.runtime_harness_manager.resolve(KNOWLEDGE_RETRIEVER_AGENT),
+            highlight_max_chars=context.runtime_harness_manager.get_optional_int_policy_value(
+                "knowledge.highlight_max_chars",
+                role=KNOWLEDGE_RETRIEVER_AGENT,
+            ),
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
@@ -149,12 +158,13 @@ class RuntimeService:
         self._draft_writer_executor = DraftWriterPhaseExecutor(
             config=context.config,
             write_draft_tool=draft_writer_tools.get("write_draft") or back_support_inquiry_writer_tools["write_draft"],
+            runtime_harness_manager=context.runtime_harness_manager,
         )
         self._compliance_reviewer_executor = ComplianceReviewerPhaseExecutor(
             check_policy_tool=compliance_reviewer_tools.get("check_policy") or build_default_check_policy_tool(context.config),
             request_revision_tool=compliance_reviewer_tools.get("request_revision") or build_default_request_revision_tool(),
             write_working_memory_tool=compliance_reviewer_tools.get("write_working_memory"),
-            constraint_mode=context.config.agents.resolve_constraint_mode(COMPLIANCE_REVIEWER_AGENT),
+            constraint_mode=context.runtime_harness_manager.resolve(COMPLIANCE_REVIEWER_AGENT),
         )
         self._supervisor_executor = SupervisorPhaseExecutor(
             read_shared_memory_tool=supervisor_tools["read_shared_memory"],
@@ -166,9 +176,21 @@ class RuntimeService:
             back_support_escalation_executor=self._back_support_escalation_executor,
             back_support_inquiry_writer_executor=self._back_support_inquiry_writer_executor,
             escalation_settings=context.config.agents.BackSupportEscalationAgent.escalation,
-            compliance_max_review_loops=context.config.agents.ComplianceReviewerAgent.max_review_loops,
-            constraint_mode=context.config.agents.resolve_constraint_mode(SUPERVISOR_AGENT),
-            max_investigation_loops=context.config.agents.SuperVisorAgent.max_investigation_loops,
+            compliance_max_review_loops=context.runtime_harness_manager.get_int_policy_value(
+                "supervisor.compliance_max_review_loops",
+                role=SUPERVISOR_AGENT,
+                default=context.config.agents.ComplianceReviewerAgent.max_review_loops,
+            ),
+            constraint_mode=context.runtime_harness_manager.resolve(SUPERVISOR_AGENT),
+            max_investigation_loops=context.runtime_harness_manager.get_int_policy_value(
+                "supervisor.max_investigation_loops",
+                role=SUPERVISOR_AGENT,
+                default=context.config.agents.SuperVisorAgent.max_investigation_loops,
+            ),
+            review_excerpt_max_chars=context.runtime_harness_manager.get_optional_int_policy_value(
+                "supervisor.review_excerpt_max_chars",
+                role=SUPERVISOR_AGENT,
+            ),
         )
 
     @property
@@ -249,6 +271,7 @@ class RuntimeService:
             config=self._context.config,
             tool_registry=self._context.tool_registry,
             agent_definitions=self._context.agent_factory.build_default_definitions(),
+            runtime_harness_manager=self._context.runtime_harness_manager,
         )
 
     def describe_runtime_audit(self, *, case_id: str, trace_id: str, workspace_path: str) -> dict[str, object]:
@@ -263,6 +286,7 @@ class RuntimeService:
             state=state,
             config=self._context.config,
             instruction_loader=self._context.instruction_loader,
+            runtime_harness_manager=self._context.runtime_harness_manager,
         )
 
     def list_cases(self, cases_root: str) -> list[dict[str, object]]:
@@ -344,8 +368,14 @@ class RuntimeService:
             "entries": entries,
         }
 
-    def get_workspace_file(self, *, case_id: str, workspace_path: str, relative_path: str, max_chars: int = 16000) -> dict[str, object]:
+    def get_workspace_file(self, *, case_id: str, workspace_path: str, relative_path: str, max_chars: int | None = None) -> dict[str, object]:
         target = self._context.memory_store.resolve_workspace_path(case_id, workspace_path, relative_path)
+        effective_max_chars = max_chars
+        if effective_max_chars is None:
+            effective_max_chars = self._context.runtime_harness_manager.get_int_policy_value(
+                "runtime.workspace_preview_max_chars",
+                default=16000,
+            )
         guessed_mime, _ = mimetypes.guess_type(target.name)
         mime_type = guessed_mime or "application/octet-stream"
         is_text = target.suffix.lower() in TEXT_FILE_SUFFIXES or mime_type.startswith("text/") or mime_type in {
@@ -366,7 +396,12 @@ class RuntimeService:
                 "content": None,
             }
 
-        content = self._context.memory_store.read_workspace_text(case_id, workspace_path, relative_path, max_chars=max_chars)
+        content = self._context.memory_store.read_workspace_text(
+            case_id,
+            workspace_path,
+            relative_path,
+            max_chars=effective_max_chars,
+        )
         full_length = len(self._context.memory_store.read_workspace_text(case_id, workspace_path, relative_path, max_chars=None))
         return {
             "case_id": case_id,
@@ -375,7 +410,7 @@ class RuntimeService:
             "name": target.name,
             "mime_type": mime_type,
             "preview_available": True,
-            "truncated": full_length > max_chars,
+            "truncated": full_length > effective_max_chars,
             "content": content,
         }
 

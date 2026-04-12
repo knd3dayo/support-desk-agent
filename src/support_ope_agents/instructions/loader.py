@@ -6,6 +6,7 @@ from typing import Protocol
 
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.memory import CaseMemoryStore
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 
 
 class _ReadablePath(Protocol):
@@ -14,10 +15,16 @@ class _ReadablePath(Protocol):
 
 
 class InstructionLoader:
-    def __init__(self, config: AppConfig, memory_store: CaseMemoryStore):
+    def __init__(
+        self,
+        config: AppConfig,
+        memory_store: CaseMemoryStore,
+        runtime_harness_manager: RuntimeHarnessManager | None = None,
+    ):
         self._config = config
         self._memory_store = memory_store
         self._default_instruction_root = files("support_ope_agents.instructions.defaults")
+        self._runtime_harness_manager = runtime_harness_manager
 
     @staticmethod
     def _read_if_exists(path: _ReadablePath) -> str:
@@ -25,9 +32,14 @@ class InstructionLoader:
             return path.read_text(encoding="utf-8").strip()
         return ""
 
-    def load(self, case_id: str, role: str, *, constraint_mode: str = "default") -> str:
+    def load(self, case_id: str, role: str, *, constraint_mode: str | None = None) -> str:
         del case_id
-        if constraint_mode in {"runtime_only", "bypass"}:
+        effective_constraint_mode = constraint_mode
+        if effective_constraint_mode is None and self._runtime_harness_manager is not None:
+            effective_constraint_mode = self._runtime_harness_manager.resolve(role)
+        if effective_constraint_mode is None:
+            effective_constraint_mode = "default"
+        if effective_constraint_mode in {"runtime_only", "bypass"}:
             return ""
 
         parts: list[str] = []

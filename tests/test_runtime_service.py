@@ -36,6 +36,7 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.runtime.service import RuntimeContext, RuntimeService
 from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
 from support_ope_agents.tools.default_search_documents import build_default_search_documents_tool
@@ -430,6 +431,7 @@ class _FakeAgentFactory:
 class _FakeRuntimeContext:
     config: AppConfig
     memory_store: CaseMemoryStore
+    runtime_harness_manager: RuntimeHarnessManager
     instruction_loader: InstructionLoader
     tool_registry: _FakeToolRegistry
     agent_factory: _FakeAgentFactory
@@ -474,10 +476,12 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
     def _build_service(self, config: AppConfig) -> RuntimeService:
         memory_store = CaseMemoryStore(config)
+        runtime_harness_manager = RuntimeHarnessManager(config)
         context = _FakeRuntimeContext(
             config=config,
             memory_store=memory_store,
-            instruction_loader=InstructionLoader(config, memory_store),
+            runtime_harness_manager=runtime_harness_manager,
+            instruction_loader=InstructionLoader(config, memory_store, runtime_harness_manager),
             tool_registry=_FakeToolRegistry(config),
             agent_factory=_FakeAgentFactory(),
             case_id_resolver_service=CaseIdResolverService(),
@@ -511,6 +515,36 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         prompt = loader.load("CASE-TEST", DRAFT_WRITER_AGENT, constraint_mode=config.agents.DraftWriterAgent.constraint_mode)
 
         self.assertEqual(prompt, "")
+
+    def test_runtime_harness_manager_describes_role_capabilities(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "default_constraint_mode": "bypass",
+                    "KnowledgeRetrieverAgent": {"constraint_mode": "default"},
+                },
+            }
+        )
+
+        harness = RuntimeHarnessManager(config)
+
+        draft_resolution = harness.describe_role(DRAFT_WRITER_AGENT)
+        knowledge_resolution = harness.describe_role(KNOWLEDGE_RETRIEVER_AGENT)
+
+        self.assertEqual(draft_resolution["constraint_mode"], "bypass")
+        self.assertFalse(draft_resolution["instruction_enabled"])
+        self.assertFalse(draft_resolution["runtime_enabled"])
+        self.assertFalse(draft_resolution["summary_constraints_enabled"])
+        self.assertTrue(any(str(item.get("policy_id") or "") == "draft.summary_snippet_max_chars" for item in draft_resolution["policies"]))
+        self.assertEqual(knowledge_resolution["constraint_mode"], "default")
+        self.assertTrue(knowledge_resolution["instruction_enabled"])
+        self.assertTrue(knowledge_resolution["runtime_enabled"])
+        self.assertTrue(knowledge_resolution["summary_constraints_enabled"])
+        self.assertTrue(any(str(item.get("policy_id") or "") == "knowledge.highlight_max_chars" for item in knowledge_resolution["policies"]))
 
     def test_agent_default_constraint_mode_is_inherited_when_agent_setting_is_omitted(self) -> None:
         config = AppConfig.model_validate(
@@ -887,14 +921,30 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         )
 
         entries = cast(list[dict[str, object]], audit["instruction_resolution"])
+        runtime_constraints = cast(list[dict[str, object]], audit["runtime_constraints"])
+        runtime_policies = cast(dict[str, object], audit["runtime_policies"])
+        runtime_policy_effects = cast(list[dict[str, object]], audit["runtime_policy_effects"])
         draft_entry = next(item for item in entries if str(item.get("role") or "") == DRAFT_WRITER_AGENT)
         compliance_entry = next(item for item in entries if str(item.get("role") or "") == COMPLIANCE_REVIEWER_AGENT)
+        draft_constraint = next(item for item in runtime_constraints if str(item.get("role") or "") == DRAFT_WRITER_AGENT)
+        compliance_constraint = next(item for item in runtime_constraints if str(item.get("role") or "") == COMPLIANCE_REVIEWER_AGENT)
 
         self.assertEqual(str(draft_entry.get("constraint_mode") or ""), "bypass")
         self.assertEqual(cast(list[str], draft_entry.get("resolved_sources") or []), [])
         self.assertEqual(str(draft_entry.get("instruction_excerpt") or ""), "")
         self.assertEqual(str(compliance_entry.get("constraint_mode") or ""), "default")
         self.assertTrue(bool(cast(list[str], compliance_entry.get("resolved_sources") or [])))
+        self.assertFalse(bool(draft_constraint.get("instruction_enabled")))
+        self.assertFalse(bool(draft_constraint.get("runtime_enabled")))
+        self.assertTrue(bool(compliance_constraint.get("instruction_enabled")))
+        self.assertTrue(bool(compliance_constraint.get("runtime_enabled")))
+        role_policies = cast(list[dict[str, object]], runtime_policies["role_policies"])
+        draft_policies = next(item for item in role_policies if str(item.get("role") or "") == DRAFT_WRITER_AGENT)
+        compliance_impacts = [
+            item for item in runtime_policy_effects if str(item.get("owner") or "") == COMPLIANCE_REVIEWER_AGENT
+        ]
+        self.assertTrue(any(str(item.get("policy_id") or "") == "draft.summary_snippet_max_chars" for item in cast(list[dict[str, object]], draft_policies["policies"])))
+        self.assertTrue(any(str(item.get("policy_id") or "") == "compliance.max_review_loops" for item in compliance_impacts))
 
     def test_generate_support_improvement_report_writes_report_folder(self) -> None:
         result = self.service.action(
@@ -917,9 +967,15 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("# Support Improvement Report: CASE-TEST-011", content)
         self.assertIn("## 制御サマリー", content)
         self.assertIn("## 制御一覧", content)
+        self.assertIn("## ランタイム制約一覧", content)
+        self.assertIn("## ランタイム制約ポリシー一覧", content)
+        self.assertIn("## ランタイム制約影響評価", content)
         self.assertIn("### 発火した制御", content)
         self.assertIn("共通 instruction 制約", content)
         self.assertIn("役割別の想定 instruction 制約", content)
+        self.assertIn("KnowledgeRetrieverAgent: mode=default, instruction=yes, runtime=yes, summary=yes", content)
+        self.assertIn("draft.summary_snippet_max_chars: value=1200", content)
+        self.assertIn("global.runtime.workspace_preview_max_chars", content)
         self.assertIn("共有メモリを必ず確認し、既に判明している事実と矛盾しないように振る舞ってください。", content)
         self.assertIn("問い合わせ文に製品名、機能名、モジュール名が明示されている場合は、その対象に直接対応する根拠ソースを優先してください。", content)
         self.assertIn("[defined] workflow.approval_node", content)

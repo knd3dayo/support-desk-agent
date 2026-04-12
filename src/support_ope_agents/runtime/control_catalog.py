@@ -8,6 +8,7 @@ from typing import Any, Protocol, cast
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.registry import ToolRegistry
 from support_ope_agents.workflow.case_workflow import reconstruct_main_workflow_path
 from support_ope_agents.workflow.state import CaseState
@@ -23,7 +24,9 @@ def build_control_catalog(
     config: AppConfig,
     tool_registry: ToolRegistry,
     agent_definitions: list[AgentDefinition],
+    runtime_harness_manager: RuntimeHarnessManager | None = None,
 ) -> dict[str, object]:
+    harness = runtime_harness_manager or RuntimeHarnessManager(config)
     workflow_nodes = [
         "receive_case",
         "intake_prepare",
@@ -141,6 +144,8 @@ def build_control_catalog(
         "logical_tools": logical_tools,
         "agents": agents,
         "control_points": control_points,
+        "runtime_constraints": harness.describe_roles([definition.role for definition in agent_definitions]),
+        "runtime_policies": harness.build_policy_snapshot([definition.role for definition in agent_definitions]),
     }
 
 
@@ -150,15 +155,27 @@ def build_runtime_audit(
     state: CaseState,
     config: AppConfig,
     instruction_loader: InstructionLoader,
+    runtime_harness_manager: RuntimeHarnessManager | None = None,
 ) -> dict[str, object]:
+    harness = runtime_harness_manager or RuntimeHarnessManager(config)
     workflow_path = list(reconstruct_main_workflow_path(state))
     workflow_kind = _effective_workflow_kind(state)
     used_roles = _resolve_used_roles(workflow_path, workflow_kind)
     common_instruction_constraints = _infer_instruction_constraints(_load_common_instruction_text(config))
     instruction_resolution = [
-        _build_instruction_resolution_entry(config, instruction_loader, case_id, role, common_instruction_constraints)
+        _build_instruction_resolution_entry(
+            config,
+            instruction_loader,
+            case_id,
+            role,
+            common_instruction_constraints,
+            runtime_harness_manager=harness,
+        )
         for role in used_roles
     ]
+    runtime_constraints = harness.describe_roles(used_roles)
+    runtime_policies = harness.build_policy_snapshot(used_roles)
+    runtime_policy_effects = harness.evaluate_policy_impacts(used_roles, state)
     decision_log = _build_runtime_decision_log(state, workflow_path, config)
 
     return {
@@ -178,6 +195,9 @@ def build_runtime_audit(
         "used_roles": used_roles,
         "common_instruction_constraints": common_instruction_constraints,
         "instruction_resolution": instruction_resolution,
+        "runtime_constraints": runtime_constraints,
+        "runtime_policies": runtime_policies,
+        "runtime_policy_effects": runtime_policy_effects,
         "decision_log": decision_log,
         "active_control_point_ids": [
             str(item.get("control_point_id") or "")
@@ -193,8 +213,10 @@ def _build_instruction_resolution_entry(
     case_id: str,
     role: str,
     common_instruction_constraints: list[str],
+    runtime_harness_manager: RuntimeHarnessManager | None = None,
 ) -> dict[str, object]:
-    constraint_mode = config.agents.resolve_constraint_mode(role)
+    harness = runtime_harness_manager or RuntimeHarnessManager(config)
+    constraint_mode = harness.resolve(role)
     instruction_text = instruction_loader.load(case_id, role, constraint_mode=constraint_mode)
     inferred_constraints = [
         constraint for constraint in _infer_instruction_constraints(instruction_text) if constraint not in common_instruction_constraints
@@ -205,6 +227,9 @@ def _build_instruction_resolution_entry(
         "instruction_excerpt": _instruction_excerpt(instruction_text),
         "inferred_constraints": inferred_constraints,
         "constraint_mode": constraint_mode,
+        "instruction_enabled": harness.should_load_instructions(role),
+        "runtime_enabled": harness.should_apply_runtime_constraints(role),
+        "summary_constraints_enabled": harness.should_use_summary_constraints(role),
     }
 
 

@@ -16,6 +16,7 @@ from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
@@ -39,6 +40,7 @@ class IntakeAgent:
     classify_ticket_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
     write_working_memory_tool: Callable[..., Any] | None = None
+    runtime_harness_manager: RuntimeHarnessManager | None = None
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -134,7 +136,12 @@ class IntakeAgent:
         return normalized_urgency
 
     def _resolve_classification_urgency(self, raw_issue: str, category: str, urgency: str) -> str:
-        if self.config.agents.resolve_constraint_mode("IntakeAgent") in {"bypass", "instruction_only"}:
+        constraint_mode = (
+            self.runtime_harness_manager.resolve(INTAKE_AGENT)
+            if self.runtime_harness_manager is not None
+            else self.config.agents.resolve_constraint_mode(INTAKE_AGENT)
+        )
+        if constraint_mode in {"bypass", "instruction_only"}:
             return urgency.strip() or "medium"
         return self._normalize_incident_urgency(raw_issue, category, urgency)
 

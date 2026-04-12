@@ -9,6 +9,7 @@ from support_ope_agents.agents.roles import COMPLIANCE_REVIEWER_AGENT, KNOWLEDGE
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.document_source_backend import build_document_source_backend, describe_document_source_backend
 
@@ -25,16 +26,22 @@ class DeepAgentFactory:
         instruction_loader: InstructionLoader,
         tool_registry: ToolRegistry,
         memory_store: CaseMemoryStore,
+        runtime_harness_manager: RuntimeHarnessManager | None = None,
     ):
         self._config = config
         self._instruction_loader = instruction_loader
         self._tool_registry = tool_registry
         self._memory_store = memory_store
+        self._runtime_harness_manager = runtime_harness_manager
 
     def build_agent(self, case_id: str, definition: AgentDefinition) -> Any:
         role = definition.role
         agent_settings = self.get_agent_settings(role)
-        constraint_mode = self._config.agents.resolve_constraint_mode(role)
+        constraint_mode = (
+            self._runtime_harness_manager.resolve(role)
+            if self._runtime_harness_manager is not None
+            else self._config.agents.resolve_constraint_mode(role)
+        )
         system_prompt = self._instruction_loader.load(case_id, role, constraint_mode=constraint_mode)
         tools = self._tool_registry.get_tools(role)
         model_name = agent_settings.model if agent_settings is not None else None

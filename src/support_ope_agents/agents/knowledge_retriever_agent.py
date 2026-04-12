@@ -20,6 +20,7 @@ class KnowledgeRetrieverPhaseExecutor:
     write_shared_memory_tool: Callable[..., Any] | None = None
     write_working_memory_tool: Callable[..., Any] | None = None
     constraint_mode: str = "default"
+    highlight_max_chars: int | None = None
 
     def _uses_summary_constraints(self) -> bool:
         return self.constraint_mode not in {"bypass", "instruction_only"}
@@ -171,21 +172,31 @@ class KnowledgeRetrieverPhaseExecutor:
         return any(cls._contains_relevant_clue(field, issue_terms) for field in fields if field)
 
     @classmethod
-    def _build_document_highlight(cls, item: Mapping[str, object], issue_terms: list[str] | None = None) -> str:
+    def _build_document_highlight(
+        cls,
+        item: Mapping[str, object],
+        issue_terms: list[str] | None = None,
+        *,
+        highlight_max_chars: int | None = None,
+    ) -> str:
         issue_terms = issue_terms or []
         feature_bullets = item.get("feature_bullets")
         if isinstance(feature_bullets, list):
             for bullet in feature_bullets:
                 text = str(bullet).strip()
                 if text and (not issue_terms or cls._contains_relevant_clue(text, issue_terms)):
-                    return text[:160]
+                    if highlight_max_chars is None or highlight_max_chars <= 0:
+                        return text
+                    return text[:highlight_max_chars]
 
         evidence = item.get("evidence")
         if isinstance(evidence, list):
             for bullet in evidence:
                 text = str(bullet).strip()
                 if text and (not issue_terms or cls._contains_relevant_clue(text, issue_terms)):
-                    return text[:160]
+                    if highlight_max_chars is None or highlight_max_chars <= 0:
+                        return text
+                    return text[:highlight_max_chars]
 
         return ""
 
@@ -194,8 +205,8 @@ class KnowledgeRetrieverPhaseExecutor:
         normalized = re.sub(r"\[Additional customer input\].*", "", raw_issue, flags=re.DOTALL).strip()
         return re.sub(r"\s+", " ", normalized)
 
-    @staticmethod
     def _build_document_summary(
+        self,
         raw_issue: str,
         incident_context: bool,
         document_message: str,
@@ -226,7 +237,11 @@ class KnowledgeRetrieverPhaseExecutor:
             summary += f" 検索対象ソース: {referenced_sources or 'n/a'}。"
             if relevant_results:
                 summary += f" 直接関連する資料候補: {', '.join(str(item.get('source_name') or '') for item in relevant_results[:3])}。"
-                highlight = KnowledgeRetrieverPhaseExecutor._build_document_highlight(relevant_results[0], issue_terms)
+                highlight = self._build_document_highlight(
+                    relevant_results[0],
+                    issue_terms,
+                    highlight_max_chars=self.highlight_max_chars,
+                )
                 if highlight:
                     summary += f" 要点: {highlight}"
             else:
@@ -244,7 +259,10 @@ class KnowledgeRetrieverPhaseExecutor:
             summary += f" 一致したソース数: {len(matched_results)}、参照候補ファイル数: {matched_path_count}。"
             primary_source = str(matched_results[0].get("source_name") or "").strip()
             primary_path = str(matched_results[0].get("path") or "").strip()
-            highlight = KnowledgeRetrieverPhaseExecutor._build_document_highlight(matched_results[0])
+            highlight = self._build_document_highlight(
+                matched_results[0],
+                highlight_max_chars=self.highlight_max_chars,
+            )
             if primary_source:
                 summary += f" 代表ソース: {primary_source}。"
             if primary_path:

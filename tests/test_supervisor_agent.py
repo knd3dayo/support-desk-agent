@@ -22,6 +22,13 @@ from support_ope_agents.tools.default_write_draft import build_default_write_dra
 from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
 
 
+class SupervisorPhaseExecutorHelpersTests(unittest.TestCase):
+    def test_review_excerpt_truncation_is_disabled_by_default(self) -> None:
+        text = "B" * 260
+
+        self.assertEqual(SupervisorPhaseExecutor._summarize_text(text, limit=None), text)
+
+
 class _FakeKnowledgeRetrieverExecutor:
     @staticmethod
     def execute(_state: dict[str, object]) -> dict[str, object]:

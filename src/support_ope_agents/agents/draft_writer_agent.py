@@ -14,6 +14,7 @@ from support_ope_agents.agents.roles import DRAFT_WRITER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.document_source_backend import extract_feature_bullets_with_options, extract_relevant_snippet_with_limit
 
 
@@ -57,13 +58,34 @@ def _normalize_internal_guidance_lines(revision_request: str) -> set[str]:
 class DraftWriterPhaseExecutor:
     config: AppConfig
     write_draft_tool: Callable[..., Any]
+    runtime_harness_manager: RuntimeHarnessManager | None = None
 
     @property
     def constraint_mode(self) -> str:
-        return self.config.agents.resolve_constraint_mode("DraftWriterAgent")
+        if self.runtime_harness_manager is not None:
+            return self.runtime_harness_manager.resolve(DRAFT_WRITER_AGENT)
+        return self.config.agents.resolve_constraint_mode(DRAFT_WRITER_AGENT)
 
     def _runtime_constraints_enabled(self) -> bool:
         return self.constraint_mode in {"default", "runtime_only"}
+
+    def _summary_snippet_max_chars(self) -> int:
+        if self.runtime_harness_manager is not None:
+            return self.runtime_harness_manager.get_int_policy_value(
+                "draft.summary_snippet_max_chars",
+                role=DRAFT_WRITER_AGENT,
+                default=1200,
+            )
+        return 1200
+
+    def _feature_bullet_max_items(self) -> int:
+        if self.runtime_harness_manager is not None:
+            return self.runtime_harness_manager.get_int_policy_value(
+                "draft.feature_bullet_max_items",
+                role=DRAFT_WRITER_AGENT,
+                default=5,
+            )
+        return 5
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -166,13 +188,17 @@ class DraftWriterPhaseExecutor:
             str(state.get("raw_issue") or ""),
             require_query_match=False,
             heading_keywords=None,
-            max_items=5,
+            max_items=self._feature_bullet_max_items(),
         )
 
     def _summary_from_result(self, state: Mapping[str, object], result: Mapping[str, object]) -> str:
         raw_content = self._raw_backend_content(result)
         if raw_content:
-            summary = extract_relevant_snippet_with_limit(raw_content, str(state.get("raw_issue") or ""), 1200)
+            summary = extract_relevant_snippet_with_limit(
+                raw_content,
+                str(state.get("raw_issue") or ""),
+                self._summary_snippet_max_chars(),
+            )
             return self._sanitize_customer_summary(summary) if self._runtime_constraints_enabled() else summary
         summary = str(result.get("summary") or "").strip()
         return self._sanitize_customer_summary(summary) if self._runtime_constraints_enabled() else summary
@@ -211,7 +237,7 @@ class DraftWriterPhaseExecutor:
         else:
             lines.append(f"結論: {source_name} について、現時点で確認できた内容を整理しました。")
 
-        detail_bullets = feature_bullets[:5]
+        detail_bullets = feature_bullets[: self._feature_bullet_max_items()]
         if detail_bullets:
             heading = "主な機能:" if is_feature_list_request else "確認できたポイント:"
             lines.append(heading)

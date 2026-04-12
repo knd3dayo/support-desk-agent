@@ -19,6 +19,16 @@ REPO_ROOT = Path("/home/user/source/repos")
 
 
 class KnowledgeRetrieverTests(unittest.TestCase):
+    def test_highlight_truncation_is_disabled_by_default(self) -> None:
+        long_highlight = "A" * 220
+
+        highlighted = KnowledgeRetrieverPhaseExecutor._build_document_highlight(
+            {"feature_bullets": [long_highlight]},
+            highlight_max_chars=None,
+        )
+
+        self.assertEqual(highlighted, long_highlight)
+
     def test_incident_summary_suppresses_unrelated_generic_highlight(self) -> None:
         executor = KnowledgeRetrieverPhaseExecutor(
             search_documents_tool=lambda **_: json.dumps(

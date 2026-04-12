@@ -143,6 +143,9 @@ def build_support_improvement_report(
     checklist_section = _render_checklist(evaluation.criterion_evaluations, normalized_checklist)
     control_summary_section = _render_control_summary(control_catalog_payload, runtime_audit_payload)
     control_catalog_section = _render_control_catalog_section(control_catalog_payload, runtime_audit_payload)
+    runtime_constraints_section = _render_runtime_constraints(runtime_audit_payload)
+    runtime_policies_section = _render_runtime_policies(runtime_audit_payload)
+    runtime_policy_effects_section = _render_runtime_policy_effects(runtime_audit_payload)
 
     report_lines = [
         f"# Support Improvement Report: {case_id}",
@@ -180,6 +183,18 @@ def build_support_improvement_report(
         "## 制御一覧",
         "定義済みの制御点を一覧化します。active はこの trace で発火した制御です。",
         *control_catalog_section,
+        "",
+        "## ランタイム制約一覧",
+        "RuntimeHarnessManager が role ごとに解決した runtime 制約の有効状態です。",
+        *runtime_constraints_section,
+        "",
+        "## ランタイム制約ポリシー一覧",
+        "RuntimeHarnessManager が今回の trace に対して解決した実効 policy 値です。",
+        *runtime_policies_section,
+        "",
+        "## ランタイム制約影響評価",
+        "今回の trace から deterministic に評価できる runtime 制約の影響です。",
+        *runtime_policy_effects_section,
         "",
         "## コンプライアンスレビュー履歴",
         "各レビュー周回での指摘内容と、その時点の対応内容を時系列で示します。",
@@ -364,6 +379,83 @@ def _render_control_catalog_section(control_catalog: dict[str, object], runtime_
             normalized_code = [str(ref).strip() for ref in code_refs if str(ref).strip()]
             if normalized_code:
                 lines.append(f"  code_refs: {', '.join(normalized_code)}")
+    return lines or ["- なし"]
+
+
+def _render_runtime_constraints(runtime_audit: dict[str, object]) -> list[str]:
+    runtime_constraints = runtime_audit.get("runtime_constraints") if isinstance(runtime_audit, dict) else None
+    if not isinstance(runtime_constraints, list) or not runtime_constraints:
+        return ["- なし"]
+
+    lines: list[str] = []
+    for item in runtime_constraints:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "unknown")
+        constraint_mode = str(item.get("constraint_mode") or "unknown")
+        instruction_enabled = "yes" if bool(item.get("instruction_enabled")) else "no"
+        runtime_enabled = "yes" if bool(item.get("runtime_enabled")) else "no"
+        summary_enabled = "yes" if bool(item.get("summary_constraints_enabled")) else "no"
+        lines.append(
+            f"- {role}: mode={constraint_mode}, instruction={instruction_enabled}, runtime={runtime_enabled}, summary={summary_enabled}"
+        )
+    return lines or ["- なし"]
+
+
+def _render_runtime_policies(runtime_audit: dict[str, object]) -> list[str]:
+    runtime_policies = runtime_audit.get("runtime_policies") if isinstance(runtime_audit, dict) else None
+    if not isinstance(runtime_policies, dict):
+        return ["- なし"]
+
+    lines: list[str] = []
+    global_policies = runtime_policies.get("global_policies")
+    if isinstance(global_policies, list) and global_policies:
+        lines.append("### Global policies")
+        for item in global_policies:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"- {str(item.get('policy_id') or 'unknown')}: value={item.get('value')}, source={str(item.get('source') or 'unknown')}"
+            )
+
+    role_policies = runtime_policies.get("role_policies")
+    if isinstance(role_policies, list) and role_policies:
+        for role_entry in role_policies:
+            if not isinstance(role_entry, dict):
+                continue
+            role = str(role_entry.get("role") or "unknown")
+            policies = role_entry.get("policies")
+            lines.append(f"### {role}")
+            if not isinstance(policies, list) or not policies:
+                lines.append("- policy なし")
+                continue
+            for policy in policies:
+                if not isinstance(policy, dict):
+                    continue
+                lines.append(
+                    f"- {str(policy.get('policy_id') or 'unknown')}: value={policy.get('value')}, source={str(policy.get('source') or 'unknown')}"
+                )
+
+    return lines or ["- なし"]
+
+
+def _render_runtime_policy_effects(runtime_audit: dict[str, object]) -> list[str]:
+    effects = runtime_audit.get("runtime_policy_effects") if isinstance(runtime_audit, dict) else None
+    if not isinstance(effects, list) or not effects:
+        return ["- なし"]
+
+    lines: list[str] = []
+    for item in effects:
+        if not isinstance(item, dict):
+            continue
+        owner = str(item.get("owner") or "unknown")
+        policy_id = str(item.get("policy_id") or "unknown")
+        impact_level = str(item.get("impact_level") or "configured")
+        observable_output = str(item.get("observable_output") or "n/a")
+        effect_summary = str(item.get("effect_summary") or "")
+        lines.append(
+            f"- {owner}.{policy_id} [{impact_level}]: {effect_summary} | observed={observable_output}"
+        )
     return lines or ["- なし"]
 
 
