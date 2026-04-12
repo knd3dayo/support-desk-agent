@@ -34,7 +34,7 @@ class DeepAgentFactory:
     def build_agent(self, case_id: str, definition: AgentDefinition) -> Any:
         role = definition.role
         agent_settings = self.get_agent_settings(role)
-        constraint_mode = str(getattr(agent_settings, "constraint_mode", "default") or "default")
+        constraint_mode = self._config.agents.resolve_constraint_mode(role)
         system_prompt = self._instruction_loader.load(case_id, role, constraint_mode=constraint_mode)
         tools = self._tool_registry.get_tools(role)
         model_name = agent_settings.model if agent_settings is not None else None

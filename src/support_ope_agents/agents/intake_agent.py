@@ -126,7 +126,7 @@ class IntakeAgent:
         return normalized_urgency
 
     def _resolve_classification_urgency(self, raw_issue: str, category: str, urgency: str) -> str:
-        if self.config.agents.IntakeAgent.constraint_mode in {"bypass", "instruction_only"}:
+        if self.config.agents.resolve_constraint_mode("IntakeAgent") in {"bypass", "instruction_only"}:
             return urgency.strip() or "medium"
         return self._normalize_incident_urgency(raw_issue, category, urgency)
 

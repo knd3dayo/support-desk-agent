@@ -201,6 +201,11 @@ support_ope_agents:
   # bypass: instruction と runtime 制約の両方を極力外します。
   # ただし安全上必須の最小ガードや状態遷移の必須条件は bypass でも維持します。
   # agents:
+  #   # 全 Agent に効く既定の constraint_mode です。
+  #   # 個別 Agent 側で constraint_mode を省略した場合だけ継承されます。
+  #   # 例: 全体を bypass にして、一部だけ default へ戻す、という使い方ができます。
+  #   default_constraint_mode: default
+  #
   #   # スーパーバイザー Agent の設定です。
   #   SuperVisorAgent:
   #     enabled: true
@@ -220,6 +225,7 @@ support_ope_agents:
   #   IntakeAgent:
   #     enabled: true
   #     auto_compress: true
+  #     # 未指定なら agents.default_constraint_mode を継承します。
   #     constraint_mode: default
   #     pii_mask:
   #       # true の場合のみ Intake で PII マスキングを実行します。

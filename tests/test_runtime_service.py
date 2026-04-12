@@ -511,6 +511,24 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         self.assertEqual(prompt, "")
 
+    def test_agent_default_constraint_mode_is_inherited_when_agent_setting_is_omitted(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "default_constraint_mode": "bypass",
+                    "DraftWriterAgent": {},
+                    "KnowledgeRetrieverAgent": {"constraint_mode": "default"},
+                },
+            }
+        )
+
+        self.assertEqual(config.agents.resolve_constraint_mode("DraftWriterAgent"), "bypass")
+        self.assertEqual(config.agents.resolve_constraint_mode("KnowledgeRetrieverAgent"), "default")
+
     def test_action_sets_log_analysis_fields_and_waits_for_approval(self) -> None:
         evidence_dir = self.workspace_path / ".evidence"
         evidence_dir.mkdir(parents=True, exist_ok=True)

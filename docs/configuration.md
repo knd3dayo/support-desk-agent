@@ -101,7 +101,7 @@ support_ope_agents:
 
 ## 5. Agent 設定
 
-全 Agent は共通で `constraint_mode` を持てる。
+全 Agent は共通で `constraint_mode` を持てる。加えて `agents.default_constraint_mode` を置くと、個別 Agent で `constraint_mode` を省略した場合の共通既定値として使える。
 
 - `default`: 既定挙動。instruction と runtime 制約の両方を使う
 - `instruction_only`: instruction だけを使い、コード側の制約は極力外す
@@ -124,15 +124,17 @@ support_ope_agents:
 ```yaml
 support_ope_agents:
   agents:
+    default_constraint_mode: bypass
     SuperVisorAgent:
       constraint_mode: default
       max_investigation_loops: 2
     DraftWriterAgent:
       constraint_mode: runtime_only
     KnowledgeRetrieverAgent:
-      constraint_mode: default
       extraction_mode: raw_backend
 ```
+
+上の例では、未指定の Agent はすべて `bypass` を継承し、`SuperVisorAgent` と `DraftWriterAgent` だけ個別設定で override する。
 
 `bypass` でも、破壊的な状態遷移や安全上必須の最小ガードまでは外さない。
 

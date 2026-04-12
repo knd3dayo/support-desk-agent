@@ -55,6 +55,33 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
 
             self.assertEqual(urgency, "low")
 
+    def test_global_bypass_is_used_when_intake_constraint_mode_is_omitted(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {"default_constraint_mode": "bypass"},
+            }
+        )
+        agent = IntakeAgent(
+            config=config,
+            pii_mask_tool=lambda *_args, **_kwargs: "",
+            external_ticket_tool=lambda *_args, **_kwargs: "",
+            internal_ticket_tool=lambda *_args, **_kwargs: "",
+            classify_ticket_tool=lambda *_args, **_kwargs: "",
+            write_shared_memory_tool=lambda *_args, **_kwargs: "",
+        )
+
+        urgency = agent._resolve_classification_urgency(
+            "添付したファイルはvdp.logです。エラー調査をお願いします",
+            "incident_investigation",
+            "low",
+        )
+
+        self.assertEqual(urgency, "low")
+
     def test_parse_classification_accepts_fenced_json(self) -> None:
         result = IntakeAgent._parse_classification(
             "```json\n"

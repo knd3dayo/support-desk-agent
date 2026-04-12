@@ -135,7 +135,7 @@ class RuntimeService:
             internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
             write_shared_memory_tool=knowledge_retriever_tools.get("write_shared_memory"),
             write_working_memory_tool=knowledge_retriever_tools["write_working_memory"],
-            constraint_mode=context.config.agents.KnowledgeRetrieverAgent.constraint_mode,
+            constraint_mode=context.config.agents.resolve_constraint_mode(KNOWLEDGE_RETRIEVER_AGENT),
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
@@ -153,7 +153,7 @@ class RuntimeService:
             check_policy_tool=compliance_reviewer_tools.get("check_policy") or build_default_check_policy_tool(context.config),
             request_revision_tool=compliance_reviewer_tools.get("request_revision") or build_default_request_revision_tool(),
             write_working_memory_tool=compliance_reviewer_tools.get("write_working_memory"),
-            constraint_mode=context.config.agents.ComplianceReviewerAgent.constraint_mode,
+            constraint_mode=context.config.agents.resolve_constraint_mode(COMPLIANCE_REVIEWER_AGENT),
         )
         self._supervisor_executor = SupervisorPhaseExecutor(
             read_shared_memory_tool=supervisor_tools["read_shared_memory"],
@@ -166,7 +166,7 @@ class RuntimeService:
             back_support_inquiry_writer_executor=self._back_support_inquiry_writer_executor,
             escalation_settings=context.config.agents.BackSupportEscalationAgent.escalation,
             compliance_max_review_loops=context.config.agents.ComplianceReviewerAgent.max_review_loops,
-            constraint_mode=context.config.agents.SuperVisorAgent.constraint_mode,
+            constraint_mode=context.config.agents.resolve_constraint_mode(SUPERVISOR_AGENT),
             max_investigation_loops=context.config.agents.SuperVisorAgent.max_investigation_loops,
         )
 

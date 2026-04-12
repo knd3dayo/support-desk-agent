@@ -34,31 +34,36 @@ support_ope_agents:
     ui_target_description: ai-platform-poc チームの問い合わせ検証とバックサポート連携を試すためのサンプル UI
 
   agents:
+    default_constraint_mode: bypass
     # sample は通常運用寄りの挙動を既定にする。
     # extraction_mode は取得粒度だけを変える設定で、constraint_mode とは別物。
     # 挙動比較したい場合だけ agent ごとに instruction_only / bypass へ切り替える。
+    
     SuperVisorAgent:
       enabled: true
       auto_compress: true
-      constraint_mode: default
+      # constraint_mode: default
       max_investigation_loops: 1
       auto_generate_report: true
       report_on:
         - waiting_approval
+    
     IntakeAgent:
       enabled: true
       auto_compress: true
-      constraint_mode: default
+      # constraint_mode: default
       pii_mask:
         enabled: false
+    
     LogAnalyzerAgent:
       enabled: true
       auto_compress: true
-      constraint_mode: default
+      # constraint_mode: default
+    
     KnowledgeRetrieverAgent:
       enabled: true
       auto_compress: true
-      constraint_mode: default
+      # constraint_mode: default
       extraction_mode: raw_backend
       document_sources:
         - name: ai-platform-poc
@@ -73,7 +78,7 @@ support_ope_agents:
     DraftWriterAgent:
       enabled: true
       auto_compress: true
-      constraint_mode: default
+      # constraint_mode: default
     ComplianceReviewerAgent:
       enabled: true
       auto_compress: true
@@ -81,8 +86,8 @@ support_ope_agents:
     BackSupportEscalationAgent:
       enabled: true
       auto_compress: true
-      constraint_mode: default
+      # constraint_mode: default
     BackSupportInquiryWriterAgent:
       enabled: true
       auto_compress: true
-      constraint_mode: default
+      # constraint_mode: default

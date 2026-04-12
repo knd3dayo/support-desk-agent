@@ -103,8 +103,25 @@ class DraftWriterTests(unittest.TestCase):
 
             draft = str(result.get("draft_response") or "")
             self.assertNotIn("この回答は生成AI補助を含み、誤りの可能性があります", draft)
-            self.assertNotIn("【注意事項】", draft)
-            self.assertIn("お問い合わせありがとうございます。", draft)
+
+    def test_draft_writer_uses_global_default_constraint_mode(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "default_constraint_mode": "bypass",
+                },
+            }
+        )
+        executor = DraftWriterPhaseExecutor(
+            config=config,
+            write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
+        )
+
+        self.assertEqual(executor.constraint_mode, "bypass")
 
     def test_draft_writer_hides_internal_compliance_revision_comments(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

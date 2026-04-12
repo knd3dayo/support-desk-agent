@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -140,13 +140,16 @@ class IntakePiiMaskSettings(StrictConfigModel):
     enabled: bool = False
 
 
+ConstraintMode = Literal["default", "instruction_only", "runtime_only", "bypass"]
+
+
 class IntakeAgentSettings(StrictConfigModel):
     enabled: bool = True
     max_context_chars: int | None = None
     compress_threshold_chars: int | None = None
     auto_compress: bool = True
     model: str | None = None
-    constraint_mode: Literal["default", "instruction_only", "runtime_only", "bypass"] = "default"
+    constraint_mode: ConstraintMode | None = None
     pii_mask: IntakePiiMaskSettings = Field(default_factory=IntakePiiMaskSettings)
 
 
@@ -156,7 +159,7 @@ class AgentSettings(StrictConfigModel):
     compress_threshold_chars: int | None = None
     auto_compress: bool = True
     model: str | None = None
-    constraint_mode: Literal["default", "instruction_only", "runtime_only", "bypass"] = "default"
+    constraint_mode: ConstraintMode | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -209,6 +212,7 @@ class ObjectiveEvaluationAgentSettings(AgentSettings):
 
 
 class AgentCatalogSettings(StrictConfigModel):
+    default_constraint_mode: ConstraintMode | None = None
     SuperVisorAgent: SupervisorAgentSettings = Field(default_factory=SupervisorAgentSettings)
     ObjectiveEvaluationAgent: ObjectiveEvaluationAgentSettings = Field(default_factory=ObjectiveEvaluationAgentSettings)
     IntakeAgent: IntakeAgentSettings = Field(default_factory=IntakeAgentSettings)
@@ -225,6 +229,15 @@ class AgentCatalogSettings(StrictConfigModel):
         self, role: str
     ) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | ObjectiveEvaluationAgentSettings | None:
         return getattr(self, role, None)
+
+    def resolve_constraint_mode(self, role: str, *, fallback: ConstraintMode = "default") -> ConstraintMode:
+        settings = self.get(role)
+        explicit = getattr(settings, "constraint_mode", None) if settings is not None else None
+        if explicit:
+            return cast(ConstraintMode, explicit)
+        if self.default_constraint_mode:
+            return self.default_constraint_mode
+        return fallback
 
 
 class McpToolBinding(StrictConfigModel):

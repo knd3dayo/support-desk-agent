@@ -59,7 +59,7 @@ class DraftWriterPhaseExecutor:
 
     @property
     def constraint_mode(self) -> str:
-        return str(self.config.agents.DraftWriterAgent.constraint_mode or "default")
+        return self.config.agents.resolve_constraint_mode("DraftWriterAgent")
 
     def _runtime_constraints_enabled(self) -> bool:
         return self.constraint_mode in {"default", "runtime_only"}
