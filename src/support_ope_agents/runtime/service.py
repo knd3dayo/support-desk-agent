@@ -37,7 +37,7 @@ from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.case_titles import derive_case_title
-from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages, deserialize_langchain_messages
+from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages, deserialize_langchain_messages, extract_serialized_messages_from_history
 from support_ope_agents.runtime.control_catalog import build_control_catalog, build_runtime_audit
 from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
@@ -433,6 +433,7 @@ class RuntimeService:
             {
                 "role": role,
                 "content": normalized,
+                "serialized_message": append_serialized_message([], role=role, content=normalized)[0],
                 "trace_id": trace_id,
                 "event": event,
                 "created_at": datetime.now(tz=UTC).isoformat(),
@@ -481,7 +482,7 @@ class RuntimeService:
         state_messages = saved_state.get("conversation_messages")
         if isinstance(state_messages, list) and state_messages:
             return coerce_serialized_conversation_messages(state_messages)
-        return coerce_serialized_conversation_messages(self.get_chat_history(case_id=case_id, workspace_path=workspace_path))
+        return extract_serialized_messages_from_history(self.get_chat_history(case_id=case_id, workspace_path=workspace_path))
 
     def _resolve_followup_anchor_from_messages(self, messages: list[dict[str, object]], current_prompt: str) -> str:
         for message in reversed(deserialize_langchain_messages(messages)):
@@ -505,15 +506,10 @@ class RuntimeService:
         saved_state: CaseState,
         prompt: str,
         conversation_messages: list[dict[str, object]] | None = None,
-        chat_history: list[dict[str, object]] | None = None,
     ) -> list[dict[str, object]]:
         request_messages = coerce_serialized_conversation_messages(conversation_messages)
         if request_messages:
             return append_serialized_message(request_messages, role="user", content=prompt)
-
-        legacy_messages = coerce_serialized_conversation_messages(chat_history)
-        if legacy_messages:
-            return append_serialized_message(legacy_messages, role="user", content=prompt)
 
         saved_messages = self._resolve_saved_conversation_messages(
             case_id=case_id,
@@ -530,15 +526,12 @@ class RuntimeService:
         workspace_path: str,
         saved_state: CaseState,
         conversation_messages: list[dict[str, object]] | None = None,
-        chat_history: list[dict[str, object]] | None = None,
     ) -> str:
         normalized_prompt = prompt.strip()
         if not self._is_context_dependent_followup(normalized_prompt):
             return normalized_prompt
 
         request_messages = coerce_serialized_conversation_messages(conversation_messages)
-        if not request_messages:
-            request_messages = coerce_serialized_conversation_messages(chat_history)
         anchor_issue = self._resolve_followup_anchor_from_messages(request_messages, normalized_prompt)
         if not anchor_issue:
             anchor_issue = self._resolve_followup_anchor_issue(
@@ -666,7 +659,6 @@ class RuntimeService:
         external_ticket_id: str | None = None,
         internal_ticket_id: str | None = None,
         conversation_messages: list[dict[str, object]] | None = None,
-        chat_history: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
         resolved_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id, workspace_path=workspace_path)
         saved_state = self._load_state(case_id=resolved_case_id, trace_id=trace_id, workspace_path=workspace_path)
@@ -709,7 +701,6 @@ class RuntimeService:
             workspace_path=workspace_path,
             saved_state=saved_state,
             conversation_messages=conversation_messages,
-            chat_history=chat_history,
         )
         resolved_conversation_messages = self._build_conversation_messages(
             case_id=selected_case_id,
@@ -717,7 +708,6 @@ class RuntimeService:
             saved_state=saved_state,
             prompt=prompt,
             conversation_messages=conversation_messages,
-            chat_history=chat_history,
         )
         state: CaseState = {
             "case_id": selected_case_id,

@@ -237,26 +237,6 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertIn("[defined] workflow.approval_node", content)
         self.assertIn("config_key: workflow.approval_node", content)
 
-    def test_action_endpoint_accepts_chat_history_for_followup_context(self) -> None:
-        response = self.client.post(
-            "/action",
-            json={
-                "prompt": "詳細を教えてください",
-                "workspace_path": str(self.case_path),
-                "case_id": "CASE-API-001",
-                "chat_history": [
-                    {"role": "user", "content": "ai-chat-utilについて教えて"},
-                    {"role": "assistant", "content": "概要を説明します。"},
-                ],
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        raw_issue = str(payload["state"].get("raw_issue") or "")
-        self.assertIn("ai-chat-utilについて教えて", raw_issue)
-        self.assertIn("詳細を教えてください", raw_issue)
-
     def test_action_endpoint_accepts_langchain_conversation_messages(self) -> None:
         response = self.client.post(
             "/action",
@@ -290,6 +270,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         raw_issue = str(payload["state"].get("raw_issue") or "")
         conversation_messages = payload["state"].get("conversation_messages") or []
         self.assertIn("ai-chat-utilについて教えて", raw_issue)
+        self.assertIn("詳細を教えてください", raw_issue)
         self.assertEqual(conversation_messages[0]["type"], "human")
 
     def test_history_endpoint_returns_langchain_conversation_messages(self) -> None:

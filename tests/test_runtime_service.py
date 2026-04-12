@@ -1202,14 +1202,28 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("[Follow-up request]", raw_issue)
         self.assertIn("詳細を教えてください", raw_issue)
 
-    def test_action_merges_generic_followup_with_request_chat_history(self) -> None:
+    def test_action_merges_generic_followup_with_request_conversation_messages(self) -> None:
         result = self.service.action(
             prompt="詳細を教えてください",
             workspace_path=str(self.workspace_path),
             case_id="CASE-TEST-018-FOLLOWUP",
-            chat_history=[
-                {"role": "user", "content": "ai-chat-utilについて教えて"},
-                {"role": "assistant", "content": "概要を説明します。"},
+            conversation_messages=[
+                {
+                    "type": "human",
+                    "data": {
+                        "content": "ai-chat-utilについて教えて",
+                        "additional_kwargs": {},
+                        "response_metadata": {},
+                    },
+                },
+                {
+                    "type": "ai",
+                    "data": {
+                        "content": "概要を説明します。",
+                        "additional_kwargs": {},
+                        "response_metadata": {},
+                    },
+                },
             ],
         )
 

@@ -33,37 +33,35 @@ def build_message_from_role(*, role: str, content: str) -> BaseMessage:
     return HumanMessage(content=normalized_content)
 
 
-def coerce_serialized_conversation_messages(
-    messages: Sequence[Mapping[str, object]] | None,
-    *,
-    fallback_role: str = "user",
-) -> list[SerializedMessage]:
+def coerce_serialized_conversation_messages(messages: Sequence[Mapping[str, object]] | None) -> list[SerializedMessage]:
     if not messages:
         return []
 
-    normalized: list[BaseMessage] = []
+    normalized: list[SerializedMessage] = []
     for message in messages:
         if not isinstance(message, Mapping):
             continue
         message_type = str(message.get("type") or "").strip()
         data = message.get("data")
-        if message_type and isinstance(data, Mapping):
-            try:
-                normalized.extend(deserialize_langchain_messages([cast(Mapping[str, object], message)]))
-                continue
-            except Exception:
-                content = str(data.get("content") or "").strip()
-                if content:
-                    normalized.append(build_message_from_role(role=message_type, content=content))
-                    continue
-
-        role = str(message.get("role") or fallback_role).strip()
-        content = str(message.get("content") or "").strip()
-        if not content:
+        if not message_type or not isinstance(data, Mapping):
             continue
-        normalized.append(build_message_from_role(role=role, content=content))
+        normalized.append(cast(SerializedMessage, dict(message)))
 
-    return serialize_langchain_messages(normalized)
+    return normalized
+
+
+def extract_serialized_messages_from_history(history: Sequence[Mapping[str, object]] | None) -> list[SerializedMessage]:
+    if not history:
+        return []
+    serialized: list[SerializedMessage] = []
+    for item in history:
+        if not isinstance(item, Mapping):
+            continue
+        message = item.get("serialized_message")
+        if isinstance(message, Mapping):
+            serialized.append(cast(SerializedMessage, dict(message)))
+    return serialized
+
 
 
 def append_serialized_message(

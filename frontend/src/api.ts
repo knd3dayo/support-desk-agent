@@ -19,11 +19,6 @@ type TicketIdOptions = {
   internalTicketId?: string;
 };
 
-type ChatHistoryMessage = {
-  role: string;
-  content: string;
-};
-
 type LangChainMessage = {
   type: string;
   data: {
@@ -196,7 +191,6 @@ export function sendAction(
   workspacePath: string,
   caseId: string,
   ticketIds?: TicketIdOptions,
-  chatHistory: ChatHistoryMessage[] = [],
   conversationMessages: LangChainMessage[] = []
 ): Promise<RuntimeEnvelope> {
   return requestJson<RuntimeEnvelope>('/action', {
@@ -207,7 +201,6 @@ export function sendAction(
       case_id: caseId,
       external_ticket_id: ticketIds?.externalTicketId,
       internal_ticket_id: ticketIds?.internalTicketId,
-      chat_history: chatHistory,
       conversation_messages: conversationMessages,
     }),
   });

@@ -34,7 +34,6 @@ class ActionRequest(BaseModel):
     execution_plan: str | None = None
     external_ticket_id: str | None = None
     internal_ticket_id: str | None = None
-    chat_history: list["ChatMessage"] = Field(default_factory=list)
     conversation_messages: list[LangChainMessage] = Field(default_factory=list)
 
 

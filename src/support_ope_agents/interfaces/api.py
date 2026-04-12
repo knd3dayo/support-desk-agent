@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from support_ope_agents.runtime import RuntimeService, build_runtime_context
 from support_ope_agents.runtime.case_titles import derive_case_title
-from support_ope_agents.runtime.conversation_messages import coerce_serialized_conversation_messages
+from support_ope_agents.runtime.conversation_messages import extract_serialized_messages_from_history
 
 from .schemas import (
     ActionRequest,
@@ -136,7 +136,7 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
                 "case_id": case_id,
                 "workspace_path": resolved_workspace,
                 "messages": messages,
-                "conversation_messages": coerce_serialized_conversation_messages(messages),
+                "conversation_messages": extract_serialized_messages_from_history(messages),
             }
         )
 
@@ -296,7 +296,6 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             external_ticket_id=request.external_ticket_id,
             internal_ticket_id=request.internal_ticket_id,
             conversation_messages=[message.model_dump() for message in request.conversation_messages],
-            chat_history=[message.model_dump() for message in request.chat_history],
         )
         return RuntimeEnvelope.model_validate(result)
 

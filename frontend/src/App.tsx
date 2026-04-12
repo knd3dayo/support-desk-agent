@@ -26,6 +26,7 @@ import type {
   CaseSummary,
   ChatMessage,
   ControlCatalogResponse,
+  LangChainMessage,
   RuntimeEnvelope,
   RuntimeAuditResponse,
   WorkspaceBrowseResponse,
@@ -412,6 +413,7 @@ export default function App() {
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [selectedCase, setSelectedCase] = useState<CaseSummary | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationMessages, setConversationMessages] = useState<LangChainMessage[]>([]);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceBrowseResponse | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<WorkspaceEntry | null>(null);
   const [preview, setPreview] = useState<WorkspaceFileResponse | null>(null);
@@ -528,6 +530,7 @@ export default function App() {
     ]);
     startTransition(() => {
       setMessages(history.messages);
+      setConversationMessages(history.conversation_messages);
       setWorkspaceView(workspace);
       setSelectedEntry(null);
       setPreview(null);
@@ -543,6 +546,7 @@ export default function App() {
     setSelectedCase(null);
     startTransition(() => {
       setMessages([]);
+      setConversationMessages([]);
       setWorkspaceView(null);
       setSelectedEntry(null);
       setPreview(null);
@@ -780,7 +784,8 @@ export default function App() {
             trimmedPrompt || '添付ファイルを確認してください。',
             activeCase.workspace_path,
             activeCase.case_id,
-            ticketIdPayload
+            ticketIdPayload,
+            conversationMessages
           );
         }
       } else {
@@ -788,7 +793,8 @@ export default function App() {
           trimmedPrompt || '添付ファイルを確認してください。',
           activeCase.workspace_path,
           activeCase.case_id,
-          ticketIdPayload
+          ticketIdPayload,
+          conversationMessages
         );
       }
 
@@ -802,6 +808,7 @@ export default function App() {
 
       startTransition(() => {
         setMessages(history.messages);
+        setConversationMessages(history.conversation_messages);
         setWorkspaceView(workspace);
         setCases(sortCasesByUpdatedAt(nextCases));
       });
