@@ -164,8 +164,8 @@ class DraftWriterPhaseExecutor:
             raw_content,
             str(state.get("raw_issue") or ""),
             require_query_match=False,
-            heading_keywords=self.config.agents.KnowledgeRetrieverAgent.feature_heading_keywords,
-            max_items=max(1, self.config.agents.KnowledgeRetrieverAgent.feature_bullet_max_items),
+            heading_keywords=None,
+            max_items=5,
         )
 
     def _summary_from_result(self, state: Mapping[str, object], result: Mapping[str, object]) -> str:

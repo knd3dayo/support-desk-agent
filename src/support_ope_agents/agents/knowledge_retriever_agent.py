@@ -289,10 +289,12 @@ class KnowledgeRetrieverPhaseExecutor:
         internal_ticket_lookup_enabled = bool(state.get("internal_ticket_lookup_enabled"))
         ticket_context = cast(dict[str, str], state.get("intake_ticket_context_summary") or {})
         ticket_artifacts = cast(dict[str, list[str]], state.get("intake_ticket_artifacts") or {})
+        apply_runtime_constraints = self._uses_summary_constraints()
         document_message, document_results = self._parse_document_result(
             self._invoke_tool(self.search_documents_tool, query=raw_issue)
         )
-        document_results = self._prioritize_document_results(raw_issue, document_results)
+        if apply_runtime_constraints:
+            document_results = self._prioritize_document_results(raw_issue, document_results)
         external_hydrated_summary = str(ticket_context.get("external_ticket") or "").strip()
         internal_hydrated_summary = str(ticket_context.get("internal_ticket") or "").strip()
         if external_hydrated_summary or ticket_artifacts.get("external_ticket"):
@@ -335,7 +337,7 @@ class KnowledgeRetrieverPhaseExecutor:
             document_message,
             document_results,
             adopted_sources,
-            self._uses_summary_constraints(),
+            apply_runtime_constraints,
         )
 
         if self.write_working_memory_tool is not None and case_id and workspace_path:

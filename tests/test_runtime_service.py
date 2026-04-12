@@ -534,6 +534,27 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
         self.assertEqual(registry.pii_mask_calls, 0)
 
+    def test_action_with_uploaded_evidence_skips_incident_timeframe_followup(self) -> None:
+        self.service.initialize_case("CASE-TEST-EVIDENCE", str(self.workspace_path))
+        self.service.save_workspace_file(
+            case_id="CASE-TEST-EVIDENCE",
+            workspace_path=str(self.workspace_path),
+            relative_dir=".evidence",
+            filename="vdp.log",
+            content="ERROR Data source vdpcachedatasource not found\n".encode("utf-8"),
+        )
+
+        result = self.service.action(
+            prompt="添付したファイルはDenodoのvdp.logです。エラー調査をお願いします",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-EVIDENCE",
+        )
+
+        state = cast(CaseState, result["state"])
+        self.assertNotEqual(str(state.get("status") or ""), "WAITING_CUSTOMER_INPUT")
+        self.assertEqual(cast(list[str], state.get("intake_evidence_files") or []), [".evidence/vdp.log"])
+        self.assertFalse(bool(result.get("requires_customer_input")))
+
     def test_resume_customer_input_stores_answer_and_reaches_waiting_approval(self) -> None:
         initial = self.service.action(
             prompt="障害が発生しています。gateway error が出ています。",
@@ -622,11 +643,25 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         )
         service = self._build_service(config)
 
-        result = service.action(
-            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
-            workspace_path=str(self.workspace_path),
-            case_id="CASE-TEST-006",
-        )
+        with patch(
+            "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+            return_value={
+                "ai-platform-poc": {
+                    "source_name": "ai-platform-poc",
+                    "status": "matched",
+                    "summary": "業務適用を見据えた生成AI基盤の PoC リポジトリです。",
+                    "matched_paths": ["/knowledge/ai-platform-poc/README.md"],
+                    "evidence": ["業務適用を見据えた生成AI基盤の PoC リポジトリです。"],
+                    "feature_bullets": [],
+                    "raw_content": "",
+                }
+            },
+        ):
+            result = service.action(
+                prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+                workspace_path=str(self.workspace_path),
+                case_id="CASE-TEST-006",
+            )
 
         state = cast(CaseState, result["state"])
         self.assertEqual(str(state.get("status") or ""), "WAITING_APPROVAL")

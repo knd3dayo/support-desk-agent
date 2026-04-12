@@ -221,6 +221,32 @@ class SupervisorAgentTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._compliance_model_patcher.stop()
 
+    def test_supervisor_instruction_only_and_bypass_disable_runtime_constraints(self) -> None:
+        for constraint_mode in ("instruction_only", "bypass"):
+            supervisor = SupervisorPhaseExecutor(
+                read_shared_memory_tool=lambda *_args: json.dumps({"context": "", "progress": "", "summary": ""}, ensure_ascii=False),
+                write_shared_memory_tool=lambda *_args: "",
+                constraint_mode=constraint_mode,
+            )
+
+            self.assertFalse(supervisor._runtime_constraints_enabled())
+
+    def test_compliance_reviewer_instruction_only_and_bypass_skip_runtime_review(self) -> None:
+        for constraint_mode in ("instruction_only", "bypass"):
+            reviewer = ComplianceReviewerPhaseExecutor(
+                check_policy_tool=lambda **_kwargs: '{"status":"passed"}',
+                request_revision_tool=lambda **_kwargs: '{"status":"no_revision"}',
+                constraint_mode=constraint_mode,
+            )
+
+            result = reviewer.execute({"draft_response": "draft", "review_focus": "focus"})
+
+            self.assertEqual(
+                str(result.get("compliance_review_summary") or ""),
+                "constraint_mode により ComplianceReviewerAgent の runtime review を省略しました。",
+            )
+            self.assertTrue(bool(result.get("compliance_review_passed")))
+
     def test_supervisor_uses_back_support_escalation_settings(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig.model_validate(

@@ -20,8 +20,9 @@
 
 ## 5. 既定 builtin の挙動
 
-- DeepAgents backend の `/knowledge/<source_name>/` を `glob` / `read` / `grep` して候補 Markdown を探索する
-- ignore_patterns と ignore_patterns_file を適用して探索対象を絞る
+- DeepAgents backend の `/knowledge/<source_name>/` を search_documents builtin から DeepAgent へ渡し、検索判断自体は DeepAgents に委ねる
+- `extraction_mode: relaxed` では関連語も含めた広めの探索を依頼する
+- `extraction_mode: raw_backend` では DeepAgents が選んだ主要文書の生テキストも payload に残す
 - source ごとに `source_name`、`summary`、`matched_paths`、`evidence`、`feature_bullets` を JSON で返す
-- `summary` には生成要約ではなく、該当 Markdown から抽出した raw snippet を入れる
+- `summary` には生成要約ではなく、該当 Markdown から抽出した raw snippet または重要抜粋を入れる
 - feature list 系の問い合わせでは `feature_bullets` を優先的に返す

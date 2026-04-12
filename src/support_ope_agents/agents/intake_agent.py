@@ -4,6 +4,7 @@ import base64
 import inspect
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
@@ -185,12 +186,13 @@ class IntakeAgent:
         category = cls.resolve_intake_category(state, memory_snapshot)
         urgency = cls.resolve_intake_urgency(state, memory_snapshot)
         incident_timeframe = cls.resolve_incident_timeframe(state, memory_snapshot)
+        evidence_files = cls._resolve_evidence_files(state)
 
         if not category:
             missing_fields.append("intake_category")
         if not urgency:
             missing_fields.append("intake_urgency")
-        if category == "incident_investigation" and not incident_timeframe:
+        if category == "incident_investigation" and not incident_timeframe and not evidence_files:
             missing_fields.append("intake_incident_timeframe")
 
         rework_reason = ""
@@ -209,6 +211,32 @@ class IntakeAgent:
             missing_fields=missing_fields,
             rework_reason=rework_reason,
         )
+
+    @staticmethod
+    def _resolve_evidence_files(state: CaseState) -> list[str]:
+        evidence = state.get("intake_evidence_files")
+        if isinstance(evidence, Iterable) and not isinstance(evidence, (str, bytes, dict)):
+            normalized = [str(item).strip() for item in evidence if str(item).strip()]
+            if normalized:
+                return normalized
+
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        if not workspace_path:
+            return []
+
+        evidence_dirs = (".evidence", "evidence")
+        root = Path(workspace_path).expanduser().resolve()
+        collected: list[str] = []
+        for subdir_name in evidence_dirs:
+            target_dir = root / subdir_name
+            if not target_dir.exists() or not target_dir.is_dir():
+                continue
+            for path in sorted(child for child in target_dir.rglob("*") if child.is_file()):
+                try:
+                    collected.append(path.relative_to(root).as_posix())
+                except ValueError:
+                    collected.append(str(path))
+        return collected
 
     @staticmethod
     def _ticket_lookup_requested(update: dict[str, object], ticket_kind: str) -> bool:
@@ -382,6 +410,7 @@ class IntakeAgent:
 
     def quality_gate(self, state: CaseState) -> CaseState:
         update = dict(state)
+        update["intake_evidence_files"] = self._resolve_evidence_files(cast("CaseState", update))
         validation_result = self.validate_intake(
             cast("CaseState", update),
             {"context": "", "progress": "", "summary": ""},
@@ -432,6 +461,7 @@ class IntakeAgent:
                         f"Investigation focus: {classification['investigation_focus']}",
                         f"Reason: {classification['reason'] or 'n/a'}",
                         f"Incident timeframe: {incident_timeframe or 'n/a'}",
+                        f"Evidence files: {', '.join(cast(list[str], update.get('intake_evidence_files') or [])) or 'n/a'}",
                         f"Follow-up required: {'yes' if bool(followup_questions) else 'no'}",
                     ],
                 }
@@ -469,6 +499,9 @@ class IntakeAgent:
                         ],
                     }
                 ]
+                evidence_files = cast(list[str], update.get("intake_evidence_files") or [])
+                if evidence_files:
+                    context_payload["sections"][0]["bullets"].append(f"Evidence files: {', '.join(evidence_files)}")
                 if incident_timeframe:
                     context_payload["sections"][0]["bullets"].append(f"Incident timeframe: {incident_timeframe}")
                 if classification.get("reason"):

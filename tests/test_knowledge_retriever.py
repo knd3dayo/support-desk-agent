@@ -189,56 +189,49 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertEqual(parsed["status"], "unavailable")
         self.assertIn("参照可能なドキュメントがないので回答できません", parsed["message"])
 
-    def test_search_documents_ignores_default_patterns(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            ignored_doc = root / "node_modules" / "README.md"
-            kept_doc = root / "docs" / "overview.md"
-            ignored_doc.parent.mkdir(parents=True, exist_ok=True)
-            kept_doc.parent.mkdir(parents=True, exist_ok=True)
-            ignored_doc.write_text("ignored node_modules document", encoding="utf-8")
-            kept_doc.write_text("overview\n\n生成AI基盤の概要です。十分な長さの説明文をここに置きます。", encoding="utf-8")
+    def test_removed_knowledge_retriever_search_settings_are_rejected(self) -> None:
+        for removed_key, removed_value in [
+            ("search_keywords", []),
+            ("search_keyword_expansion_enabled", True),
+            ("feature_bullet_max_items", 5),
+            ("feature_heading_keywords", ["features"]),
+            ("raw_backend_max_matches", 50),
+            ("ignore_patterns", [".*"]),
+            ("ignore_patterns_file", "./.support-ope-ignore"),
+        ]:
+            with self.subTest(removed_key=removed_key):
+                with self.assertRaises(ValidationError):
+                    AppConfig.model_validate(
+                        {
+                            "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                            "config_paths": {},
+                            "data_paths": {},
+                            "agents": {
+                                "KnowledgeRetrieverAgent": {
+                                    "document_sources": [{"name": "docs", "description": "test docs", "path": "/tmp/docs"}],
+                                    removed_key: removed_value,
+                                }
+                            },
+                            "interfaces": {},
+                        }
+                    )
 
-            config = AppConfig.model_validate(
+    def test_limited_extraction_mode_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            AppConfig.model_validate(
                 {
                     "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
                     "config_paths": {},
                     "data_paths": {},
-                    "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "docs", "description": "test docs", "path": str(root)}]}},
+                    "agents": {
+                        "KnowledgeRetrieverAgent": {
+                            "document_sources": [{"name": "docs", "description": "test docs", "path": "/tmp/docs"}],
+                            "extraction_mode": "limited",
+                        }
+                    },
                     "interfaces": {},
                 }
             )
-
-            parsed = json.loads(build_default_search_documents_tool(config)(query="生成AI基盤"))
-
-            source_result = parsed["results"][0]
-            self.assertEqual(source_result["status"], "matched")
-            self.assertEqual(source_result["matched_paths"][0], "/knowledge/docs/docs/overview.md")
-
-    def test_search_documents_applies_ignore_patterns_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            readme = root / "README.md"
-            overview = root / "overview.md"
-            ignore_file = root / ".support-ope-ignore"
-            readme.write_text("README\n\nこの文書は除外されるべきです。十分な長さの説明文をここに置きます。", encoding="utf-8")
-            overview.write_text("overview\n\n生成AI基盤の説明文です。十分な長さの説明文をここに置きます。", encoding="utf-8")
-            ignore_file.write_text("README.md\n", encoding="utf-8")
-
-            config = AppConfig.model_validate(
-                {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
-                    "config_paths": {},
-                    "data_paths": {},
-                    "agents": {"KnowledgeRetrieverAgent": {"document_sources": [{"name": "docs", "description": "test docs", "path": str(root)}], "ignore_patterns_file": str(ignore_file)}},
-                    "interfaces": {},
-                }
-            )
-
-            parsed = json.loads(build_default_search_documents_tool(config)(query="生成AI基盤"))
-
-            source_result = parsed["results"][0]
-            self.assertEqual(source_result["matched_paths"][0], "/knowledge/docs/overview.md")
 
     def test_ai_platform_poc_returns_architecture_overview(self) -> None:
         source_path = REPO_ROOT / "ai-platform-poc"
@@ -258,8 +251,21 @@ class KnowledgeRetrieverTests(unittest.TestCase):
             external_ticket_tool=lambda: "external_ticket tool is not configured.",
             internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
         )
-
-        result = executor.execute({"raw_issue": "生成AI基盤のアーキテクチャの概要を返してください"})
+        with patch(
+            "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+            return_value={
+                "ai-platform-poc": {
+                    "source_name": "ai-platform-poc",
+                    "status": "matched",
+                    "summary": "業務適用を見据えた生成AI基盤の PoC リポジトリです。",
+                    "matched_paths": ["/knowledge/ai-platform-poc/README.md"],
+                    "evidence": ["業務適用を見据えた生成AI基盤の PoC リポジトリです。"],
+                    "feature_bullets": [],
+                    "raw_content": "",
+                }
+            },
+        ):
+            result = executor.execute({"raw_issue": "生成AI基盤のアーキテクチャの概要を返してください"})
 
         adopted_sources = cast(list[str], result["knowledge_retrieval_adopted_sources"])
         self.assertIn("ai-platform-poc", adopted_sources)
@@ -391,8 +397,25 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                 external_ticket_tool=lambda: "external_ticket tool is not configured.",
                 internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
             )
-
-            result = executor.execute({"raw_issue": "sampleの機能一覧を出して"})
+            with patch(
+                "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+                return_value={
+                    "sample": {
+                        "source_name": "sample",
+                        "status": "matched",
+                        "summary": "概要です。",
+                        "matched_paths": ["/knowledge/sample/README.md"],
+                        "evidence": ["概要です。"],
+                        "feature_bullets": [
+                            "テキストチャットを LLM に送る",
+                            "Excel 入力でバッチ処理を回す",
+                            "MCP サーバーとしてツール提供する",
+                        ],
+                        "raw_content": "",
+                    }
+                },
+            ):
+                result = executor.execute({"raw_issue": "sampleの機能一覧を出して"})
 
             source_result = next(
                 item for item in cast(list[dict[str, object]], result["knowledge_retrieval_results"]) if item.get("source_name") == "sample"
@@ -426,14 +449,27 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                 internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
                 write_working_memory_tool=ToolRegistry(config).get_tools("KnowledgeRetrieverAgent")[-1].handler,
             )
-
-            executor.execute(
-                {
-                    "case_id": "CASE-TEST-WM-001",
-                    "workspace_path": str(workspace_path),
-                    "raw_issue": "sampleの機能一覧を出して",
-                }
-            )
+            with patch(
+                "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+                return_value={
+                    "sample": {
+                        "source_name": "sample",
+                        "status": "matched",
+                        "summary": "概要です。",
+                        "matched_paths": ["/knowledge/sample/README.md"],
+                        "evidence": ["概要です。"],
+                        "feature_bullets": ["テキストチャットを LLM に送る"],
+                        "raw_content": "",
+                    }
+                },
+            ):
+                executor.execute(
+                    {
+                        "case_id": "CASE-TEST-WM-001",
+                        "workspace_path": str(workspace_path),
+                        "raw_issue": "sampleの機能一覧を出して",
+                    }
+                )
 
             working_path = workspace_path / ".memory" / "agents" / "KnowledgeRetrieverAgent" / "working.md"
             content = working_path.read_text(encoding="utf-8")
@@ -465,15 +501,29 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                 }
             )
 
-            parsed = json.loads(build_default_search_documents_tool(config)(query="sampleの機能一覧を出して"))
+            with patch(
+                "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+                return_value={
+                    "sample": {
+                        "source_name": "sample",
+                        "status": "matched",
+                        "summary": "# sample\n\n概要です。",
+                        "matched_paths": ["/knowledge/sample/README.md"],
+                        "evidence": ["概要です。"],
+                        "feature_bullets": [],
+                        "raw_content": "# sample\n\n概要です。\n\n## できること\n\n- テキストチャットを LLM に送る\n",
+                    }
+                },
+            ):
+                parsed = json.loads(build_default_search_documents_tool(config)(query="sampleの機能一覧を出して"))
 
             source_result = parsed["results"][0]
             self.assertIn("raw_backend", source_result)
             self.assertEqual(source_result["raw_backend"]["mode"], "raw_backend")
             self.assertIn("file_data", source_result["raw_backend"])
-            self.assertTrue(source_result["raw_backend"]["glob_matches"])
+            self.assertIn("概要です", source_result["raw_backend"]["file_data"]["content"])
 
-    def test_search_documents_can_expand_keywords_with_llm(self) -> None:
+    def test_search_documents_uses_deepagents_result_when_available(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             readme = root / "README.md"
@@ -490,28 +540,32 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                     "agents": {
                         "KnowledgeRetrieverAgent": {
                             "document_sources": [{"name": "sample", "description": "sample docs", "path": str(root)}],
-                            "search_keywords": [],
-                            "search_keyword_expansion_enabled": True,
-                            "search_keyword_expansion_count": 3,
+                            "extraction_mode": "relaxed",
                         }
                     },
                     "interfaces": {},
                 }
             )
 
-            class _FakeResponse:
-                def __init__(self, content: str):
-                    self.content = content
-
-            class _FakeModel:
-                def invoke(self, _messages):
-                    return _FakeResponse('{"keywords": ["ユーティリティ"]}')
-
-            with patch("support_ope_agents.tools.default_search_documents._get_chat_model", return_value=_FakeModel()):
+            with patch(
+                "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+                return_value={
+                    "sample": {
+                        "source_name": "sample",
+                        "status": "matched",
+                        "summary": "この資料はユーティリティ群の説明です。",
+                        "matched_paths": ["/knowledge/sample/README.md"],
+                        "evidence": ["この資料はユーティリティ群の説明です。"],
+                        "feature_bullets": ["ユーティリティを提供する"],
+                        "raw_content": "",
+                    }
+                },
+            ):
                 parsed = json.loads(build_default_search_documents_tool(config)(query="sampleの詳細を教えて"))
 
             source_result = parsed["results"][0]
             self.assertIn("ユーティリティ群の説明です。", source_result["evidence"][0])
+            self.assertEqual(source_result["feature_bullets"], ["ユーティリティを提供する"])
 
 
 if __name__ == "__main__":

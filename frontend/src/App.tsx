@@ -429,6 +429,7 @@ export default function App() {
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(true);
   const [controlCatalog, setControlCatalog] = useState<ControlCatalogResponse | null>(null);
   const [runtimeAudit, setRuntimeAudit] = useState<RuntimeAuditResponse | null>(null);
+  const chatStageRef = useRef<HTMLElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const [uiConfig, setUiConfig] = useState<UiConfigResponse>({
     app_name: 'Support Desk',
@@ -452,7 +453,16 @@ export default function App() {
   }, [inlinePreviewUrl]);
 
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    const container = chatStageRef.current;
+    if (!container) {
+      messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      return;
+    }
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'smooth',
+    });
   }, [messages, isAwaitingResponse, submissionStage, pendingQuestion]);
 
   async function refreshCases() {
@@ -726,13 +736,22 @@ export default function App() {
       setSubmissionStage('running-workflow');
       let result: RuntimeEnvelope;
       if (pendingQuestion && trimmedPrompt) {
-        result = await resumeCustomerInput(
-          activeCase.case_id,
-          pendingQuestion.traceId,
-          activeCase.workspace_path,
-          trimmedPrompt,
-          pendingQuestion.answerKey
-        );
+        try {
+          result = await resumeCustomerInput(
+            activeCase.case_id,
+            pendingQuestion.traceId,
+            activeCase.workspace_path,
+            trimmedPrompt,
+            pendingQuestion.answerKey
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '';
+          if (!message.includes('顧客入力待ち状態ではありません')) {
+            throw error;
+          }
+          setPendingQuestion(null);
+          result = await sendAction(trimmedPrompt || '添付ファイルを確認してください。', activeCase.workspace_path, activeCase.case_id);
+        }
       } else {
         result = await sendAction(trimmedPrompt || '添付ファイルを確認してください。', activeCase.workspace_path, activeCase.case_id);
       }
@@ -1073,7 +1092,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="chat-stage panel">
+      <main ref={chatStageRef} className="chat-stage panel">
         <div className="panel-header with-border">
           <div>
             <p className="eyebrow">Active Conversation</p>

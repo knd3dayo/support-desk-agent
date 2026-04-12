@@ -1,24 +1,34 @@
 from __future__ import annotations
 
 import json
+from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
-from support_ope_agents.config.models import AppConfig
+from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
 
-from .document_source_backend import (
-    build_document_source_backend,
-    candidate_virtual_paths_for_source,
-    extract_feature_bullets_with_options,
-    extract_relevant_snippet_with_limit,
-    glob_backend_matches,
-    grep_backend_evidence_with_limit,
-    grep_backend_matches,
-    load_ignore_patterns,
-    read_backend_content_with_limit,
-    read_backend_file_data,
-)
+from .document_source_backend import build_document_source_backend, read_backend_file_data
+
+try:
+    from deepagents import create_deep_agent
+except Exception:  # pragma: no cover
+    create_deep_agent = None
+
+
+class _DeepAgentSourceResult(BaseModel):
+    source_name: str = ""
+    status: Literal["matched", "unavailable"] = "matched"
+    summary: str = ""
+    matched_paths: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    feature_bullets: list[str] = Field(default_factory=list)
+    raw_content: str = ""
+
+
+class _DeepAgentSearchResponse(BaseModel):
+    results: list[_DeepAgentSourceResult] = Field(default_factory=list)
 
 
 def _get_chat_model(config: AppConfig) -> ChatOpenAI:
@@ -30,72 +40,97 @@ def _get_chat_model(config: AppConfig) -> ChatOpenAI:
     )
 
 
-def _stringify_response_content(content: object) -> str:
-    if isinstance(content, str):
-        return content.strip()
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-                continue
-            if isinstance(item, dict):
-                text = item.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-        if parts:
-            return "\n".join(parts).strip()
-    return str(content).strip()
-
-
-def _normalize_keywords(values: list[str], limit: int) -> list[str]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for raw_value in values:
-        value = str(raw_value).strip()
-        if len(value) < 2:
-            continue
-        lowered = value.lower()
-        if lowered in seen:
-            continue
-        seen.add(lowered)
-        normalized.append(value)
-        if len(normalized) >= limit:
-            break
-    return normalized
-
-
-def _expand_search_keywords(config: AppConfig, query: str, limit: int) -> list[str]:
-    if not query.strip() or limit <= 0:
-        return []
-    model = _get_chat_model(config)
-
-    prompt = {
-        "task": "Expand the user query into related search keywords for documentation retrieval.",
-        "query": query,
-        "max_keywords": limit,
-        "output_format": {"keywords": ["string"]},
-    }
-    response = model.invoke(
-        [HumanMessage(content="Return JSON only. Generate concise search keywords.\n" + json.dumps(prompt, ensure_ascii=False))]
+def _build_search_prompt(
+    *,
+    query: str,
+    sources: list[KnowledgeDocumentSource],
+    extraction_mode: Literal["relaxed", "raw_backend"],
+) -> str:
+    mode_instruction = (
+        "関連語や言い換えも含めて広めに探索し、もっとも関連の強い根拠を抽出してください。"
+        if extraction_mode == "relaxed"
+        else "診断用途なので、もっとも関連の強い文書の生テキストも保持してください。"
     )
-    content = _stringify_response_content(response.content)
-    parsed = json.loads(content)
-    if isinstance(parsed, dict):
-        return _normalize_keywords(list(parsed.get("keywords") or []), limit)
-    raise ValueError("search keyword expansion returned an invalid payload")
+    source_lines = "\n".join(
+        f"- {source.name}: {source.description} (route: /knowledge/{source.name}/)"
+        for source in sources
+    )
+    return (
+        "あなたはドキュメント検索担当です。\n"
+        "Filesystem tools だけを使い、指定された route 配下の文書だけを根拠にしてください。\n"
+        "ファイル編集やコマンド実行は行わないでください。\n"
+        f"検索対象 source 一覧:\n{source_lines}\n"
+        f"問い合わせ: {query}\n"
+        f"追加指示: {mode_instruction}\n"
+        "返却ルール:\n"
+        "- results は source ごとの配列にする\n"
+        "- source_name は必ず source 一覧の name を使う\n"
+        "- status は matched か unavailable\n"
+        "- summary には最重要箇所の抜粋を入れる\n"
+        "- matched_paths には関連度順の backend path を入れる\n"
+        "- evidence には根拠となる短い原文断片を入れる\n"
+        "- feature_bullets は機能一覧問い合わせのときだけ入れる\n"
+        "- raw_content は raw_backend のときだけ最重要ファイル本文を入れ、それ以外は空文字にする\n"
+        "- 事実を捏造しないこと\n"
+    )
+
+
+def _invoke_deepagents_search(
+    *,
+    config: AppConfig,
+    backend: Any,
+    sources: list[KnowledgeDocumentSource],
+    query: str,
+    extraction_mode: Literal["relaxed", "raw_backend"],
+) -> dict[str, dict[str, Any]] | None:
+    if create_deep_agent is None:
+        return None
+
+    agent = create_deep_agent(
+        model=_get_chat_model(config),
+        backend=backend,
+        system_prompt=(
+            "Search the mounted documentation and return only structured data. "
+            "Use filesystem tools to inspect documents under the allowed routes."
+        ),
+        response_format=_DeepAgentSearchResponse,
+        tools=[],
+        name="knowledge-document-search",
+    )
+    result = agent.invoke(
+        {
+            "messages": [
+                HumanMessage(
+                    content=_build_search_prompt(
+                        query=query,
+                        sources=sources,
+                        extraction_mode=extraction_mode,
+                    )
+                )
+            ]
+        }
+    )
+    if not isinstance(result, dict):
+        return None
+    structured = result.get("structured_response")
+    if isinstance(structured, _DeepAgentSearchResponse):
+        return {
+            item.source_name: item.model_dump()
+            for item in structured.results
+            if item.source_name.strip()
+        }
+    if isinstance(structured, dict):
+        parsed = _DeepAgentSearchResponse.model_validate(structured)
+        return {
+            item.source_name: item.model_dump()
+            for item in parsed.results
+            if item.source_name.strip()
+        }
+    return None
 
 
 def build_default_search_documents_tool(config: AppConfig):
     settings = config.agents.KnowledgeRetrieverAgent
-    ignore_patterns = load_ignore_patterns(settings.ignore_patterns, settings.ignore_patterns_file)
-
-    def _effective_limit(current: int | None, relaxed_floor: int | None) -> int | None:
-        if settings.extraction_mode == "raw_backend":
-            return None if relaxed_floor is None else current
-        if settings.extraction_mode == "relaxed" and current is not None and relaxed_floor is not None:
-            return max(current, relaxed_floor)
-        return current
 
     def _search_documents(*, query: str = "") -> str:
         if not settings.document_sources:
@@ -108,99 +143,82 @@ def build_default_search_documents_tool(config: AppConfig):
             return json.dumps(payload, ensure_ascii=False)
 
         backend = build_document_source_backend(document_sources=settings.document_sources, route_base="knowledge")
-        if backend is None:
+        if backend is None or create_deep_agent is None:
             payload = {
                 "status": "unavailable",
-                "message": "参照可能なドキュメントがないので回答できません。agents.KnowledgeRetrieverAgent.document_sources を設定してください。 DeepAgents backend を初期化できませんでした。",
+                "message": "参照可能なドキュメントがないので回答できません。agents.KnowledgeRetrieverAgent.document_sources を設定してください。 DeepAgents search を初期化できませんでした。",
                 "query": query,
                 "results": [],
             }
             return json.dumps(payload, ensure_ascii=False)
 
-        expanded_keywords = (
-            _expand_search_keywords(config, query, settings.search_keyword_expansion_count)
-            if settings.search_keyword_expansion_enabled
-            else []
-        )
-        search_keywords = _normalize_keywords(
-            [*settings.search_keywords, *expanded_keywords],
-            max(1, len(settings.search_keywords) + settings.search_keyword_expansion_count),
-        )
+        try:
+            normalized_by_source = _invoke_deepagents_search(
+                config=config,
+                backend=backend,
+                sources=settings.document_sources,
+                query=query,
+                extraction_mode=settings.extraction_mode,
+            )
+        except Exception as exc:
+            normalized_by_source = {
+                source.name: {
+                    "source_name": source.name,
+                    "status": "unavailable",
+                    "summary": f"DeepAgents search failed: {exc}",
+                    "matched_paths": [],
+                    "evidence": [],
+                    "feature_bullets": [],
+                    "raw_content": "",
+                }
+                for source in settings.document_sources
+            }
+        if normalized_by_source is None:
+            normalized_by_source = {
+                source.name: {
+                    "source_name": source.name,
+                    "status": "unavailable",
+                    "summary": "DeepAgents search did not return a structured response.",
+                    "matched_paths": [],
+                    "evidence": [],
+                    "feature_bullets": [],
+                    "raw_content": "",
+                }
+                for source in settings.document_sources
+            }
 
         results: list[dict[str, object]] = []
         for source in settings.document_sources:
             route_prefix = f"/knowledge/{source.name}/"
-            candidate_paths = candidate_virtual_paths_for_source(
-                backend=backend,
-                source=source,
-                route_base="knowledge",
-                ignore_patterns=ignore_patterns,
-                limit=_effective_limit(settings.candidate_path_limit, 20),
-            )
-            if not candidate_paths:
-                results.append(
-                    {
-                        "source_name": source.name,
-                        "source_description": source.description,
-                        "source_type": "document_source",
-                        "status": "unavailable",
-                        "summary": "参照対象パスに概要取得可能な Markdown 文書が見つかりません。",
-                        "path": str(source.path),
-                        "route_prefix": route_prefix,
-                        "matched_paths": [],
-                        "evidence": [],
-                        "feature_bullets": [],
-                    }
-                )
-                continue
-
-            primary_content = read_backend_content_with_limit(
-                backend,
-                candidate_paths[0],
-                _effective_limit(settings.backend_read_char_limit, 32000),
-            )
-            raw_matches = grep_backend_matches(
-                backend,
-                query,
-                route_prefix,
-                extra_keywords=search_keywords,
-                max_items=settings.raw_backend_max_matches if settings.extraction_mode == "raw_backend" else _effective_limit(settings.max_evidence_count, 20),
-            )
+            normalized = normalized_by_source.get(source.name) or {
+                "source_name": source.name,
+                "status": "unavailable",
+                "summary": "DeepAgents search did not return a result for this source.",
+                "matched_paths": [],
+                "evidence": [],
+                "feature_bullets": [],
+                "raw_content": "",
+            }
             result_payload: dict[str, object] = {
                 "source_name": source.name,
                 "source_description": source.description,
                 "source_type": "document_source",
-                "status": "matched",
-                "summary": (
-                    primary_content.strip()
-                    if settings.extraction_mode == "raw_backend"
-                    else extract_relevant_snippet_with_limit(
-                        primary_content,
-                        query,
-                        _effective_limit(settings.summary_max_chars, 2000),
-                    )
-                    or f"{source.name} から関連箇所を抽出しました。"
-                ),
+                "status": str(normalized.get("status") or "unknown"),
+                "summary": str(normalized.get("summary") or ""),
                 "path": str(source.path),
                 "route_prefix": route_prefix,
-                "matched_paths": candidate_paths[:3] if settings.extraction_mode != "raw_backend" else candidate_paths,
-                "evidence": [str(match.get("text") or "").strip() for match in raw_matches],
-                "feature_bullets": []
-                if settings.extraction_mode == "raw_backend"
-                else extract_feature_bullets_with_options(
-                    primary_content,
-                    query,
-                    require_query_match=settings.extraction_mode == "limited",
-                    heading_keywords=settings.feature_heading_keywords,
-                    max_items=_effective_limit(settings.feature_bullet_max_items, 20),
-                ),
+                "matched_paths": list(normalized.get("matched_paths") or []),
+                "evidence": [str(item).strip() for item in list(normalized.get("evidence") or []) if str(item).strip()],
+                "feature_bullets": [str(item).strip() for item in list(normalized.get("feature_bullets") or []) if str(item).strip()],
             }
             if settings.extraction_mode == "raw_backend":
+                raw_content = str(normalized.get("raw_content") or "")
+                primary_path = str((result_payload["matched_paths"] or [""])[0])
                 result_payload["raw_backend"] = {
                     "mode": settings.extraction_mode,
-                    "file_data": read_backend_file_data(backend, candidate_paths[0]),
-                    "grep_matches": raw_matches,
-                    "glob_matches": glob_backend_matches(backend, "**/*.md", route_prefix, settings.raw_backend_max_matches),
+                    "file_data": {"content": raw_content}
+                    if raw_content
+                    else (read_backend_file_data(backend, primary_path) if primary_path else None),
                 }
             results.append(result_payload)
 

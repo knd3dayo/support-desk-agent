@@ -176,7 +176,12 @@ def extract_feature_bullets_with_options(
 
 
 def read_backend_file_data(backend: Any, path: str) -> dict[str, Any] | None:
-    result = backend.read(path)
+    if not path:
+        return None
+    try:
+        result = backend.read(path)
+    except Exception:
+        return None
     file_data = getattr(result, "file_data", None)
     if not isinstance(file_data, dict):
         return None
@@ -203,11 +208,13 @@ def grep_backend_matches(
     path: str,
     extra_keywords: list[str] | None = None,
     max_items: int | None = 3,
+    ignore_patterns: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     query_tokens = [token for token in re.split(r"[\s/,:()]+", query) if len(token) >= 2]
     keywords = [*query_tokens, *(extra_keywords or [])]
     matches: list[dict[str, Any]] = []
     seen: set[tuple[str, int]] = set()
+    normalized_base_path = path.rstrip("/") + "/"
     for keyword in keywords:
         try:
             grep_result = backend.grep(keyword, path=path)
@@ -221,6 +228,11 @@ def grep_backend_matches(
             text = str(match.get("text") or "").strip()
             if not text or key in seen:
                 continue
+            candidate_path = str(match.get("path") or "").strip()
+            if ignore_patterns:
+                relative_path = candidate_path.removeprefix(normalized_base_path) if candidate_path.startswith(normalized_base_path) else candidate_path
+                if relative_path and is_ignored_relative_path(relative_path, ignore_patterns):
+                    continue
             seen.add(key)
             matches.append(dict(match))
             if max_items is not None and len(matches) >= max_items:
@@ -238,13 +250,40 @@ def grep_backend_evidence_with_limit(
     path: str,
     extra_keywords: list[str] | None = None,
     max_items: int | None = 3,
+    ignore_patterns: list[str] | None = None,
 ) -> list[str]:
-    return [str(match.get("text") or "").strip() for match in grep_backend_matches(backend, query, path, extra_keywords=extra_keywords, max_items=max_items)]
+    return [
+        str(match.get("text") or "").strip()
+        for match in grep_backend_matches(
+            backend,
+            query,
+            path,
+            extra_keywords=extra_keywords,
+            max_items=max_items,
+            ignore_patterns=ignore_patterns,
+        )
+    ]
 
 
-def glob_backend_matches(backend: Any, pattern: str, path: str, max_items: int | None = None) -> list[dict[str, Any]]:
+def glob_backend_matches(
+    backend: Any,
+    pattern: str,
+    path: str,
+    max_items: int | None = None,
+    ignore_patterns: list[str] | None = None,
+) -> list[dict[str, Any]]:
     glob_result = backend.glob(pattern, path=path)
-    matches = [dict(match) for match in list(getattr(glob_result, "matches", None) or []) if isinstance(match, dict)]
+    normalized_base_path = path.rstrip("/") + "/"
+    matches: list[dict[str, Any]] = []
+    for match in list(getattr(glob_result, "matches", None) or []):
+        if not isinstance(match, dict):
+            continue
+        candidate_path = str(match.get("path") or "").strip()
+        if ignore_patterns:
+            relative_path = candidate_path.removeprefix(normalized_base_path) if candidate_path.startswith(normalized_base_path) else candidate_path
+            if relative_path and is_ignored_relative_path(relative_path, ignore_patterns):
+                continue
+        matches.append(dict(match))
     if max_items is None:
         return matches
     return matches[:max_items]

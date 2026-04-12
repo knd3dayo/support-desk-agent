@@ -177,6 +177,7 @@ def build_default_check_policy_tool(config: AppConfig):
                         route_prefix,
                         extra_keywords=search_keywords,
                         max_items=settings.raw_backend_max_matches if settings.extraction_mode == "raw_backend" else _effective_limit(settings.max_evidence_count, 20),
+                        ignore_patterns=ignore_patterns,
                     )
                     payload: dict[str, object] = {
                         "source_name": source.name,
@@ -203,7 +204,13 @@ def build_default_check_policy_tool(config: AppConfig):
                             "mode": settings.extraction_mode,
                             "file_data": read_backend_file_data(backend, candidate_paths[0]),
                             "grep_matches": raw_matches,
-                            "glob_matches": glob_backend_matches(backend, "**/*.md", route_prefix, settings.raw_backend_max_matches),
+                            "glob_matches": glob_backend_matches(
+                                backend,
+                                "**/*.md",
+                                route_prefix,
+                                settings.raw_backend_max_matches,
+                                ignore_patterns=ignore_patterns,
+                            ),
                         }
                     results.append(payload)
                 search_result = {

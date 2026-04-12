@@ -31,6 +31,7 @@ class CaseState(TypedDict, total=False):
     workflow_kind: WorkflowKind
     execution_mode: ExecutionMode
     workspace_path: str
+    intake_evidence_files: list[str]
     created_at: str
     status: CaseStatus
     raw_issue: str

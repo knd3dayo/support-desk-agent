@@ -12,10 +12,10 @@
 - description: source の内容説明
 - path: 実ファイルの格納先パス
 
-`agents.KnowledgeRetrieverAgent.ignore_patterns` と `agents.KnowledgeRetrieverAgent.ignore_patterns_file` では、文書探索から除外するパスを指定する。
+`agents.KnowledgeRetrieverAgent.extraction_mode` では、DeepAgents にどの粒度で文書探索を依頼するかを指定する。
 
-- ignore_patterns: source root からの相対パスに対する glob パターン。未指定時は `.git`、`node_modules`、`.venv`、`__pycache__` などを既定で除外する
-- ignore_patterns_file: 1 行 1 パターンの追加除外ファイル。空行と `#` コメントは無視する
+- relaxed: 既定値。DeepAgents に関連語も含めた広めの探索を依頼し、整形済みの要点を返す
+- raw_backend: 診断向け。DeepAgents が選んだ主要文書の生テキストを追加 payload として保持する
 
 例:
 
@@ -23,12 +23,7 @@
 support_ope_agents:
   agents:
     KnowledgeRetrieverAgent:
-      ignore_patterns:
-        - .*
-        - '**/.*'
-        - node_modules/**
-        - '**/node_modules/**'
-      ignore_patterns_file: ./.support-ope-ignore
+      extraction_mode: relaxed
       document_sources:
         - name: python312_manual
           description: Python 3.12 の公式仕様・標準ライブラリ資料
@@ -47,9 +42,9 @@ support_ope_agents:
 - 各 source は `/knowledge/<source_name>/` に route する
 - default backend は `StateBackend` とし、knowledge 以外の一時ファイルは state 側で扱う
 
-現時点の support-ope-agents では、ignore_patterns は既定の `search_documents` / `check_policy` 実装で使う。DeepAgents の FilesystemBackend 自体には `.gitignore` を自動解釈する共通設定はないため、support-ope-agents 側で探索候補を絞る。
+KnowledgeRetrieverAgent の `search_documents` builtin は、検索判断そのものを DeepAgents に委ねる。support-ope-agents 側は backend mount、結果 payload の正規化、constraint_mode に応じた後段整形を担う。
 
-検索結果 payload の組み立ては各 caller が担当する。共通化するのは backend mount、ignore pattern 適用、候補 Markdown path の抽出までに留め、`summary` には生成要約ではなく該当 Markdown からの raw snippet を入れる。
+検索結果 payload の組み立ては caller 側が担当する。`summary` には主に該当 Markdown からの raw snippet または DeepAgents が選んだ重要抜粋を入れる。
 
 例:
 
@@ -114,7 +109,7 @@ support_ope_agents:
 - `bypass`: instruction と runtime 制約の両方を極力外す
 
 `constraint_mode` は制約の適用方針であり、KnowledgeRetrieverAgent / ComplianceReviewerAgent の `extraction_mode` とは別物である。
-`extraction_mode` は文書取得の詳細度を表し、`limited / relaxed / raw_backend` を使って backend の read / grep / glob payload をどこまで返すかを決める。
+`extraction_mode` は文書取得の詳細度を表し、KnowledgeRetrieverAgent では `relaxed / raw_backend` を使って DeepAgents の探索粒度と返却 payload を切り替える。
 
 `agents.SuperVisorAgent.max_investigation_loops` では、Supervisor が新しい事実や知識を起点に LogAnalyzerAgent / KnowledgeRetrieverAgent へ再調査を出す回数を制御する。
 

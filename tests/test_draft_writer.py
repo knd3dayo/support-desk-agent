@@ -107,34 +107,35 @@ class DraftWriterTests(unittest.TestCase):
             self.assertNotIn("document_sources", draft)
             self.assertIn("回避策候補", draft)
 
-    def test_draft_writer_bypass_preserves_runtime_filtered_text(self) -> None:
-        config = AppConfig.model_validate(
-            {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
-                "config_paths": {},
-                "data_paths": {},
-                "interfaces": {},
-                "agents": {
-                    "DraftWriterAgent": {
-                        "constraint_mode": "bypass",
-                    }
-                },
-            }
-        )
-        executor = DraftWriterPhaseExecutor(
-            config=config,
-            write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
-        )
+    def test_draft_writer_instruction_only_and_bypass_preserve_runtime_filtered_text(self) -> None:
+        for constraint_mode in ("instruction_only", "bypass"):
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "DraftWriterAgent": {
+                            "constraint_mode": constraint_mode,
+                        }
+                    },
+                }
+            )
+            executor = DraftWriterPhaseExecutor(
+                config=config,
+                write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
+            )
 
-        result = executor.execute(
-            {
-                "draft_response": "SuperVisorAgent が関連資料を確認しました。\n\nquery: internal",
-            }
-        )
+            result = executor.execute(
+                {
+                    "draft_response": "SuperVisorAgent が関連資料を確認しました。\n\nquery: internal",
+                }
+            )
 
-        draft = str(result.get("draft_response") or "")
-        self.assertIn("SuperVisorAgent", draft)
-        self.assertIn("query: internal", draft)
+            draft = str(result.get("draft_response") or "")
+            self.assertIn("SuperVisorAgent", draft)
+            self.assertIn("query: internal", draft)
 
     def test_draft_writer_default_mode_preserves_findings_while_replacing_internal_terms(self) -> None:
         config = AppConfig.model_validate(

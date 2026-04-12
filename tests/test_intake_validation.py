@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.config.models import AppConfig
@@ -77,6 +79,54 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         self.assertEqual(result.urgency, "high")
         self.assertEqual(result.missing_fields, ["intake_incident_timeframe"])
         self.assertEqual(result.rework_reason, "障害発生時間帯が未確認")
+
+    def test_validate_intake_skips_incident_timeframe_when_evidence_files_exist(self) -> None:
+        result = IntakeAgent.validate_intake(
+            {
+                "intake_category": "incident_investigation",
+                "intake_urgency": "high",
+                "intake_evidence_files": [".evidence/vdp.log"],
+            },
+            {"context": "", "progress": "", "summary": ""},
+        )
+
+        self.assertEqual(result.missing_fields, [])
+        self.assertEqual(result.rework_reason, "")
+
+    def test_quality_gate_collects_workspace_evidence_files(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+        agent = IntakeAgent(
+            config=config,
+            pii_mask_tool=lambda *_args, **_kwargs: "",
+            external_ticket_tool=lambda *_args, **_kwargs: "",
+            internal_ticket_tool=lambda *_args, **_kwargs: "",
+            classify_ticket_tool=lambda *_args, **_kwargs: "",
+            write_shared_memory_tool=lambda *_args, **_kwargs: "",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_path = Path(tmpdir) / ".evidence" / "vdp.log"
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+            evidence_path.write_text("sample log\n", encoding="utf-8")
+
+            result = agent.quality_gate(
+                {
+                    "workspace_path": tmpdir,
+                    "intake_category": "incident_investigation",
+                    "intake_urgency": "high",
+                }
+            )
+
+        self.assertEqual(result.get("intake_missing_fields"), [])
+        self.assertEqual(result.get("intake_evidence_files"), [".evidence/vdp.log"])
 
     def test_validate_intake_reads_category_and_urgency_from_memory_snapshot(self) -> None:
         result = IntakeAgent.validate_intake(
