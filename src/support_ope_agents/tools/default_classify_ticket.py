@@ -4,10 +4,11 @@ import json
 import re
 from typing import Any, cast
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
 
 
 def _get_chat_model(config: AppConfig) -> ChatOpenAI:
@@ -38,7 +39,11 @@ def _stringify_response_content(content: Any) -> str:
 
 
 def build_default_classify_ticket_tool(config: AppConfig):
-    async def classify_ticket(text: str, context: str | None = None) -> str:
+    async def classify_ticket(
+        text: str,
+        context: str | None = None,
+        conversation_messages: list[dict[str, object]] | None = None,
+    ) -> str:
         normalized_text = str(text or "").strip()
         normalized_context = str(context or "").strip()
         if not normalized_text:
@@ -53,10 +58,17 @@ def build_default_classify_ticket_tool(config: AppConfig):
             "Allowed urgency values: low, medium, high.",
             "Keep investigation_focus and reason concise.",
         ]
+        prompt_lines: list[str] = []
         if normalized_context:
-            instructions.extend(["", f"Context: {normalized_context}"])
-        instructions.extend(["", "Issue:", normalized_text])
-        response = await model.ainvoke([HumanMessage(content="\n".join(instructions))])
+            prompt_lines.append(f"Context: {normalized_context}")
+        prompt_lines.extend(["Issue:", normalized_text])
+        response = await model.ainvoke(
+            [
+                SystemMessage(content="\n".join(instructions)),
+                *deserialize_langchain_messages(conversation_messages),
+                HumanMessage(content="\n".join(prompt_lines)),
+            ]
+        )
         content = _stringify_response_content(response.content)
         if not content:
             raise ValueError("classify_ticket returned an empty response")

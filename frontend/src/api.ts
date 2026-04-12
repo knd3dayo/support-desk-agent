@@ -19,6 +19,23 @@ type TicketIdOptions = {
   internalTicketId?: string;
 };
 
+type ChatHistoryMessage = {
+  role: string;
+  content: string;
+};
+
+type LangChainMessage = {
+  type: string;
+  data: {
+    content: unknown;
+    additional_kwargs?: Record<string, unknown>;
+    response_metadata?: Record<string, unknown>;
+    name?: string | null;
+    id?: string | null;
+    tool_call_id?: string | null;
+  };
+};
+
 function getAuthHeaders(): Record<string, string> {
   const token = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)?.trim();
   if (!token) {
@@ -178,7 +195,9 @@ export function sendAction(
   prompt: string,
   workspacePath: string,
   caseId: string,
-  ticketIds?: TicketIdOptions
+  ticketIds?: TicketIdOptions,
+  chatHistory: ChatHistoryMessage[] = [],
+  conversationMessages: LangChainMessage[] = []
 ): Promise<RuntimeEnvelope> {
   return requestJson<RuntimeEnvelope>('/action', {
     method: 'POST',
@@ -188,6 +207,8 @@ export function sendAction(
       case_id: caseId,
       external_ticket_id: ticketIds?.externalTicketId,
       internal_ticket_id: ticketIds?.internalTicketId,
+      chat_history: chatHistory,
+      conversation_messages: conversationMessages,
     }),
   });
 }

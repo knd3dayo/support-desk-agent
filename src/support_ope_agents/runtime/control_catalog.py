@@ -188,15 +188,17 @@ def _build_instruction_resolution_entry(
     role: str,
     common_instruction_constraints: list[str],
 ) -> dict[str, object]:
-    instruction_text = instruction_loader.load(case_id, role)
+    constraint_mode = config.agents.resolve_constraint_mode(role)
+    instruction_text = instruction_loader.load(case_id, role, constraint_mode=constraint_mode)
     inferred_constraints = [
         constraint for constraint in _infer_instruction_constraints(instruction_text) if constraint not in common_instruction_constraints
     ]
     return {
         "role": role,
-        "resolved_sources": _resolve_instruction_sources(config, role),
+        "resolved_sources": _resolve_instruction_sources(config, role, constraint_mode=constraint_mode),
         "instruction_excerpt": _instruction_excerpt(instruction_text),
         "inferred_constraints": inferred_constraints,
+        "constraint_mode": constraint_mode,
     }
 
 
@@ -278,7 +280,10 @@ def _build_logical_tool_catalog(config: AppConfig) -> list[dict[str, object]]:
     return logical_tools
 
 
-def _resolve_instruction_sources(config: AppConfig, role: str) -> list[str]:
+def _resolve_instruction_sources(config: AppConfig, role: str, *, constraint_mode: str = "default") -> list[str]:
+    if constraint_mode in {"runtime_only", "bypass"}:
+        return []
+
     default_root = files("support_ope_agents.instructions.defaults")
     default_common = default_root / "common.md"
     default_role = default_root / f"{role}.md"

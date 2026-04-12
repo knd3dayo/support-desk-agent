@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from support_ope_agents.runtime import RuntimeService, build_runtime_context
 from support_ope_agents.runtime.case_titles import derive_case_title
+from support_ope_agents.runtime.conversation_messages import coerce_serialized_conversation_messages
 
 from .schemas import (
     ActionRequest,
@@ -131,7 +132,12 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
         except Exception as exc:
             raise map_error(exc) from exc
         return ChatHistoryResponse.model_validate(
-            {"case_id": case_id, "workspace_path": resolved_workspace, "messages": messages}
+            {
+                "case_id": case_id,
+                "workspace_path": resolved_workspace,
+                "messages": messages,
+                "conversation_messages": coerce_serialized_conversation_messages(messages),
+            }
         )
 
     @app.get("/cases/{case_id}/workspace", response_model=WorkspaceBrowseResponse)
@@ -289,6 +295,8 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             execution_plan=request.execution_plan,
             external_ticket_id=request.external_ticket_id,
             internal_ticket_id=request.internal_ticket_id,
+            conversation_messages=[message.model_dump() for message in request.conversation_messages],
+            chat_history=[message.model_dump() for message in request.chat_history],
         )
         return RuntimeEnvelope.model_validate(result)
 

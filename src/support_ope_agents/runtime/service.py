@@ -37,6 +37,7 @@ from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.case_titles import derive_case_title
+from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages, deserialize_langchain_messages
 from support_ope_agents.runtime.control_catalog import build_control_catalog, build_runtime_audit
 from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
@@ -456,26 +457,95 @@ class RuntimeService:
         return normalized in {"詳細", "詳しく", "詳細に", "詳しく教えて", "続きを教えてください"}
 
     def _resolve_followup_anchor_issue(self, *, case_id: str, workspace_path: str, saved_state: CaseState) -> str:
-        history = self.get_chat_history(case_id=case_id, workspace_path=workspace_path)
-        for message in reversed(history):
-            if str(message.get("role") or "") != "user":
+        history = self._resolve_saved_conversation_messages(
+            case_id=case_id,
+            workspace_path=workspace_path,
+            saved_state=saved_state,
+        )
+        for message in reversed(deserialize_langchain_messages(history)):
+            if message.type != "human":
                 continue
-            content = str(message.get("content") or "").strip()
+            content = str(getattr(message, "text", message.content)).strip()
             if not content or self._is_context_dependent_followup(content):
                 continue
             return content
         return str(saved_state.get("raw_issue") or "").strip()
 
-    def _resolve_action_prompt(self, *, prompt: str, case_id: str, workspace_path: str, saved_state: CaseState) -> str:
-        normalized_prompt = prompt.strip()
-        if not self._is_context_dependent_followup(normalized_prompt):
-            return normalized_prompt
+    def _resolve_saved_conversation_messages(
+        self,
+        *,
+        case_id: str,
+        workspace_path: str,
+        saved_state: CaseState,
+    ) -> list[dict[str, object]]:
+        state_messages = saved_state.get("conversation_messages")
+        if isinstance(state_messages, list) and state_messages:
+            return coerce_serialized_conversation_messages(state_messages)
+        return coerce_serialized_conversation_messages(self.get_chat_history(case_id=case_id, workspace_path=workspace_path))
 
-        anchor_issue = self._resolve_followup_anchor_issue(
+    def _resolve_followup_anchor_from_messages(self, messages: list[dict[str, object]], current_prompt: str) -> str:
+        for message in reversed(deserialize_langchain_messages(messages)):
+            if message.type != "human":
+                continue
+            content = str(getattr(message, "text", message.content)).strip()
+            if not content:
+                continue
+            if content == current_prompt and self._is_context_dependent_followup(content):
+                continue
+            if self._is_context_dependent_followup(content):
+                continue
+            return content
+        return ""
+
+    def _build_conversation_messages(
+        self,
+        *,
+        case_id: str,
+        workspace_path: str,
+        saved_state: CaseState,
+        prompt: str,
+        conversation_messages: list[dict[str, object]] | None = None,
+        chat_history: list[dict[str, object]] | None = None,
+    ) -> list[dict[str, object]]:
+        request_messages = coerce_serialized_conversation_messages(conversation_messages)
+        if request_messages:
+            return append_serialized_message(request_messages, role="user", content=prompt)
+
+        legacy_messages = coerce_serialized_conversation_messages(chat_history)
+        if legacy_messages:
+            return append_serialized_message(legacy_messages, role="user", content=prompt)
+
+        saved_messages = self._resolve_saved_conversation_messages(
             case_id=case_id,
             workspace_path=workspace_path,
             saved_state=saved_state,
         )
+        return append_serialized_message(saved_messages, role="user", content=prompt)
+
+    def _resolve_action_prompt(
+        self,
+        *,
+        prompt: str,
+        case_id: str,
+        workspace_path: str,
+        saved_state: CaseState,
+        conversation_messages: list[dict[str, object]] | None = None,
+        chat_history: list[dict[str, object]] | None = None,
+    ) -> str:
+        normalized_prompt = prompt.strip()
+        if not self._is_context_dependent_followup(normalized_prompt):
+            return normalized_prompt
+
+        request_messages = coerce_serialized_conversation_messages(conversation_messages)
+        if not request_messages:
+            request_messages = coerce_serialized_conversation_messages(chat_history)
+        anchor_issue = self._resolve_followup_anchor_from_messages(request_messages, normalized_prompt)
+        if not anchor_issue:
+            anchor_issue = self._resolve_followup_anchor_issue(
+                case_id=case_id,
+                workspace_path=workspace_path,
+                saved_state=saved_state,
+            )
         if not anchor_issue or anchor_issue == normalized_prompt:
             return normalized_prompt
         return f"{anchor_issue}\n\n[Follow-up request]\n{normalized_prompt}"
@@ -530,6 +600,7 @@ class RuntimeService:
             "execution_mode": "plan",
             "workspace_path": workspace_path,
             "raw_issue": prompt,
+            "conversation_messages": append_serialized_message([], role="user", content=prompt),
             "external_ticket_id": resolved_external_ticket_id,
             "internal_ticket_id": resolved_internal_ticket_id,
             "external_ticket_lookup_enabled": external_ticket_lookup_enabled,
@@ -594,6 +665,8 @@ class RuntimeService:
         execution_plan: str | None = None,
         external_ticket_id: str | None = None,
         internal_ticket_id: str | None = None,
+        conversation_messages: list[dict[str, object]] | None = None,
+        chat_history: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
         resolved_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id, workspace_path=workspace_path)
         saved_state = self._load_state(case_id=resolved_case_id, trace_id=trace_id, workspace_path=workspace_path)
@@ -635,6 +708,16 @@ class RuntimeService:
             case_id=selected_case_id,
             workspace_path=workspace_path,
             saved_state=saved_state,
+            conversation_messages=conversation_messages,
+            chat_history=chat_history,
+        )
+        resolved_conversation_messages = self._build_conversation_messages(
+            case_id=selected_case_id,
+            workspace_path=workspace_path,
+            saved_state=saved_state,
+            prompt=prompt,
+            conversation_messages=conversation_messages,
+            chat_history=chat_history,
         )
         state: CaseState = {
             "case_id": selected_case_id,
@@ -645,6 +728,7 @@ class RuntimeService:
             "execution_mode": "action",
             "workspace_path": workspace_path,
             "raw_issue": resolved_prompt,
+            "conversation_messages": resolved_conversation_messages,
             "external_ticket_id": resolved_external_ticket_id,
             "internal_ticket_id": resolved_internal_ticket_id,
             "external_ticket_lookup_enabled": external_ticket_lookup_enabled,
@@ -728,6 +812,11 @@ class RuntimeService:
         resumed_state["case_id"] = case_id
         resumed_state["workspace_path"] = workspace_path
         resumed_state["raw_issue"] = merged_prompt
+        resumed_state["conversation_messages"] = append_serialized_message(
+            self._resolve_saved_conversation_messages(case_id=case_id, workspace_path=workspace_path, saved_state=saved_state),
+            role="user",
+            content=normalized_additional_input,
+        )
         resumed_state["external_ticket_id"] = self._context.case_id_resolver_service.resolve_external_ticket_id(
             explicit_ticket_id=external_ticket_id or str(saved_state.get("external_ticket_id") or "") or None,
             trace_id=trace_id,

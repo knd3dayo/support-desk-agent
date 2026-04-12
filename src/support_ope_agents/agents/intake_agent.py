@@ -44,7 +44,15 @@ class IntakeAgent:
         try:
             result = tool(*args, **kwargs)
         except TypeError:
-            result = tool(*args)
+            if kwargs:
+                try:
+                    signature = inspect.signature(tool)
+                    filtered_kwargs = {key: value for key, value in kwargs.items() if key in signature.parameters}
+                    result = tool(*args, **filtered_kwargs)
+                except (TypeError, ValueError):
+                    result = tool(*args)
+            else:
+                result = tool(*args)
         if inspect.isawaitable(result):
             resolved = run_awaitable_sync(cast(Any, result))
             return str(resolved)
@@ -419,6 +427,7 @@ class IntakeAgent:
                 self.classify_ticket_tool,
                 masked_issue,
                 self.CLASSIFY_PROMPT,
+                conversation_messages=cast(list[dict[str, object]], update.get("conversation_messages") or []),
             )
         )
         update["intake_category"] = classification["category"]

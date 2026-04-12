@@ -23,6 +23,7 @@ from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
     BACK_SUPPORT_ESCALATION_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
+    COMPLIANCE_REVIEWER_AGENT,
     DRAFT_WRITER_AGENT,
     INTAKE_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,
@@ -858,6 +859,43 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         decision_log = cast(list[dict[str, object]], audit["decision_log"])
         self.assertTrue(any(str(item.get("control_point_id") or "") == "workflow.route_after_investigation.draft_review" for item in decision_log))
 
+    def test_describe_runtime_audit_hides_instruction_resolution_for_default_bypass(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "default_constraint_mode": "bypass",
+                    "ComplianceReviewerAgent": {"constraint_mode": "default"},
+                },
+            }
+        )
+        service = self._build_service(config)
+
+        result = service.action(
+            prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-RUNTIME-AUDIT-BYPASS",
+        )
+
+        audit = service.describe_runtime_audit(
+            case_id="CASE-TEST-RUNTIME-AUDIT-BYPASS",
+            trace_id=str(result["trace_id"]),
+            workspace_path=str(self.workspace_path),
+        )
+
+        entries = cast(list[dict[str, object]], audit["instruction_resolution"])
+        draft_entry = next(item for item in entries if str(item.get("role") or "") == DRAFT_WRITER_AGENT)
+        compliance_entry = next(item for item in entries if str(item.get("role") or "") == COMPLIANCE_REVIEWER_AGENT)
+
+        self.assertEqual(str(draft_entry.get("constraint_mode") or ""), "bypass")
+        self.assertEqual(cast(list[str], draft_entry.get("resolved_sources") or []), [])
+        self.assertEqual(str(draft_entry.get("instruction_excerpt") or ""), "")
+        self.assertEqual(str(compliance_entry.get("constraint_mode") or ""), "default")
+        self.assertTrue(bool(cast(list[str], compliance_entry.get("resolved_sources") or [])))
+
     def test_generate_support_improvement_report_writes_report_folder(self) -> None:
         result = self.service.action(
             prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
@@ -1163,6 +1201,56 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("ai-chat-utilについて教えて", raw_issue)
         self.assertIn("[Follow-up request]", raw_issue)
         self.assertIn("詳細を教えてください", raw_issue)
+
+    def test_action_merges_generic_followup_with_request_chat_history(self) -> None:
+        result = self.service.action(
+            prompt="詳細を教えてください",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-018-FOLLOWUP",
+            chat_history=[
+                {"role": "user", "content": "ai-chat-utilについて教えて"},
+                {"role": "assistant", "content": "概要を説明します。"},
+            ],
+        )
+
+        state = cast(CaseState, result["state"])
+        raw_issue = str(state.get("raw_issue") or "")
+        self.assertIn("ai-chat-utilについて教えて", raw_issue)
+        self.assertIn("[Follow-up request]", raw_issue)
+        self.assertIn("詳細を教えてください", raw_issue)
+
+    def test_action_stores_langchain_conversation_messages_in_state(self) -> None:
+        result = self.service.action(
+            prompt="詳細を教えてください",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-019-CONVERSATION",
+            conversation_messages=[
+                {
+                    "type": "human",
+                    "data": {
+                        "content": "ai-chat-utilについて教えて",
+                        "additional_kwargs": {},
+                        "response_metadata": {},
+                    },
+                },
+                {
+                    "type": "ai",
+                    "data": {
+                        "content": "概要を説明します。",
+                        "additional_kwargs": {},
+                        "response_metadata": {},
+                    },
+                },
+            ],
+        )
+
+        state = cast(CaseState, result["state"])
+        raw_issue = str(state.get("raw_issue") or "")
+        conversation_messages = cast(list[dict[str, object]], state.get("conversation_messages") or [])
+        self.assertIn("ai-chat-utilについて教えて", raw_issue)
+        self.assertIn("詳細を教えてください", raw_issue)
+        self.assertEqual(str(conversation_messages[0].get("type") or ""), "human")
+        self.assertEqual(str(cast(dict[str, object], conversation_messages[-1].get("data") or {}).get("content") or ""), "詳細を教えてください")
 
     def test_action_auto_generates_report_when_supervisor_enabled(self) -> None:
         config = AppConfig.model_validate(

@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
+from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
 
 from .document_source_backend import build_document_source_backend, read_backend_file_data
 
@@ -82,6 +83,7 @@ def _invoke_deepagents_search(
     sources: list[KnowledgeDocumentSource],
     query: str,
     extraction_mode: Literal["relaxed", "raw_backend"],
+    conversation_messages: list[dict[str, object]] | None = None,
 ) -> dict[str, dict[str, Any]] | None:
     if create_deep_agent is None:
         return None
@@ -100,6 +102,7 @@ def _invoke_deepagents_search(
     result = agent.invoke(
         {
             "messages": [
+                *deserialize_langchain_messages(conversation_messages),
                 HumanMessage(
                     content=_build_search_prompt(
                         query=query,
@@ -132,7 +135,7 @@ def _invoke_deepagents_search(
 def build_default_search_documents_tool(config: AppConfig):
     settings = config.agents.KnowledgeRetrieverAgent
 
-    def _search_documents(*, query: str = "") -> str:
+    def _search_documents(*, query: str = "", conversation_messages: list[dict[str, object]] | None = None) -> str:
         if not settings.document_sources:
             payload = {
                 "status": "unavailable",
@@ -159,6 +162,7 @@ def build_default_search_documents_tool(config: AppConfig):
                 sources=settings.document_sources,
                 query=query,
                 extraction_mode=settings.extraction_mode,
+                conversation_messages=conversation_messages,
             )
         except Exception as exc:
             normalized_by_source = {

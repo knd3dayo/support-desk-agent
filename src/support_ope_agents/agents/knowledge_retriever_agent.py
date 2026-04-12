@@ -28,7 +28,15 @@ class KnowledgeRetrieverPhaseExecutor:
         try:
             result = tool(*args, **kwargs)
         except TypeError:
-            result = tool(*args)
+            if kwargs:
+                try:
+                    signature = inspect.signature(tool)
+                    filtered_kwargs = {key: value for key, value in kwargs.items() if key in signature.parameters}
+                    result = tool(*args, **filtered_kwargs)
+                except (TypeError, ValueError):
+                    result = tool(*args)
+            else:
+                result = tool(*args)
         if inspect.isawaitable(result):
             resolved = run_awaitable_sync(cast(Any, result))
             return str(resolved)
@@ -291,7 +299,11 @@ class KnowledgeRetrieverPhaseExecutor:
         ticket_artifacts = cast(dict[str, list[str]], state.get("intake_ticket_artifacts") or {})
         apply_runtime_constraints = self._uses_summary_constraints()
         document_message, document_results = self._parse_document_result(
-            self._invoke_tool(self.search_documents_tool, query=raw_issue)
+            self._invoke_tool(
+                self.search_documents_tool,
+                query=raw_issue,
+                conversation_messages=cast(list[dict[str, object]], state.get("conversation_messages") or []),
+            )
         )
         if apply_runtime_constraints:
             document_results = self._prioritize_document_results(raw_issue, document_results)

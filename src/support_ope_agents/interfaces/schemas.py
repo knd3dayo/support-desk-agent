@@ -5,6 +5,20 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class LangChainMessageData(BaseModel):
+    content: Any
+    additional_kwargs: dict[str, Any] = Field(default_factory=dict)
+    response_metadata: dict[str, Any] = Field(default_factory=dict)
+    name: str | None = None
+    id: str | None = None
+    tool_call_id: str | None = None
+
+
+class LangChainMessage(BaseModel):
+    type: str
+    data: LangChainMessageData
+
+
 class PlanRequest(BaseModel):
     prompt: str
     workspace_path: str
@@ -20,6 +34,8 @@ class ActionRequest(BaseModel):
     execution_plan: str | None = None
     external_ticket_id: str | None = None
     internal_ticket_id: str | None = None
+    chat_history: list["ChatMessage"] = Field(default_factory=list)
+    conversation_messages: list[LangChainMessage] = Field(default_factory=list)
 
 
 class ResumeCustomerInputRequest(BaseModel):
@@ -102,6 +118,7 @@ class ChatHistoryResponse(BaseModel):
     case_id: str
     workspace_path: str
     messages: list[ChatMessage] = Field(default_factory=list)
+    conversation_messages: list[LangChainMessage] = Field(default_factory=list)
 
 
 class WorkspaceEntry(BaseModel):

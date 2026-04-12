@@ -13,6 +13,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import DRAFT_WRITER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
 from support_ope_agents.tools.document_source_backend import extract_feature_bullets_with_options, extract_relevant_snippet_with_limit
 
 
@@ -350,7 +351,10 @@ class DraftWriterPhaseExecutor:
             "internal_revision_guidance": str(state.get("compliance_revision_request") or ""),
         }
         response = await model.ainvoke(
-            [HumanMessage(content="Return only the final draft text.\n" + json.dumps(prompt, ensure_ascii=False))]
+            [
+                *deserialize_langchain_messages(cast(list[dict[str, object]], state.get("conversation_messages") or [])),
+                HumanMessage(content="Return only the final draft text.\n" + json.dumps(prompt, ensure_ascii=False)),
+            ]
         )
         content = _stringify_response_content(response.content)
         if not content:

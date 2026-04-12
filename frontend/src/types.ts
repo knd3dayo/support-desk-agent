@@ -14,10 +14,23 @@ export type ChatMessage = {
   created_at?: string | null;
 };
 
+export type LangChainMessage = {
+  type: string;
+  data: {
+    content: unknown;
+    additional_kwargs?: Record<string, unknown>;
+    response_metadata?: Record<string, unknown>;
+    name?: string | null;
+    id?: string | null;
+    tool_call_id?: string | null;
+  };
+};
+
 export type ChatHistoryResponse = {
   case_id: string;
   workspace_path: string;
   messages: ChatMessage[];
+  conversation_messages: LangChainMessage[];
 };
 
 export type WorkspaceEntry = {

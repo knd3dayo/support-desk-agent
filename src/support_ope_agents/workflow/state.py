@@ -35,6 +35,7 @@ class CaseState(TypedDict, total=False):
     created_at: str
     status: CaseStatus
     raw_issue: str
+    conversation_messages: list[dict[str, object]]
     masked_issue: str
     intake_category: WorkflowKind
     intake_urgency: str
