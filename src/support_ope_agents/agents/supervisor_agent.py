@@ -63,14 +63,17 @@ class SupervisorPhaseExecutor:
         from support_ope_agents.workflow.state import CaseState
 
         graph = StateGraph(CaseState)
-        graph.add_node("supervisor_entry", self.passthrough_state)
+        graph.add_node(
+            "supervisor_entry",
+            lambda state: cast(CaseState, self.passthrough_state(cast(dict[str, object], state))),
+        )
         graph.add_node("investigation", self.execute_investigation)
         graph.add_node("draft_review", self.execute_draft_review)
         graph.add_node("escalation_review", self.execute_escalation_review)
         graph.add_edge(START, "supervisor_entry")
         graph.add_conditional_edges(
             "supervisor_entry",
-            self.route_entry,
+            lambda state: self.route_entry(cast(dict[str, object], state)),
             {
                 "investigation": "investigation",
                 "draft_review": "draft_review",
@@ -78,7 +81,7 @@ class SupervisorPhaseExecutor:
         )
         graph.add_conditional_edges(
             "investigation",
-            self.route_after_investigation,
+            lambda state: self.route_after_investigation(cast(dict[str, object], state)),
             {
                 "escalation_review": "escalation_review",
                 "draft_review": "draft_review",

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 import re
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -311,7 +311,7 @@ class RuntimeService:
         self._context.memory_store.update_case_metadata(workspace_path, case_id=case_id, case_title=normalized)
         return normalized
 
-    def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: dict[str, object], prompt: str) -> str:
+    def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: CaseState, prompt: str) -> str:
         existing_title = str(self._context.memory_store.read_case_metadata(workspace_path).get("case_title") or "").strip()
         if existing_title:
             return existing_title
@@ -1056,7 +1056,7 @@ class RuntimeService:
                 ticket_update_executor=self._ticket_update_executor,
                 supervisor_executor=self._supervisor_executor,
             )
-            return cast(CaseState, graph.invoke(state, config=workflow_config))
+            return cast(CaseState, graph.invoke(state, config=cast(Any, workflow_config)))
 
     def _workflow_checkpointer(self, *, case_id: str, workspace_path: str):
         if not case_id or not workspace_path:

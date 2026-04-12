@@ -3,13 +3,19 @@ from __future__ import annotations
 from importlib.resources import files
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Protocol, cast
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.tools.registry import ToolRegistry
 from support_ope_agents.workflow.case_workflow import reconstruct_main_workflow_path
+from support_ope_agents.workflow.state import CaseState
+
+
+class _ReadablePath(Protocol):
+    def exists(self) -> bool: ...
+    def read_text(self, encoding: str = "utf-8") -> str: ...
 
 
 def build_control_catalog(
@@ -117,7 +123,7 @@ def build_control_catalog(
             "workflow_node_count": len(workflow_nodes),
             "workflow_edge_count": len(workflow_edges),
             "logical_tool_count": len(logical_tools),
-            "instruction_role_count": len(instructions["roles"]),
+            "instruction_role_count": len(_instruction_role_entries(instructions)),
             "control_point_count": len(control_points),
         },
         "workflow": {
@@ -141,7 +147,7 @@ def build_control_catalog(
 def build_runtime_audit(
     *,
     case_id: str,
-    state: dict[str, object],
+    state: CaseState,
     config: AppConfig,
     instruction_loader: InstructionLoader,
 ) -> dict[str, object]:
@@ -166,7 +172,7 @@ def build_runtime_audit(
             "approval_route": _approval_route(state),
             "used_role_count": len(used_roles),
             "decision_count": len(decision_log),
-            "draft_review_iterations": int(state.get("draft_review_iterations") or 0),
+            "draft_review_iterations": _coerce_int(state.get("draft_review_iterations"), default=0),
         },
         "workflow_path": workflow_path,
         "used_roles": used_roles,
@@ -207,7 +213,7 @@ def _load_common_instruction_text(config: AppConfig) -> str:
     parts: list[str] = []
 
     default_common = default_root / "common.md"
-    if default_common.exists():
+    if _path_exists(default_common):
         parts.append(default_common.read_text(encoding="utf-8").strip())
 
     override_root = config.config_paths.instructions_path
@@ -230,7 +236,7 @@ def _build_instruction_catalog(config: AppConfig, agent_definitions: list[AgentD
         "override_root": str(override_root) if override_root is not None else None,
         "common": {
             "default_path": str(common_default),
-            "default_exists": common_default.exists(),
+            "default_exists": _path_exists(common_default),
             "override_path": str(common_override) if common_override is not None else None,
             "override_exists": common_override.exists() if common_override is not None else False,
         },
@@ -242,9 +248,9 @@ def _build_instruction_role_entry(default_root: Any, override_root: Path | None,
     default_path = default_root / f"{role}.md"
     override_path = override_root / f"{role}.md" if override_root is not None else None
     sources = []
-    if default_root.joinpath("common.md").exists():
+    if _path_exists(default_root.joinpath("common.md")):
         sources.append(str(default_root / "common.md"))
-    if default_path.exists():
+    if _path_exists(default_path):
         sources.append(str(default_path))
     if override_root is not None:
         common_override = override_root / "common.md"
@@ -255,7 +261,7 @@ def _build_instruction_role_entry(default_root: Any, override_root: Path | None,
     return {
         "role": role,
         "default_path": str(default_path),
-        "default_exists": default_path.exists(),
+        "default_exists": _path_exists(default_path),
         "override_path": str(override_path) if override_path is not None else None,
         "override_exists": override_path.exists() if override_path is not None else False,
         "resolved_sources": sources,
@@ -288,9 +294,9 @@ def _resolve_instruction_sources(config: AppConfig, role: str, *, constraint_mod
     default_common = default_root / "common.md"
     default_role = default_root / f"{role}.md"
     sources: list[str] = []
-    if default_common.exists():
+    if _path_exists(default_common):
         sources.append(str(default_common))
-    if default_role.exists():
+    if _path_exists(default_role):
         sources.append(str(default_role))
 
     override_root = config.config_paths.instructions_path
@@ -312,7 +318,7 @@ def _build_agent_entry(
 ) -> dict[str, object]:
     settings = config.agents.get(definition.role)
     instruction_entry = next(
-        (item for item in instructions["roles"] if isinstance(item, dict) and item.get("role") == definition.role),
+        (item for item in _instruction_role_entries(instructions) if item.get("role") == definition.role),
         None,
     )
     return {
@@ -472,15 +478,13 @@ def _build_control_points(config: AppConfig, instructions: dict[str, object]) ->
         ),
     ]
 
-    for role_entry in instructions["roles"]:
-        if not isinstance(role_entry, dict):
-            continue
+    for role_entry in _instruction_role_entries(instructions):
         control_points.append(
             _control_point(
                 control_point_id=f"instruction.role.{role_entry['role']}",
                 category="instruction",
-                owner=role_entry["role"],
-                origin=role_entry["default_path"],
+                owner=str(role_entry["role"]),
+                origin=str(role_entry["default_path"]),
                 condition="agent instruction resolution",
                 effect="resolved instruction stack is available for this role",
                 overrideable=True,
@@ -535,7 +539,7 @@ def _agent_doc_path(role: str) -> str:
     }.get(role, "docs/agents/common.md")
 
 
-def _effective_workflow_kind(state: dict[str, object]) -> str:
+def _effective_workflow_kind(state: CaseState) -> str:
     workflow_kind = str(state.get("workflow_kind") or "").strip()
     intake_category = str(state.get("intake_category") or "").strip()
     valid_values = {"specification_inquiry", "incident_investigation", "ambiguous_case"}
@@ -546,7 +550,7 @@ def _effective_workflow_kind(state: dict[str, object]) -> str:
     return workflow_kind
 
 
-def _approval_route(state: dict[str, object]) -> str:
+def _approval_route(state: CaseState) -> str:
     if str(state.get("status") or "") == "CLOSED" or str(state.get("ticket_update_result") or "").strip():
         return "ticket_update_prepare"
     decision = str(state.get("approval_decision") or "").strip().lower()
@@ -577,7 +581,7 @@ def _resolve_used_roles(workflow_path: list[str], workflow_kind: str) -> list[st
 
 
 def _build_runtime_decision_log(
-    state: dict[str, object],
+    state: CaseState,
     workflow_path: list[str],
     config: AppConfig,
 ) -> list[dict[str, object]]:
@@ -646,7 +650,7 @@ def _build_runtime_decision_log(
             {
                 "control_point_id": "agent.compliance.max_review_loops",
                 "category": "configuration",
-                "outcome": f"{int(state.get('draft_review_iterations') or 0)}/{config.agents.ComplianceReviewerAgent.max_review_loops}",
+                "outcome": f"{_coerce_int(state.get('draft_review_iterations'), default=0)}/{config.agents.ComplianceReviewerAgent.max_review_loops}",
                 "detail": "レビュー周回数と最大自動レビュー回数の比較です。",
             }
         )
@@ -665,7 +669,7 @@ def _build_runtime_decision_log(
     return decisions
 
 
-def _result_label(state: dict[str, object]) -> str:
+def _result_label(state: CaseState) -> str:
     if bool(state.get("escalation_required")):
         return "エスカレーションが必要だった"
     if bool(state.get("compliance_review_passed")):
@@ -678,6 +682,30 @@ def _result_label(state: dict[str, object]) -> str:
 def _instruction_excerpt(text: str) -> str:
     normalized = " ".join(line.strip() for line in text.splitlines() if line.strip())
     return normalized[:160] + ("..." if len(normalized) > 160 else "")
+
+
+def _path_exists(path: _ReadablePath | Path | Any) -> bool:
+    return bool(cast(Any, path).exists())
+
+
+def _instruction_role_entries(instructions: dict[str, object]) -> list[dict[str, object]]:
+    return cast(list[dict[str, object]], instructions.get("roles") or [])
+
+
+def _coerce_int(value: object, *, default: int) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return default
+        try:
+            return int(stripped)
+        except ValueError:
+            return default
+    return default
 
 
 def _infer_instruction_constraints(text: str, *, max_items: int = 6) -> list[str]:
