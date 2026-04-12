@@ -159,7 +159,7 @@ def build_support_improvement_report(
         str(state.get("raw_issue") or "n/a"),
         "",
         "## 回答内容",
-        "顧客向けに返却した、または返却予定の回答本文です。",
+        "サポート担当者に返却した、または返却予定の調査回答本文です。",
         str(state.get("draft_response") or state.get("escalation_draft") or "n/a"),
         "",
         "## 調査に使用したログ・成果物",
@@ -1087,7 +1087,7 @@ def _summarize_compliance_response(
     normalized_review_summary = re.sub(r"\s+", " ", review_summary.strip())
 
     if not normalized_request and "継続可能と判断" in normalized_review_summary:
-        result = "具体的な文面修正は行わず、レビュー結果を踏まえて顧客向けの直接回答として継続可能と判断しました。"
+        result = "具体的な文面修正は行わず、レビュー結果を踏まえてサポート担当者向け回答として継続可能と判断しました。"
         if normalized_draft:
             result += f" 対象ドラフト: 「{normalized_draft}」"
         return result

@@ -35,6 +35,11 @@ class SupervisorPhaseExecutor:
     back_support_inquiry_writer_executor: "BackSupportInquiryWriterPhaseExecutor | None" = None
     escalation_settings: EscalationSettings = field(default_factory=EscalationSettings)
     compliance_max_review_loops: int = 3
+    constraint_mode: str = "default"
+    max_investigation_loops: int = 1
+
+    def _runtime_constraints_enabled(self) -> bool:
+        return self.constraint_mode in {"default", "runtime_only"}
 
     @staticmethod
     def passthrough_state(state: dict[str, object]) -> dict[str, object]:
@@ -113,6 +118,183 @@ class SupervisorPhaseExecutor:
         if category == "ambiguous_case":
             return ["LogAnalyzerAgent", "KnowledgeRetrieverAgent"]
         return ["KnowledgeRetrieverAgent"]
+
+    @staticmethod
+    def _merge_unique_lines(base_text: str, extra_text: str) -> str:
+        normalized_base = base_text.strip()
+        normalized_extra = extra_text.strip()
+        if not normalized_base:
+            return normalized_extra
+        if not normalized_extra or normalized_extra in normalized_base:
+            return normalized_base
+        return f"{normalized_base} 追加調査: {normalized_extra}".strip()
+
+    @staticmethod
+    def _merge_unique_items(base_items: list[str], extra_items: list[str]) -> list[str]:
+        merged: list[str] = []
+        for item in [*base_items, *extra_items]:
+            normalized = str(item).strip()
+            if normalized and normalized not in merged:
+                merged.append(normalized)
+        return merged
+
+    @staticmethod
+    def _merge_knowledge_results(
+        base_results: list[dict[str, object]],
+        extra_results: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        merged: list[dict[str, object]] = []
+        seen: set[str] = set()
+        for item in [*base_results, *extra_results]:
+            try:
+                marker = json.dumps(item, ensure_ascii=False, sort_keys=True)
+            except TypeError:
+                marker = str(item)
+            if marker in seen:
+                continue
+            merged.append(item)
+            seen.add(marker)
+        return merged
+
+    @staticmethod
+    def _extract_followup_clues(
+        *,
+        raw_issue: str,
+        log_analysis_summary: str,
+        knowledge_retrieval_summary: str,
+        knowledge_retrieval_results: list[dict[str, object]],
+        existing_notes: list[str],
+    ) -> list[str]:
+        candidates: list[str] = []
+        combined_baseline = "\n".join([raw_issue, *existing_notes]).lower()
+        combined_findings = "\n".join([log_analysis_summary, knowledge_retrieval_summary])
+
+        for match in re.findall(r"\b[\w.$-]+(?:Exception|Error)\b", combined_findings):
+            candidates.append(match)
+        for match in re.findall(r"Data source\s+[\w.$-]+\s+not found", combined_findings, flags=re.IGNORECASE):
+            candidates.append(match)
+
+        for item in knowledge_retrieval_results:
+            status = str(item.get("status") or "").strip().lower()
+            source_type = str(item.get("source_type") or "").strip().lower()
+            source_name = str(item.get("source_name") or "").strip()
+            if source_name and status in {"matched", "fetched"} and source_type == "document_source":
+                candidates.append(source_name)
+            evidence = item.get("evidence")
+            if isinstance(evidence, list):
+                for detail in evidence:
+                    normalized = str(detail).strip()
+                    if 4 <= len(normalized) <= 80:
+                        candidates.append(normalized)
+                        break
+
+        normalized_candidates: list[str] = []
+        for candidate in candidates:
+            normalized = re.sub(r"\s+", " ", str(candidate).strip())
+            if len(normalized) < 4:
+                continue
+            if normalized.lower() in combined_baseline:
+                continue
+            if normalized not in normalized_candidates:
+                normalized_candidates.append(normalized)
+            if len(normalized_candidates) >= 4:
+                break
+        return normalized_candidates
+
+    @staticmethod
+    def _build_followup_instruction(clues: list[str]) -> str:
+        if not clues:
+            return ""
+        return f"新しく判明した事実: {', '.join(clues)}。これらを起点に追加調査してください。"
+
+    @staticmethod
+    def _first_sentence(text: str, default: str) -> str:
+        normalized = re.sub(r"\s+", " ", text.strip())
+        if not normalized:
+            return default
+        for separator in ("。", "\n"):
+            if separator in normalized:
+                head = normalized.split(separator, 1)[0].strip()
+                if head:
+                    return head + ("。" if separator == "。" else "")
+        return normalized
+
+    @staticmethod
+    def _extract_primary_issue(investigation_summary: str, log_analysis_summary: str) -> str:
+        combined = "\n".join([investigation_summary, log_analysis_summary])
+        data_source_match = re.search(r"Data source\s+([\w.$-]+)\s+not found", combined, flags=re.IGNORECASE)
+        if data_source_match:
+            return f"主要異常候補は Data source {data_source_match.group(1)} not found です。"
+
+        exception_line_match = re.search(r"検出した例外候補[:：]\s*([^。]+)", combined)
+        if exception_line_match:
+            first_exception = exception_line_match.group(1).split(",", 1)[0].strip()
+            if first_exception:
+                return f"主要異常候補は {first_exception} です。"
+
+        exception_name_match = re.search(r"\b([\w.$]+(?:Exception|Error))\b", combined)
+        if exception_name_match:
+            return f"主要異常候補は {exception_name_match.group(1)} です。"
+
+        return ""
+
+    @staticmethod
+    def _extract_primary_evidence(investigation_summary: str, log_analysis_summary: str) -> str:
+        combined = "\n".join([investigation_summary, log_analysis_summary])
+        exception_line_match = re.search(r"代表的な例外行[:：]\s*([^。]+)", combined)
+        if exception_line_match:
+            return exception_line_match.group(1).strip()
+
+        abnormal_line_match = re.search(r"代表的な異常行[:：]\s*([^。]+)", combined)
+        if abnormal_line_match:
+            return abnormal_line_match.group(1).strip()
+
+        return ""
+
+    @staticmethod
+    def _summarize_next_action(next_action: str, escalation_required: bool) -> str:
+        if escalation_required:
+            return next_action or "バックサポート連携の準備を進めます。"
+        if not next_action or "ドラフト作成フェーズ" in next_action:
+            return "調査結果を回答ドラフトへ反映します。"
+        return next_action
+
+    def _build_summary_payload(
+        self,
+        *,
+        investigation_summary: str,
+        escalation_required: bool,
+        escalation_reason: str,
+        next_action: str,
+        followup_notes: list[str],
+        knowledge_retrieval_final_adopted_source: str,
+        log_analysis_summary: str,
+    ) -> SharedMemoryDocumentPayload:
+        inferred_conclusion = self._extract_primary_issue(investigation_summary, log_analysis_summary)
+        conclusion = "バックサポート連携が必要です。" if escalation_required else (
+            inferred_conclusion or self._first_sentence(investigation_summary, "調査結果を整理し、回答ドラフト作成へ進めます。")
+        )
+        inferred_evidence = self._extract_primary_evidence(investigation_summary, log_analysis_summary)
+        rationale = escalation_reason.strip() or inferred_evidence or self._first_sentence(
+            log_analysis_summary or investigation_summary,
+            "主要な調査根拠は investigation_summary を参照してください。",
+        )
+        bullets = [
+            f"Conclusion: {conclusion}",
+            f"Judgment rationale: {rationale}",
+            f"Next action: {self._summarize_next_action(next_action, escalation_required)}",
+            (
+                "Primary source: "
+                f"{knowledge_retrieval_final_adopted_source or 'log analysis / investigation summary'}"
+            ),
+        ]
+        if followup_notes:
+            bullets.append(f"Follow-up investigation: {' | '.join(followup_notes)}")
+        return {
+            "title": "Supervisor Summary",
+            "heading_level": 2,
+            "bullets": bullets,
+        }
 
     def _validate_intake(self, state: "CaseState", memory_snapshot: dict[str, str]) -> tuple[list[str], str]:
         result = IntakeAgent.validate_intake(state, memory_snapshot)
@@ -283,7 +465,7 @@ class SupervisorPhaseExecutor:
                 continue
 
             summary = cls._sanitize_customer_facing_text(str(item.get("summary") or ""))
-            evidence = item.get("evidence") if isinstance(item.get("evidence"), list) else []
+            evidence = cast(list[object], item.get("evidence") or []) if isinstance(item.get("evidence"), list) else []
             highlight = next((str(entry).strip() for entry in evidence if str(entry).strip()), "")
             if summary:
                 return summary
@@ -295,9 +477,8 @@ class SupervisorPhaseExecutor:
             return cls._sanitize_customer_facing_text(knowledge_retrieval_summary)
         return ""
 
-    @classmethod
     def _build_customer_facing_investigation_summary(
-        cls,
+        self,
         *,
         raw_issue: str,
         workflow_kind: str,
@@ -308,15 +489,21 @@ class SupervisorPhaseExecutor:
     ) -> str:
         fragments: list[str] = []
         if log_analysis_summary:
-            fragments.append(cls._sanitize_customer_facing_text(log_analysis_summary))
+            fragments.append(
+                self._sanitize_customer_facing_text(log_analysis_summary)
+                if self._runtime_constraints_enabled()
+                else log_analysis_summary.strip()
+            )
 
-        knowledge_summary = cls._extract_customer_facing_knowledge_summary(
+        knowledge_summary = self._extract_customer_facing_knowledge_summary(
             raw_issue=raw_issue,
             knowledge_retrieval_results=knowledge_retrieval_results,
             knowledge_retrieval_summary=knowledge_retrieval_summary,
             final_source=final_source,
             workflow_kind=workflow_kind,
         )
+        if knowledge_summary and not self._runtime_constraints_enabled() and knowledge_retrieval_summary.strip():
+            knowledge_summary = knowledge_retrieval_summary.strip()
         if knowledge_summary:
             fragments.append(knowledge_summary)
 
@@ -463,6 +650,7 @@ class SupervisorPhaseExecutor:
         knowledge_retrieval_results: list[dict[str, object]] = []
         knowledge_retrieval_adopted_sources: list[str] = []
         knowledge_retrieval_final_adopted_source = ""
+        followup_notes: list[str] = []
         if self.log_analyzer_executor is not None and "LogAnalyzerAgent" in planned_child_agents:
             log_analysis = self.log_analyzer_executor.execute(update)
             log_analysis_summary = str(log_analysis.get("summary") or "")
@@ -490,6 +678,74 @@ class SupervisorPhaseExecutor:
                 update["knowledge_retrieval_results"] = knowledge_retrieval_results
             update["knowledge_retrieval_adopted_sources"] = knowledge_retrieval_adopted_sources
             update["knowledge_retrieval_final_adopted_source"] = knowledge_retrieval_final_adopted_source
+
+        for _ in range(max(self.max_investigation_loops, 0)):
+            followup_clues = self._extract_followup_clues(
+                raw_issue=str(update.get("raw_issue") or ""),
+                log_analysis_summary=log_analysis_summary,
+                knowledge_retrieval_summary=knowledge_retrieval_summary,
+                knowledge_retrieval_results=knowledge_retrieval_results,
+                existing_notes=followup_notes,
+            )
+            followup_instruction = self._build_followup_instruction(followup_clues)
+            if not followup_instruction:
+                break
+            followup_notes.append(followup_instruction)
+
+            followup_state = cast("CaseState", dict(update))
+            followup_state["raw_issue"] = " ".join(
+                part
+                for part in [
+                    str(update.get("raw_issue") or "").strip(),
+                    str(update.get("intake_investigation_focus") or "").strip(),
+                    followup_instruction,
+                ]
+                if part
+            )
+
+            if self.log_analyzer_executor is not None and "LogAnalyzerAgent" in planned_child_agents:
+                followup_log_analysis = self.log_analyzer_executor.execute(followup_state)
+                log_analysis_summary = self._merge_unique_lines(
+                    log_analysis_summary,
+                    str(followup_log_analysis.get("summary") or ""),
+                )
+                followup_file = str(followup_log_analysis.get("file") or "")
+                if followup_file:
+                    log_analysis_file = followup_file
+                if log_analysis_summary:
+                    update["log_analysis_summary"] = log_analysis_summary
+                if log_analysis_file:
+                    update["log_analysis_file"] = log_analysis_file
+
+            if self.knowledge_retriever_executor is not None and "KnowledgeRetrieverAgent" in planned_child_agents:
+                followup_knowledge_result = self.knowledge_retriever_executor.execute(followup_state)
+                followup_summary = str(followup_knowledge_result.get("knowledge_retrieval_summary") or "")
+                log_aware_summary = self._merge_unique_lines(knowledge_retrieval_summary, followup_summary)
+                if log_aware_summary:
+                    knowledge_retrieval_summary = log_aware_summary
+                    update["knowledge_retrieval_summary"] = knowledge_retrieval_summary
+
+                raw_followup_results = followup_knowledge_result.get("knowledge_retrieval_results")
+                followup_results = [item for item in raw_followup_results if isinstance(item, dict)] if isinstance(raw_followup_results, list) else []
+                if followup_results:
+                    knowledge_retrieval_results = self._merge_knowledge_results(knowledge_retrieval_results, followup_results)
+                    update["knowledge_retrieval_results"] = knowledge_retrieval_results
+
+                raw_followup_sources = followup_knowledge_result.get("knowledge_retrieval_adopted_sources")
+                followup_sources = [str(item) for item in raw_followup_sources if str(item).strip()] if isinstance(raw_followup_sources, list) else []
+                knowledge_retrieval_adopted_sources = self._merge_unique_items(
+                    knowledge_retrieval_adopted_sources,
+                    followup_sources,
+                )
+                update["knowledge_retrieval_adopted_sources"] = knowledge_retrieval_adopted_sources
+                knowledge_retrieval_final_adopted_source = self._select_final_knowledge_source(
+                    knowledge_retrieval_results,
+                    raw_issue=str(update.get("raw_issue") or ""),
+                )
+                update["knowledge_retrieval_final_adopted_source"] = knowledge_retrieval_final_adopted_source
+
+        update["investigation_followup_loops"] = len(followup_notes)
+        update["supervisor_followup_notes"] = followup_notes
 
         if update.get("execution_mode") == "action":
             default_summary = self._build_customer_facing_investigation_summary(
@@ -558,6 +814,8 @@ class SupervisorPhaseExecutor:
                     f"Knowledge retrieval summary: {knowledge_retrieval_summary or 'n/a'}",
                     f"Adopted knowledge sources: {', '.join(knowledge_retrieval_adopted_sources) if knowledge_retrieval_adopted_sources else 'n/a'}",
                     f"Final adopted knowledge source: {knowledge_retrieval_final_adopted_source or 'n/a'}",
+                    f"Follow-up investigation loops: {len(followup_notes)}",
+                    f"Follow-up instructions: {' | '.join(followup_notes) if followup_notes else 'n/a'}",
                     f"Investigation summary: {str(update.get('investigation_summary') or '')}",
                     f"Escalation required: {'yes' if escalation_required else 'no'}",
                     f"Escalation reason: {escalation_reason or 'n/a'}",
@@ -574,16 +832,27 @@ class SupervisorPhaseExecutor:
                     f"Knowledge retrieval executed: {'yes' if knowledge_retrieval_summary or knowledge_retrieval_results else 'no'}",
                     f"Knowledge sources adopted: {', '.join(knowledge_retrieval_adopted_sources) if knowledge_retrieval_adopted_sources else 'none'}",
                     f"Final knowledge source: {knowledge_retrieval_final_adopted_source or 'none'}",
+                    f"Follow-up investigation loops: {len(followup_notes)}",
+                    f"Follow-up instructions issued: {'yes' if followup_notes else 'no'}",
                     f"Escalation path selected: {'yes' if escalation_required else 'no'}",
                 ],
             }
+            summary_payload = self._build_summary_payload(
+                investigation_summary=str(update.get("investigation_summary") or ""),
+                escalation_required=escalation_required,
+                escalation_reason=escalation_reason,
+                next_action=str(update.get("next_action") or ""),
+                followup_notes=followup_notes,
+                knowledge_retrieval_final_adopted_source=knowledge_retrieval_final_adopted_source,
+                log_analysis_summary=log_analysis_summary,
+            )
             self._invoke_tool(
                 self.write_shared_memory_tool,
                 case_id,
                 workspace_path,
                 context_payload,
                 progress_payload,
-                None,
+                summary_payload,
                 "append",
             )
         return cast("CaseState", update)
@@ -701,7 +970,7 @@ class SupervisorPhaseExecutor:
                         update["compliance_review_passed"] = True
                         update["compliance_review_summary"] = (
                             str(update.get("compliance_review_summary") or "")
-                            + " ポリシー根拠の取得は未完了ですが、顧客向けの直接回答としては継続可能と判断しました。"
+                            + " ポリシー根拠の取得は未完了ですが、サポート担当者向けの調査回答としては継続可能と判断しました。"
                         ).strip()
                     self._append_compliance_review_history(
                         update,

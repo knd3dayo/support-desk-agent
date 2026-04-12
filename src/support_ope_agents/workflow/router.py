@@ -54,7 +54,7 @@ def build_plan_steps(workflow_kind: WorkflowKind) -> list[str]:
         return [
             "問い合わせ内容から仕様確認ポイントを抽出する",
             "関連ナレッジと既知仕様を確認する",
-            "顧客向けの仕様説明ドラフトを作成する",
+            "サポート担当者向けの仕様説明ドラフトを作成する",
         ]
     if workflow_kind == "incident_investigation":
         return [

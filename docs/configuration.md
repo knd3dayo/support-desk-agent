@@ -106,6 +106,41 @@ support_ope_agents:
 
 ## 5. Agent 設定
 
+全 Agent は共通で `constraint_mode` を持てる。
+
+- `default`: 既定挙動。instruction と runtime 制約の両方を使う
+- `instruction_only`: instruction だけを使い、コード側の制約は極力外す
+- `runtime_only`: instruction を外し、コード側の制約だけを使う
+- `bypass`: instruction と runtime 制約の両方を極力外す
+
+`constraint_mode` は制約の適用方針であり、KnowledgeRetrieverAgent / ComplianceReviewerAgent の `extraction_mode` とは別物である。
+`extraction_mode` は文書取得の詳細度を表し、`limited / relaxed / raw_backend` を使って backend の read / grep / glob payload をどこまで返すかを決める。
+
+`agents.SuperVisorAgent.max_investigation_loops` では、Supervisor が新しい事実や知識を起点に LogAnalyzerAgent / KnowledgeRetrieverAgent へ再調査を出す回数を制御する。
+
+- `0`: 追加調査ループを無効化する
+- `1`: 初回調査後に新事実が見つかった場合のみ 1 回だけ再調査する
+- `2` 以上: 追加で見つかった事実があれば、その回数まで再調査を続ける
+- 既定値: `1`
+- 上限: `5`
+
+例:
+
+```yaml
+support_ope_agents:
+  agents:
+    SuperVisorAgent:
+      constraint_mode: default
+      max_investigation_loops: 2
+    DraftWriterAgent:
+      constraint_mode: runtime_only
+    KnowledgeRetrieverAgent:
+      constraint_mode: default
+      extraction_mode: raw_backend
+```
+
+`bypass` でも、破壊的な状態遷移や安全上必須の最小ガードまでは外さない。
+
 ## 5.1 data_paths と checkpoint 保存先
 
 `data_paths.trace_subdir` では、workspace 配下に作る LangGraph checkpoint 保存ディレクトリ名を指定する。既定値は `.traces` である。

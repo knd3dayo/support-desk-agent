@@ -161,6 +161,7 @@ class IntakeAgentSettings(StrictConfigModel):
     compress_threshold_chars: int | None = None
     auto_compress: bool = True
     model: str | None = None
+    constraint_mode: Literal["default", "instruction_only", "runtime_only", "bypass"] = "default"
     pii_mask: IntakePiiMaskSettings = Field(default_factory=IntakePiiMaskSettings)
 
 
@@ -170,6 +171,7 @@ class AgentSettings(StrictConfigModel):
     compress_threshold_chars: int | None = None
     auto_compress: bool = True
     model: str | None = None
+    constraint_mode: Literal["default", "instruction_only", "runtime_only", "bypass"] = "default"
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -209,6 +211,7 @@ class ComplianceReviewerAgentSettings(AgentSettings):
 
 class SupervisorAgentSettings(AgentSettings):
     auto_generate_report: bool = False
+    max_investigation_loops: int = Field(default=1, ge=0, le=5)
     report_on: list[Literal["waiting_approval", "closed"]] = Field(default_factory=lambda: ["waiting_approval"])
 
     @field_validator("report_on", mode="before")

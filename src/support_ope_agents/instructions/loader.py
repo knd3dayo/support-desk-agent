@@ -25,8 +25,11 @@ class InstructionLoader:
             return path.read_text(encoding="utf-8").strip()
         return ""
 
-    def load(self, case_id: str, role: str) -> str:
+    def load(self, case_id: str, role: str, *, constraint_mode: str = "default") -> str:
         del case_id
+        if constraint_mode in {"runtime_only", "bypass"}:
+            return ""
+
         parts: list[str] = []
 
         default_common_path = self._default_instruction_root / "common.md"

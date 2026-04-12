@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from asyncio import run
 from pathlib import Path
 from unittest.mock import patch
 
@@ -147,6 +148,66 @@ class _FakeSequentialComplianceExecutor:
         index = min(self.calls, len(self._responses) - 1)
         self.calls += 1
         return dict(self._responses[index])
+
+
+class _FakeFollowupLogAnalyzerExecutor:
+    def __init__(self) -> None:
+        self.raw_issues: list[str] = []
+
+    def execute(self, state: dict[str, object]) -> dict[str, object]:
+        raw_issue = str(state.get("raw_issue") or "")
+        self.raw_issues.append(raw_issue)
+        if len(self.raw_issues) == 1:
+            return {
+                "summary": (
+                    "vdp.log を解析し、形式は unknown と判定しました。severity 一致 1 件、例外一致 1 件。"
+                    "検出した例外候補: com.denodo.vdb.cache.VDBCacheException。"
+                    "代表的な例外行: L9: com.denodo.vdb.cache.VDBCacheException: Data source vdpcachedatasource not found。"
+                ),
+                "file": "/tmp/vdp.log",
+            }
+        return {
+            "summary": "追加調査として Data source vdpcachedatasource の参照失敗が再現条件と一致することを確認しました。",
+            "file": "/tmp/vdp.log",
+        }
+
+
+class _FakeFollowupKnowledgeRetrieverExecutor:
+    def __init__(self) -> None:
+        self.raw_issues: list[str] = []
+
+    def execute(self, state: dict[str, object]) -> dict[str, object]:
+        raw_issue = str(state.get("raw_issue") or "")
+        self.raw_issues.append(raw_issue)
+        if "vdpcachedatasource" in raw_issue:
+            return {
+                "knowledge_retrieval_summary": "Denodo の既知事例から Data source 名不一致時は定義名と接続設定の再確認が必要と分かりました。",
+                "knowledge_retrieval_results": [
+                    {
+                        "source_name": "denodo-troubleshooting",
+                        "source_type": "document_source",
+                        "status": "matched",
+                        "summary": "Data source 名の不一致時は定義と接続設定を確認する",
+                        "matched_paths": ["/knowledge/denodo/troubleshooting.md"],
+                        "evidence": ["Data source 名と定義ファイルの一致確認"],
+                    }
+                ],
+                "knowledge_retrieval_adopted_sources": ["denodo-troubleshooting"],
+            }
+        return {
+            "knowledge_retrieval_summary": "Denodo 関連の一般調査資料を確認しました。",
+            "knowledge_retrieval_results": [
+                {
+                    "source_name": "denodo-overview",
+                    "source_type": "document_source",
+                    "status": "matched",
+                    "summary": "Denodo ログ調査の概要",
+                    "matched_paths": ["/knowledge/denodo/overview.md"],
+                    "evidence": ["Data source の定義を確認"],
+                }
+            ],
+            "knowledge_retrieval_adopted_sources": ["denodo-overview"],
+        }
 
 
 class SupervisorAgentTests(unittest.TestCase):
@@ -392,6 +453,90 @@ class SupervisorAgentTests(unittest.TestCase):
             self.assertNotIn("SuperVisorAgent", investigation_summary)
             self.assertNotIn("KnowledgeRetrieverAgent", investigation_summary)
             self.assertNotIn("ナレッジ照会結果", investigation_summary)
+
+    def test_supervisor_runs_followup_investigation_when_new_fact_found(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+            read_shared_memory = build_default_read_shared_memory_tool(config)
+            write_shared_memory = build_default_write_shared_memory_tool(config)
+            log_executor = _FakeFollowupLogAnalyzerExecutor()
+            knowledge_executor = _FakeFollowupKnowledgeRetrieverExecutor()
+
+            supervisor = SupervisorPhaseExecutor(
+                read_shared_memory_tool=read_shared_memory,
+                write_shared_memory_tool=write_shared_memory,
+                log_analyzer_executor=log_executor,
+                knowledge_retriever_executor=knowledge_executor,
+            )
+
+            result = supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-FOLLOWUP-001",
+                    "workspace_path": tmpdir,
+                    "execution_mode": "action",
+                    "workflow_kind": "incident_investigation",
+                    "intake_category": "incident_investigation",
+                    "intake_urgency": "high",
+                    "raw_issue": "vdp.log のエラーを確認したい",
+                }
+            )
+
+            self.assertEqual(len(log_executor.raw_issues), 2)
+            self.assertEqual(len(knowledge_executor.raw_issues), 2)
+            self.assertIn("vdpcachedatasource", knowledge_executor.raw_issues[1])
+            self.assertEqual(int(result.get("investigation_followup_loops") or 0), 1)
+            self.assertTrue(list(result.get("supervisor_followup_notes") or []))
+            self.assertIn("追加調査", str(result.get("knowledge_retrieval_summary") or ""))
+
+    def test_supervisor_writes_summary_with_rationale_and_next_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+            read_shared_memory = build_default_read_shared_memory_tool(config)
+            write_shared_memory = build_default_write_shared_memory_tool(config)
+
+            supervisor = SupervisorPhaseExecutor(
+                read_shared_memory_tool=read_shared_memory,
+                write_shared_memory_tool=write_shared_memory,
+                log_analyzer_executor=_FakeLogAnalyzerExecutor(),
+                knowledge_retriever_executor=_FakeKnowledgeRetrieverExecutor(),
+            )
+
+            supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-SUMMARY-001",
+                    "workspace_path": tmpdir,
+                    "execution_mode": "action",
+                    "workflow_kind": "incident_investigation",
+                    "intake_category": "incident_investigation",
+                    "intake_urgency": "medium",
+                    "raw_issue": "vdp.log のエラー調査",
+                }
+            )
+
+            memory_result = json.loads(run(read_shared_memory("CASE-TEST-SUMMARY-001", tmpdir)))
+            summary = str(memory_result.get("summary") or "")
+            self.assertIn("Conclusion:", summary)
+            self.assertIn("Judgment rationale:", summary)
+            self.assertIn("Next action:", summary)
+            self.assertIn("java.net.SocketTimeoutException", summary)
+            self.assertIn("L12:", summary)
+            self.assertIn("調査結果を回答ドラフトへ反映します。", summary)
 
     def test_supervisor_stops_on_policy_unavailable_feedback(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

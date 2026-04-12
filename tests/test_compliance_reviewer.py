@@ -268,6 +268,34 @@ class ComplianceReviewerTests(unittest.TestCase):
             self.assertIn("raw_backend", result["results"][0])
             self.assertEqual(result["results"][0]["raw_backend"]["mode"], "raw_backend")
 
+    def test_executor_bypass_skips_runtime_review(self) -> None:
+        executor = ComplianceReviewerPhaseExecutor(
+            check_policy_tool=build_default_check_policy_tool(
+                AppConfig.model_validate(
+                    {
+                        "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                        "config_paths": {},
+                        "data_paths": {},
+                        "interfaces": {},
+                        "agents": {},
+                    }
+                )
+            ),
+            request_revision_tool=build_default_request_revision_tool(),
+            constraint_mode="bypass",
+        )
+
+        result = executor.execute(
+            {
+                "draft_response": "本回答で問題ありません。",
+                "review_focus": "注意文と断定表現を確認する",
+            }
+        )
+
+        self.assertTrue(result["compliance_review_passed"])
+        self.assertEqual(result["compliance_review_issues"], [])
+        self.assertEqual(result["compliance_revision_request"], "")
+
     def test_check_policy_can_expand_keywords_with_llm(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             policy_root = Path(tmpdir) / "policy"

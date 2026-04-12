@@ -194,11 +194,21 @@ support_ope_agents:
 
   # Agent ごとの個別設定です。
   # 既定値のままでよければ未指定で構いません。
+  # 各 Agent では共通で constraint_mode を指定できます。
+  # default: 既定挙動です。instruction と runtime 制約の両方を使います。
+  # instruction_only: instruction だけを使い、コード側の制約は極力外します。
+  # runtime_only: instruction を外し、コード側の制約だけを使います。
+  # bypass: instruction と runtime 制約の両方を極力外します。
+  # ただし安全上必須の最小ガードや状態遷移の必須条件は bypass でも維持します。
   # agents:
   #   # スーパーバイザー Agent の設定です。
   #   SuperVisorAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
+  #     # LogAnalyzerAgent / KnowledgeRetrieverAgent への追加調査ループ回数です。
+  #     # 新しい事実が見つかったときだけ再指示します。0 で無効化します。
+  #     max_investigation_loops: 1
   #     # true の場合、指定トリガで改善レポートを自動生成します。
   #     auto_generate_report: false
   #     # 自動生成する契機です。waiting_approval / closed を指定できます。
@@ -210,6 +220,7 @@ support_ope_agents:
   #   IntakeAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
   #     pii_mask:
   #       # true の場合のみ Intake で PII マスキングを実行します。
   #       enabled: false
@@ -218,11 +229,15 @@ support_ope_agents:
   #   LogAnalyzerAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
   #
   #   # ナレッジ検索 Agent の設定です。
   #   KnowledgeRetrieverAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
+  #     # constraint_mode は制約の適用方針です。
+  #     # extraction_mode は文書取得の詳細度で、別の意味を持ちます。
   #     # 文書抽出の挙動です。limited / relaxed / raw_backend を指定できます。
   #     # limited: 既定の安全寄り制限を使います。
   #     # relaxed: より多くの候補パス・抜粋・evidence を返します。
@@ -287,6 +302,7 @@ support_ope_agents:
   #   DraftWriterAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
   #     # ComplianceReviewerAgent の差戻し観点を反映しながら再生成されます。
   #     # 注意文は DraftWriterAgent 個別設定には重複定義せず、
   #     # ComplianceReviewerAgent.notice.required / required_phrases を参照して先に埋め込みます。
@@ -295,6 +311,9 @@ support_ope_agents:
   #   ComplianceReviewerAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
+  #     # constraint_mode は制約の適用方針です。
+  #     # extraction_mode はポリシー文書取得の詳細度で、別の意味を持ちます。
   #     # 文書抽出の挙動です。limited / relaxed / raw_backend を指定できます。
   #     extraction_mode: limited
   #     # ポリシー検索で追加検索に使う固定キーワードです。
@@ -353,6 +372,7 @@ support_ope_agents:
   #   BackSupportEscalationAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
   #     # エスカレーション判定と不足資料補完の設定です。
   #     escalation:
   #       # 未解決や確証不足とみなす語句です。
@@ -386,13 +406,16 @@ support_ope_agents:
   #   BackSupportInquiryWriterAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
   #
   #   # 承認フェーズ Agent の設定です。
   #   ApprovalAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default
   #
   #   # チケット更新 Agent の設定です。
   #   TicketUpdateAgent:
   #     enabled: true
   #     auto_compress: true
+  #     constraint_mode: default

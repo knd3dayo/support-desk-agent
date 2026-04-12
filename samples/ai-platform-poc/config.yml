@@ -37,20 +37,25 @@ support_ope_agents:
     SuperVisorAgent:
       enabled: true
       auto_compress: true
+      constraint_mode: instruction_only
+      max_investigation_loops: 1
       auto_generate_report: true
       report_on:
         - waiting_approval
     IntakeAgent:
       enabled: true
       auto_compress: true
+      constraint_mode: instruction_only
       pii_mask:
         enabled: false
     LogAnalyzerAgent:
       enabled: true
       auto_compress: true
+      constraint_mode: instruction_only
     KnowledgeRetrieverAgent:
       enabled: true
       auto_compress: true
+      constraint_mode: instruction_only
       extraction_mode: raw_backend
       document_sources:
         - name: ai-platform-poc
@@ -65,12 +70,16 @@ support_ope_agents:
     DraftWriterAgent:
       enabled: true
       auto_compress: true
+      constraint_mode: instruction_only
     ComplianceReviewerAgent:
       enabled: true
       auto_compress: true
+      constraint_mode: instruction_only
     BackSupportEscalationAgent:
       enabled: true
       auto_compress: true
+      constraint_mode: instruction_only
     BackSupportInquiryWriterAgent:
       enabled: true
       auto_compress: true
+      constraint_mode: instruction_only

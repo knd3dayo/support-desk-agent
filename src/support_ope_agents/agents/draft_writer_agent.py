@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, cast
 
@@ -56,6 +57,13 @@ class DraftWriterPhaseExecutor:
     config: AppConfig
     write_draft_tool: Callable[..., Any]
 
+    @property
+    def constraint_mode(self) -> str:
+        return str(self.config.agents.DraftWriterAgent.constraint_mode or "default")
+
+    def _runtime_constraints_enabled(self) -> bool:
+        return self.constraint_mode in {"default", "runtime_only"}
+
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
             result = tool(*args, **kwargs)
@@ -79,20 +87,21 @@ class DraftWriterPhaseExecutor:
 
     @staticmethod
     def _sanitize_customer_summary(summary: str) -> str:
-        blocked_fragments = [
-            "SuperVisorAgent",
-            "KnowledgeRetrieverAgent",
-            "LogAnalyzerAgent",
-            "ComplianceReviewerAgent",
-            "document_sources",
-            "共有メモリ",
-            "ナレッジ照会結果",
-            "ログ解析結果",
-            "Query:",
-        ]
-        if any(fragment in summary for fragment in blocked_fragments):
-            return "関連資料を確認し、現時点で把握できている内容を整理しました。"
-        return summary
+        sanitized = str(summary or "").strip()
+        replacements = {
+            "SuperVisorAgent": "今回の調査",
+            "KnowledgeRetrieverAgent": "関連資料の確認",
+            "LogAnalyzerAgent": "ログ解析",
+            "ComplianceReviewerAgent": "レビュー",
+            "document_sources": "関連資料",
+            "共有メモリ": "調査メモ",
+            "ナレッジ照会結果": "関連資料の確認結果",
+            "ログ解析結果": "ログ確認結果",
+            "Query:": "問い合わせ内容:",
+        }
+        for source, target in replacements.items():
+            sanitized = sanitized.replace(source, target)
+        return sanitized
 
     @staticmethod
     def _format_markdown_links(results: list[dict[str, object]]) -> str:
@@ -162,11 +171,10 @@ class DraftWriterPhaseExecutor:
     def _summary_from_result(self, state: Mapping[str, object], result: Mapping[str, object]) -> str:
         raw_content = self._raw_backend_content(result)
         if raw_content:
-            return self._sanitize_customer_summary(
-                extract_relevant_snippet_with_limit(raw_content, str(state.get("raw_issue") or ""), 1200)
-            )
+            summary = extract_relevant_snippet_with_limit(raw_content, str(state.get("raw_issue") or ""), 1200)
+            return self._sanitize_customer_summary(summary) if self._runtime_constraints_enabled() else summary
         summary = str(result.get("summary") or "").strip()
-        return self._sanitize_customer_summary(summary)
+        return self._sanitize_customer_summary(summary) if self._runtime_constraints_enabled() else summary
 
     @staticmethod
     def _select_primary_knowledge_result(state: Mapping[str, object]) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
@@ -216,9 +224,75 @@ class DraftWriterPhaseExecutor:
                 return normalized + "。"
         return ""
 
+    @staticmethod
+    def _extract_exception_names(text: str, limit: int = 3) -> list[str]:
+        found: list[str] = []
+        for candidate in re.findall(r"\b[\w.$]+(?:Exception|Error)\b", text):
+            if candidate not in found:
+                found.append(candidate)
+            if len(found) >= limit:
+                break
+        return found
+
+    @staticmethod
+    def _extract_representative_line(text: str) -> str:
+        match = re.search(r"代表的な(?:異常|例外)行[:：]\s*(.+?)(?:。|$)", text)
+        if match:
+            return match.group(1).strip()
+        return ""
+
+    def _build_support_response_outline(self, state: Mapping[str, object]) -> str:
+        investigation_summary = str(state.get("investigation_summary") or "").strip()
+        if not investigation_summary:
+            return ""
+
+        exception_names = self._extract_exception_names(investigation_summary)
+        representative_line = self._extract_representative_line(investigation_summary)
+        lowered = investigation_summary.lower()
+
+        conclusion = "結論: ログ上は異常が継続しており、設定または接続条件に起因する例外が発生している可能性があります。"
+        if "data source" in lowered and "not found" in lowered:
+            conclusion = "結論: ログ上は対象データソースが見つからないことが主要な異常候補です。"
+
+        cause = "原因候補: 詳細な切り分けには追加確認が必要です。"
+        if exception_names:
+            cause = f"原因候補: {', '.join(exception_names)} が確認されており、設定不整合または接続先構成の問題が疑われます。"
+        if "data source" in lowered and "not found" in lowered:
+            cause = "原因候補: データソース定義の不足、名称不一致、または起動時に参照可能な設定が不足している可能性があります。"
+
+        next_action = "次アクション: 代表的な異常行の前後ログ、関連設定、直近の変更有無を確認してください。"
+        if "data source" in lowered and "not found" in lowered:
+            next_action = "次アクション: データソース名、定義の存在有無、接続設定、起動時に読み込まれる構成を優先確認してください。"
+
+        lines = [conclusion, cause]
+        if representative_line:
+            lines.append(f"確認根拠: {representative_line}")
+        lines.append(next_action)
+        return "\n".join(lines)
+
+    def _ensure_support_response_structure(self, draft: str, state: Mapping[str, object]) -> str:
+        normalized = draft.strip()
+        if not normalized:
+            return normalized
+
+        workflow_kind = self._resolve_effective_workflow_kind(state)
+        if workflow_kind != "incident_investigation":
+            return normalized
+
+        required_markers = ["結論", "原因候補", "次アクション"]
+        if all(marker in normalized for marker in required_markers):
+            return normalized
+
+        outline = self._build_support_response_outline(state)
+        if not outline:
+            return normalized
+        return f"{outline}\n\n{normalized}".strip()
+
     def _strip_internal_review_content(self, draft: str, revision_request: str) -> str:
         normalized = draft.strip()
         if not normalized:
+            return normalized
+        if not self._runtime_constraints_enabled():
             return normalized
 
         hidden_lines = _normalize_internal_guidance_lines(revision_request)
@@ -229,11 +303,6 @@ class DraftWriterPhaseExecutor:
             "コンプライアンスレビュー",
             "compliance",
             "以下の観点を反映して文面を見直しました",
-            "supervisoragent",
-            "knowledgeretrieveragent",
-            "loganalyzeragent",
-            "共有メモリ",
-            "query:",
         }
         paragraphs = [paragraph.strip() for paragraph in normalized.split("\n\n") if paragraph.strip()]
         filtered: list[str] = []
@@ -245,22 +314,25 @@ class DraftWriterPhaseExecutor:
             if any(fragment.lower() in lowered for fragment in blocked_fragments):
                 continue
             filtered.append(paragraph)
-        return "\n\n".join(filtered)
+        return self._sanitize_customer_summary("\n\n".join(filtered))
 
     async def _generate_with_llm(self, state: dict[str, object]) -> str:
         model = _get_chat_model(self.config)
         prompt = {
-            "task": "Write a customer-facing support response draft in Japanese.",
+            "task": "Write a support-agent-facing investigation response draft in Japanese.",
             "investigation_summary": str(state.get("investigation_summary") or ""),
             "review_focus": str(state.get("review_focus") or ""),
             "revision_request": str(state.get("compliance_revision_request") or ""),
             "knowledge_source": str(state.get("knowledge_retrieval_final_adopted_source") or ""),
-            "constraints": [
-                "Avoid overconfident claims.",
-                "Do not promise unconfirmed remediation.",
-                "Keep the response customer-friendly.",
-                "Do not mention internal compliance review comments, policy retrieval failures, or document_sources configuration to the customer.",
-            ],
+            "constraints": (
+                [
+                    "Avoid overconfident claims.",
+                    "Do not promise unconfirmed remediation.",
+                    "Keep the response practical for support agents.",
+                ]
+                if self._runtime_constraints_enabled()
+                else []
+            ),
             "internal_revision_guidance": str(state.get("compliance_revision_request") or ""),
         }
         response = await model.ainvoke(
@@ -270,6 +342,7 @@ class DraftWriterPhaseExecutor:
         if not content:
             raise ValueError("draft_writer returned an empty response")
         sanitized = self._strip_internal_review_content(content, str(state.get("compliance_revision_request") or ""))
+        sanitized = self._ensure_support_response_structure(sanitized, state)
         if not sanitized:
             raise ValueError("draft_writer returned an empty sanitized response")
         return sanitized
@@ -279,9 +352,11 @@ class DraftWriterPhaseExecutor:
         revision_request = str(state.get("compliance_revision_request") or "")
         if existing_draft and not revision_request:
             draft_response = self._strip_internal_review_content(existing_draft, revision_request)
+            draft_response = self._ensure_support_response_structure(draft_response, state)
         else:
             generated = self._invoke_tool(self._generate_with_llm, state)
             draft_response = self._strip_internal_review_content(generated, revision_request)
+            draft_response = self._ensure_support_response_structure(draft_response, state)
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         if case_id and workspace_path:
@@ -292,7 +367,7 @@ class DraftWriterPhaseExecutor:
 def build_draft_writer_agent_definition() -> AgentDefinition:
     return AgentDefinition(
         DRAFT_WRITER_AGENT,
-        "Write customer-facing draft response",
+        "Write support-facing draft response",
         kind="agent",
         parent_role=SUPERVISOR_AGENT,
     )

@@ -490,6 +490,27 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self._objective_eval_patcher.stop()
         self._tmpdir.cleanup()
 
+    def test_instruction_loader_skips_prompts_in_runtime_only_mode(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "DraftWriterAgent": {
+                        "constraint_mode": "runtime_only",
+                    }
+                },
+            }
+        )
+        memory_store = CaseMemoryStore(config)
+        loader = InstructionLoader(config, memory_store)
+
+        prompt = loader.load("CASE-TEST", DRAFT_WRITER_AGENT, constraint_mode=config.agents.DraftWriterAgent.constraint_mode)
+
+        self.assertEqual(prompt, "")
+
     def test_action_sets_log_analysis_fields_and_waits_for_approval(self) -> None:
         evidence_dir = self.workspace_path / ".evidence"
         evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -791,7 +812,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("ユーザー指定チェックリスト", content)
         self.assertIn("説明: レポート対象のケースを一意に識別するIDです。", content)
         self.assertIn("## 回答内容", content)
-        self.assertIn("顧客向けに返却した、または返却予定の回答本文です。", content)
+        self.assertIn("サポート担当者に返却した、または返却予定の調査回答本文です。", content)
         self.assertNotIn("LogAnalyzerAgent: needs improvement", content)
         self.assertNotIn("Supervisor->>LogAnalyzer: ログ解析を依頼", content)
         self.assertIn("説明: 最終的に確定した対応方針を示します。", content)
@@ -1102,6 +1123,23 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             }
         )
         self.assertEqual(config.agents.SuperVisorAgent.report_on, ["waiting_approval"])
+
+    def test_supervisor_max_investigation_loops_is_passed_to_executor(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "SuperVisorAgent": {"max_investigation_loops": 2}
+                },
+            }
+        )
+
+        service = self._build_service(config)
+
+        self.assertEqual(service._supervisor_executor.max_investigation_loops, 2)
 
     def test_action_auto_generates_report_for_closed_trigger(self) -> None:
         captured: dict[str, object] = {}

@@ -54,6 +54,8 @@ class CaseState(TypedDict, total=False):
     plan_summary: str
     plan_steps: list[str]
     investigation_summary: str
+    investigation_followup_loops: int
+    supervisor_followup_notes: list[str]
     log_analysis_summary: str
     log_analysis_file: str
     knowledge_retrieval_summary: str

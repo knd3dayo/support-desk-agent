@@ -16,6 +16,10 @@ class ComplianceReviewerPhaseExecutor:
     check_policy_tool: Callable[..., Any]
     request_revision_tool: Callable[..., Any]
     write_working_memory_tool: Callable[..., Any] | None = None
+    constraint_mode: str = "default"
+
+    def _runtime_constraints_enabled(self) -> bool:
+        return self.constraint_mode in {"default", "runtime_only"}
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -45,6 +49,18 @@ class ComplianceReviewerPhaseExecutor:
         workspace_path = str(state.get("workspace_path") or "").strip()
         draft_response = str(state.get("draft_response") or "")
         review_focus = str(state.get("review_focus") or "")
+        if not self._runtime_constraints_enabled():
+            return {
+                "compliance_review_summary": "constraint_mode により ComplianceReviewerAgent の runtime review を省略しました。",
+                "compliance_review_results": [],
+                "compliance_review_adopted_sources": [],
+                "compliance_review_issues": [],
+                "compliance_notice_present": False,
+                "compliance_notice_matched_phrase": "",
+                "compliance_revision_request": "",
+                "compliance_review_passed": True,
+            }
+
         raw_policy_result = self._invoke_tool(
             self.check_policy_tool,
             draft_response=draft_response,
