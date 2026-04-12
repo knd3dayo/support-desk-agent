@@ -259,6 +259,14 @@ class SupervisorPhaseExecutor:
             return "調査結果を回答ドラフトへ反映します。"
         return next_action
 
+    @staticmethod
+    def _summarize_primary_source(knowledge_retrieval_final_adopted_source: str, log_analysis_summary: str) -> str:
+        if log_analysis_summary.strip():
+            return "log analysis"
+        if knowledge_retrieval_final_adopted_source.strip():
+            return knowledge_retrieval_final_adopted_source
+        return "investigation summary"
+
     def _build_summary_payload(
         self,
         *,
@@ -285,7 +293,7 @@ class SupervisorPhaseExecutor:
             f"Next action: {self._summarize_next_action(next_action, escalation_required)}",
             (
                 "Primary source: "
-                f"{knowledge_retrieval_final_adopted_source or 'log analysis / investigation summary'}"
+                f"{self._summarize_primary_source(knowledge_retrieval_final_adopted_source, log_analysis_summary)}"
             ),
         ]
         if followup_notes:

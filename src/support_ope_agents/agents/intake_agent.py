@@ -107,6 +107,29 @@ class IntakeAgent:
         return questions
 
     @staticmethod
+    def _normalize_incident_urgency(raw_issue: str, category: str, urgency: str) -> str:
+        normalized_category = category.strip()
+        normalized_urgency = urgency.strip() or "medium"
+        if normalized_category != "incident_investigation":
+            return normalized_urgency
+
+        lowered = raw_issue.lower()
+        high_markers = ["urgent", "critical", "至急", "緊急", "本番", "業務停止", "sev1", "sev2", "ダウン"]
+        if any(marker in lowered for marker in high_markers):
+            return "high"
+
+        evidence_markers = ["error", "exception", "timeout", "fail", ".log", "ログ", "エラー", "障害"]
+        if any(marker in lowered for marker in evidence_markers):
+            return normalized_urgency if normalized_urgency in {"medium", "high"} else "medium"
+
+        return normalized_urgency
+
+    def _resolve_classification_urgency(self, raw_issue: str, category: str, urgency: str) -> str:
+        if self.config.agents.IntakeAgent.constraint_mode in {"bypass", "instruction_only"}:
+            return urgency.strip() or "medium"
+        return self._normalize_incident_urgency(raw_issue, category, urgency)
+
+    @staticmethod
     def resolve_intake_category(state: CaseState, memory_snapshot: dict[str, str]) -> str:
         state_category = str(state.get("intake_category") or "").strip()
         if state_category:
@@ -345,10 +368,16 @@ class IntakeAgent:
             )
         )
         update["intake_category"] = classification["category"]
-        update["intake_urgency"] = classification["urgency"]
+        update["intake_urgency"] = self._resolve_classification_urgency(
+            masked_issue,
+            classification["category"],
+            classification["urgency"],
+        )
         update["intake_investigation_focus"] = classification["investigation_focus"]
         update["intake_classification_reason"] = classification.get("reason", "")
-        update["intake_incident_timeframe"] = self._extract_incident_timeframe(masked_issue)
+        extracted_timeframe = self._extract_incident_timeframe(masked_issue)
+        existing_timeframe = str(update.get("intake_incident_timeframe") or "").strip()
+        update["intake_incident_timeframe"] = extracted_timeframe or existing_timeframe
         return cast("CaseState", update)
 
     def quality_gate(self, state: CaseState) -> CaseState:

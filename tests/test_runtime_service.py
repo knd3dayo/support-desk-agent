@@ -565,6 +565,30 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertTrue(str(state.get("external_ticket_id") or "").startswith("EXT-TRACE-"))
         self.assertTrue(str(state.get("internal_ticket_id") or "").startswith("INT-TRACE-"))
 
+    def test_resume_customer_input_accepts_unknown_incident_timeframe_without_reasking(self) -> None:
+        initial = self.service.action(
+            prompt="障害が発生しています。gateway error が出ています。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-002-UNKNOWN",
+        )
+
+        initial_state = cast(CaseState, initial["state"])
+        self.assertEqual(str(initial_state.get("status") or ""), "WAITING_CUSTOMER_INPUT")
+
+        resumed = self.service.resume_customer_input(
+            case_id="CASE-TEST-002-UNKNOWN",
+            trace_id=str(initial["trace_id"]),
+            workspace_path=str(self.workspace_path),
+            additional_input="不明です",
+            answer_key="intake_incident_timeframe",
+        )
+
+        state = cast(CaseState, resumed["state"])
+        self.assertNotEqual(str(state.get("status") or ""), "WAITING_CUSTOMER_INPUT")
+        self.assertEqual(str(state.get("intake_incident_timeframe") or ""), "不明です")
+        answers = dict(state.get("customer_followup_answers") or {})
+        self.assertEqual(answers["intake_incident_timeframe"]["answer"], "不明です")
+
     def test_resume_customer_input_does_not_overwrite_initial_case_title(self) -> None:
         initial = self.service.action(
             prompt="# 初回問い合わせタイトル\n\n障害が発生しています。gateway error が出ています。",

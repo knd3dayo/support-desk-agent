@@ -19,6 +19,84 @@ REPO_ROOT = Path("/home/user/source/repos")
 
 
 class KnowledgeRetrieverTests(unittest.TestCase):
+    def test_incident_summary_suppresses_unrelated_generic_highlight(self) -> None:
+        executor = KnowledgeRetrieverPhaseExecutor(
+            search_documents_tool=lambda **_: json.dumps(
+                {
+                    "message": "document_sources から関連箇所を抽出しました。",
+                    "results": [
+                        {
+                            "source_name": "ai-platform-poc",
+                            "source_description": "生成AI基盤のアーキテクチャ検討資料",
+                            "source_type": "document_source",
+                            "status": "matched",
+                            "summary": "ai-platform-poc は生成AI基盤 PoC 全体を説明します。",
+                            "path": "/tmp/ai-platform-poc",
+                            "route_prefix": "/knowledge/ai-platform-poc/",
+                            "matched_paths": ["/knowledge/ai-platform-poc/README.md"],
+                            "evidence": ["アーキテクチャの考え方"],
+                            "feature_bullets": [") -> Set[AdditionalLoggingUtils]"],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            external_ticket_tool=lambda: "external_ticket tool is not configured.",
+            internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
+        )
+
+        result = executor.execute(
+            {
+                "raw_issue": "添付したファイルはDenodoのvdp.logです。エラー調査をお願いします Data source vdpcachedatasource not found",
+                "workflow_kind": "incident_investigation",
+            }
+        )
+
+        retrieval_summary = cast(str, result["knowledge_retrieval_summary"])
+        self.assertIn("障害調査の補助として関連資料を確認しました", retrieval_summary)
+        self.assertIn("直接的な障害原因を裏付ける資料は見つかりませんでした", retrieval_summary)
+        self.assertNotIn("AdditionalLoggingUtils", retrieval_summary)
+
+    def test_instruction_only_and_bypass_preserve_raw_incident_style_summary(self) -> None:
+        for constraint_mode in ("instruction_only", "bypass"):
+            executor = KnowledgeRetrieverPhaseExecutor(
+                search_documents_tool=lambda **_: json.dumps(
+                    {
+                        "message": "document_sources から関連箇所を抽出しました。",
+                        "results": [
+                            {
+                                "source_name": "ai-platform-poc",
+                                "source_description": "生成AI基盤のアーキテクチャ検討資料",
+                                "source_type": "document_source",
+                                "status": "matched",
+                                "summary": "ai-platform-poc は生成AI基盤 PoC 全体を説明します。",
+                                "path": "/tmp/ai-platform-poc",
+                                "route_prefix": "/knowledge/ai-platform-poc/",
+                                "matched_paths": ["/knowledge/ai-platform-poc/README.md"],
+                                "evidence": ["アーキテクチャの考え方"],
+                                "feature_bullets": [") -> Set[AdditionalLoggingUtils]"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                external_ticket_tool=lambda: "external_ticket tool is not configured.",
+                internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
+                constraint_mode=constraint_mode,
+            )
+
+            result = executor.execute(
+                {
+                    "raw_issue": "添付したファイルはDenodoのvdp.logです。エラー調査をお願いします Data source vdpcachedatasource not found",
+                    "workflow_kind": "incident_investigation",
+                }
+            )
+
+            retrieval_summary = cast(str, result["knowledge_retrieval_summary"])
+            self.assertIn("問い合わせ内容をもとに document_sources を検索しました", retrieval_summary)
+            self.assertIn("AdditionalLoggingUtils", retrieval_summary)
+            self.assertNotIn("障害調査の補助として関連資料を確認しました", retrieval_summary)
+
     def test_old_ticket_source_config_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             AppConfig.model_validate(

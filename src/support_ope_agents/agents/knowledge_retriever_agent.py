@@ -19,6 +19,10 @@ class KnowledgeRetrieverPhaseExecutor:
     internal_ticket_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any] | None = None
     write_working_memory_tool: Callable[..., Any] | None = None
+    constraint_mode: str = "default"
+
+    def _uses_summary_constraints(self) -> bool:
+        return self.constraint_mode not in {"bypass", "instruction_only"}
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -107,20 +111,125 @@ class KnowledgeRetrieverPhaseExecutor:
         }
 
     @staticmethod
+    def _is_incident_context(state: Mapping[str, object], raw_issue: str) -> bool:
+        workflow_kind = str(state.get("workflow_kind") or state.get("intake_category") or "").strip()
+        if workflow_kind == "incident_investigation":
+            return True
+        lowered = raw_issue.lower()
+        return any(token in lowered for token in ["error", "exception", "timeout", "fail", "障害", "エラー", ".log", "ログ"])
+
+    @staticmethod
+    def _extract_issue_terms(raw_issue: str) -> list[str]:
+        candidates: list[str] = []
+        normalized = re.sub(r"\s+", " ", raw_issue)
+        for match in re.findall(r"\b[\w.$-]+(?:Exception|Error)\b", normalized):
+            candidates.append(match.lower())
+        for match in re.findall(r"Data source\s+[\w.$-]+\s+not found", normalized, flags=re.IGNORECASE):
+            candidates.append(match.lower())
+        for match in re.findall(r"\b[a-z0-9_.-]{4,}\b", normalized.lower()):
+            if match in {"query", "json", "high", "medium", "low", "none", "true", "false"}:
+                continue
+            candidates.append(match)
+
+        deduped: list[str] = []
+        for candidate in candidates:
+            if candidate not in deduped:
+                deduped.append(candidate)
+            if len(deduped) >= 12:
+                break
+        return deduped
+
+    @staticmethod
+    def _contains_relevant_clue(text: str, issue_terms: list[str]) -> bool:
+        lowered = text.lower()
+        if any(term and term in lowered for term in issue_terms):
+            return True
+        return any(marker in lowered for marker in ["exception", "error", "timeout", "stacktrace", "data source"])
+
+    @classmethod
+    def _is_relevant_document_result(cls, item: Mapping[str, object], issue_terms: list[str]) -> bool:
+        fields: list[str] = [
+            str(item.get("source_name") or ""),
+            str(item.get("summary") or ""),
+            str(item.get("path") or ""),
+        ]
+        matched_paths = item.get("matched_paths")
+        if isinstance(matched_paths, list):
+            fields.extend(str(path) for path in matched_paths)
+        for key in ("evidence", "feature_bullets"):
+            value = item.get(key)
+            if isinstance(value, list):
+                fields.extend(str(entry) for entry in value)
+        return any(cls._contains_relevant_clue(field, issue_terms) for field in fields if field)
+
+    @classmethod
+    def _build_document_highlight(cls, item: Mapping[str, object], issue_terms: list[str] | None = None) -> str:
+        issue_terms = issue_terms or []
+        feature_bullets = item.get("feature_bullets")
+        if isinstance(feature_bullets, list):
+            for bullet in feature_bullets:
+                text = str(bullet).strip()
+                if text and (not issue_terms or cls._contains_relevant_clue(text, issue_terms)):
+                    return text[:160]
+
+        evidence = item.get("evidence")
+        if isinstance(evidence, list):
+            for bullet in evidence:
+                text = str(bullet).strip()
+                if text and (not issue_terms or cls._contains_relevant_clue(text, issue_terms)):
+                    return text[:160]
+
+        return ""
+
+    @staticmethod
+    def _sanitize_query_for_summary(raw_issue: str) -> str:
+        normalized = re.sub(r"\[Additional customer input\].*", "", raw_issue, flags=re.DOTALL).strip()
+        return re.sub(r"\s+", " ", normalized)
+
+    @staticmethod
     def _build_document_summary(
         raw_issue: str,
+        incident_context: bool,
         document_message: str,
         document_results: list[dict[str, object]],
         adopted_sources: list[str],
+        apply_constraints: bool,
     ) -> str:
         if not document_results:
             return document_message or "参照可能なドキュメントがないので回答できません。"
 
         matched_results = [item for item in document_results if str(item.get("status") or "") == "matched"]
-        referenced_sources = ", ".join(str(item.get("source_name") or "") for item in matched_results or document_results)
+        issue_terms = KnowledgeRetrieverPhaseExecutor._extract_issue_terms(raw_issue)
+        relevant_results = [
+            item for item in matched_results if KnowledgeRetrieverPhaseExecutor._is_relevant_document_result(item, issue_terms)
+        ]
+        candidate_results = (relevant_results or matched_results or document_results) if apply_constraints else (matched_results or document_results)
+        referenced_sources = ", ".join(str(item.get("source_name") or "") for item in candidate_results)
+        query_excerpt = (
+            KnowledgeRetrieverPhaseExecutor._sanitize_query_for_summary(raw_issue)
+            if apply_constraints
+            else raw_issue.strip()
+        )
+
+        if incident_context and apply_constraints:
+            summary = "KnowledgeRetrieverAgent は障害調査の補助として関連資料を確認しました。"
+            if query_excerpt:
+                summary += f" Query: {query_excerpt}"
+            summary += f" 検索対象ソース: {referenced_sources or 'n/a'}。"
+            if relevant_results:
+                summary += f" 直接関連する資料候補: {', '.join(str(item.get('source_name') or '') for item in relevant_results[:3])}。"
+                highlight = KnowledgeRetrieverPhaseExecutor._build_document_highlight(relevant_results[0], issue_terms)
+                if highlight:
+                    summary += f" 要点: {highlight}"
+            else:
+                summary += " 直接的な障害原因を裏付ける資料は見つかりませんでした。"
+            if adopted_sources:
+                summary += f" 採用した根拠ソース: {', '.join(adopted_sources)}。"
+            return summary.strip()
+
         summary = "KnowledgeRetrieverAgent は問い合わせ内容をもとに document_sources を検索しました。"
-        if raw_issue:
-            summary += f" Query: {raw_issue}"
+        if query_excerpt:
+            summary += f" Query: {query_excerpt}"
         summary += f" 検索対象ソース: {referenced_sources or 'n/a'}。"
         if matched_results:
             matched_path_count = sum(len(cast(list[str], item.get("matched_paths") or [])) for item in matched_results)
@@ -137,24 +246,6 @@ class KnowledgeRetrieverPhaseExecutor:
         if adopted_sources:
             summary += f" 採用した根拠ソース: {', '.join(adopted_sources)}。"
         return summary.strip()
-
-    @staticmethod
-    def _build_document_highlight(item: Mapping[str, object]) -> str:
-        feature_bullets = item.get("feature_bullets")
-        if isinstance(feature_bullets, list):
-            for bullet in feature_bullets:
-                text = str(bullet).strip()
-                if text:
-                    return text[:160]
-
-        evidence = item.get("evidence")
-        if isinstance(evidence, list):
-            for bullet in evidence:
-                text = str(bullet).strip()
-                if text:
-                    return text[:160]
-
-        return ""
 
     @staticmethod
     def _normalize_query_text(text: str) -> str:
@@ -238,7 +329,14 @@ class KnowledgeRetrieverPhaseExecutor:
             for item in document_results
             if str(item.get("status") or "") in {"configured", "matched", "fetched"}
         ]
-        summary = self._build_document_summary(raw_issue, document_message, document_results, adopted_sources)
+        summary = self._build_document_summary(
+            raw_issue,
+            self._is_incident_context(state, raw_issue),
+            document_message,
+            document_results,
+            adopted_sources,
+            self._uses_summary_constraints(),
+        )
 
         if self.write_working_memory_tool is not None and case_id and workspace_path:
             payload: SharedMemoryDocumentPayload = {

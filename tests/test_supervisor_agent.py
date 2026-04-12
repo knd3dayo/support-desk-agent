@@ -537,6 +537,7 @@ class SupervisorAgentTests(unittest.TestCase):
             self.assertIn("java.net.SocketTimeoutException", summary)
             self.assertIn("L12:", summary)
             self.assertIn("調査結果を回答ドラフトへ反映します。", summary)
+            self.assertIn("Primary source: log analysis", summary)
 
     def test_supervisor_stops_on_policy_unavailable_feedback(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

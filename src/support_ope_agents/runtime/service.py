@@ -134,6 +134,7 @@ class RuntimeService:
             internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
             write_shared_memory_tool=knowledge_retriever_tools.get("write_shared_memory"),
             write_working_memory_tool=knowledge_retriever_tools["write_working_memory"],
+            constraint_mode=context.config.agents.KnowledgeRetrieverAgent.constraint_mode,
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
