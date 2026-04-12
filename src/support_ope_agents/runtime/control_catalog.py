@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib.resources import files
 from pathlib import Path
+import re
 from typing import Any
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
@@ -147,12 +148,9 @@ def build_runtime_audit(
     workflow_path = list(reconstruct_main_workflow_path(state))
     workflow_kind = _effective_workflow_kind(state)
     used_roles = _resolve_used_roles(workflow_path, workflow_kind)
+    common_instruction_constraints = _infer_instruction_constraints(_load_common_instruction_text(config))
     instruction_resolution = [
-        {
-            "role": role,
-            "resolved_sources": _resolve_instruction_sources(config, role),
-            "instruction_excerpt": _instruction_excerpt(instruction_loader.load(case_id, role)),
-        }
+        _build_instruction_resolution_entry(config, instruction_loader, case_id, role, common_instruction_constraints)
         for role in used_roles
     ]
     decision_log = _build_runtime_decision_log(state, workflow_path, config)
@@ -172,6 +170,7 @@ def build_runtime_audit(
         },
         "workflow_path": workflow_path,
         "used_roles": used_roles,
+        "common_instruction_constraints": common_instruction_constraints,
         "instruction_resolution": instruction_resolution,
         "decision_log": decision_log,
         "active_control_point_ids": [
@@ -180,6 +179,42 @@ def build_runtime_audit(
             if str(item.get("control_point_id") or "")
         ],
     }
+
+
+def _build_instruction_resolution_entry(
+    config: AppConfig,
+    instruction_loader: InstructionLoader,
+    case_id: str,
+    role: str,
+    common_instruction_constraints: list[str],
+) -> dict[str, object]:
+    instruction_text = instruction_loader.load(case_id, role)
+    inferred_constraints = [
+        constraint for constraint in _infer_instruction_constraints(instruction_text) if constraint not in common_instruction_constraints
+    ]
+    return {
+        "role": role,
+        "resolved_sources": _resolve_instruction_sources(config, role),
+        "instruction_excerpt": _instruction_excerpt(instruction_text),
+        "inferred_constraints": inferred_constraints,
+    }
+
+
+def _load_common_instruction_text(config: AppConfig) -> str:
+    default_root = files("support_ope_agents.instructions.defaults")
+    parts: list[str] = []
+
+    default_common = default_root / "common.md"
+    if default_common.exists():
+        parts.append(default_common.read_text(encoding="utf-8").strip())
+
+    override_root = config.config_paths.instructions_path
+    if override_root is not None:
+        common_override = override_root / "common.md"
+        if common_override.exists():
+            parts.append(common_override.read_text(encoding="utf-8").strip())
+
+    return "\n\n".join(part for part in parts if part)
 
 
 def _build_instruction_catalog(config: AppConfig, agent_definitions: list[AgentDefinition]) -> dict[str, object]:
@@ -638,3 +673,33 @@ def _result_label(state: dict[str, object]) -> str:
 def _instruction_excerpt(text: str) -> str:
     normalized = " ".join(line.strip() for line in text.splitlines() if line.strip())
     return normalized[:160] + ("..." if len(normalized) > 160 else "")
+
+
+def _infer_instruction_constraints(text: str, *, max_items: int = 6) -> list[str]:
+    directive_markers = (
+        "必ず",
+        "してください",
+        "しないでください",
+        "優先",
+        "残してください",
+        "記述してください",
+        "確認してください",
+        "明示してください",
+        "分離してください",
+        "見つからない場合",
+        "使わず",
+        "そのまま出さず",
+    )
+    inferred: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = re.sub(r"^[-*]\s+", "", line).strip()
+        if not any(marker in line for marker in directive_markers):
+            continue
+        if line not in inferred:
+            inferred.append(line)
+        if len(inferred) >= max_items:
+            break
+    return inferred

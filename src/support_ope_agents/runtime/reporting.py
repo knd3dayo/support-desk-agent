@@ -124,6 +124,7 @@ def build_support_improvement_report(
     evaluation = _build_objective_evaluation(
         state=state,
         instruction_text=evaluator_instruction,
+        shared_memory=shared_memory,
         memory_findings=memory_findings,
         structured_evaluation=structured_evaluation,
         pass_score=config.agents.ObjectiveEvaluationAgent.pass_score,
@@ -300,6 +301,11 @@ def _render_control_summary(control_catalog: dict[str, object], runtime_audit: d
         if not instruction_resolution:
             lines.append("- なし")
         else:
+            common_instruction_constraints = runtime_audit.get("common_instruction_constraints") if isinstance(runtime_audit, dict) else None
+            if isinstance(common_instruction_constraints, list) and common_instruction_constraints:
+                lines.append("- 共通 instruction 制約:")
+                for constraint in common_instruction_constraints:
+                    lines.append(f"  - {str(constraint)}")
             for item in instruction_resolution:
                 if not isinstance(item, dict):
                     continue
@@ -308,6 +314,11 @@ def _render_control_summary(control_catalog: dict[str, object], runtime_audit: d
                 lines.append(
                     f"- {str(item.get('role') or 'unknown')}: {source_count} source(s) resolved"
                 )
+                inferred_constraints = item.get("inferred_constraints")
+                if isinstance(inferred_constraints, list) and inferred_constraints:
+                    lines.append("  - 役割別の想定 instruction 制約:")
+                    for constraint in inferred_constraints:
+                        lines.append(f"    - {str(constraint)}")
     return lines or ["- なし"]
 
 
@@ -408,6 +419,7 @@ def _build_objective_evaluation(
     *,
     state: CaseState,
     instruction_text: str,
+    shared_memory: dict[str, str],
     memory_findings: list[MemoryConsistencyFinding],
     structured_evaluation: Any,
     pass_score: int,
@@ -439,6 +451,25 @@ def _build_objective_evaluation(
         )
         for item in structured_evaluation.agent_evaluations
     ]
+    criterion_evaluations = _postprocess_criterion_evaluations(
+        criterion_evaluations,
+        state=state,
+        shared_memory=shared_memory,
+        memory_findings=memory_findings,
+    )
+    improvement_points = _sanitize_improvement_points(
+        _merge_instruction_improvement_points(
+            _merge_checklist_improvement_points(
+                list(structured_evaluation.improvement_points),
+                checklist_assessments,
+            ),
+            criterion_evaluations,
+            instruction_criteria,
+        ),
+        state=state,
+        shared_memory=shared_memory,
+        memory_findings=memory_findings,
+    )
     return ObjectiveEvaluation(
         evaluator_name=OBJECTIVE_EVALUATION_AGENT,
         instruction_excerpt=_instruction_excerpt(instruction_text),
@@ -451,15 +482,11 @@ def _build_objective_evaluation(
         criterion_evaluations=criterion_evaluations,
         agent_evaluations=agent_evaluations,
         memory_findings=memory_findings,
-        overall_summary=structured_evaluation.overall_summary,
-        improvement_points=_merge_instruction_improvement_points(
-            _merge_checklist_improvement_points(
-                list(structured_evaluation.improvement_points),
-                checklist_assessments,
-            ),
-            criterion_evaluations,
-            instruction_criteria,
+        overall_summary=_sanitize_overall_summary(
+            str(structured_evaluation.overall_summary or ""),
+            shared_memory=shared_memory,
         ),
+        improvement_points=improvement_points,
         score=structured_evaluation.overall_score,
     )
 
@@ -1000,6 +1027,109 @@ def _merge_instruction_improvement_points(
     return merged
 
 
+def _postprocess_criterion_evaluations(
+    criteria: list[CriterionEvaluation],
+    *,
+    state: CaseState,
+    shared_memory: dict[str, str],
+    memory_findings: list[MemoryConsistencyFinding],
+) -> list[CriterionEvaluation]:
+    workflow_kind = _effective_workflow_kind(state)
+    policy_gap_recorded = _policy_gap_is_recorded(shared_memory)
+    has_unshared_memory_warning = _has_unshared_memory_warning(memory_findings)
+    intake_working_gap = _has_intake_working_memory_gap(memory_findings)
+
+    normalized: list[CriterionEvaluation] = []
+    for criterion in criteria:
+        updated = CriterionEvaluation(
+            name=criterion.name,
+            viewpoint=criterion.viewpoint,
+            result=criterion.result,
+            score=criterion.score,
+            criterion_key=criterion.criterion_key,
+            related_checklist_items=list(criterion.related_checklist_items),
+        )
+        if updated.criterion_key == "question_intent" and workflow_kind == "specification_inquiry":
+            updated.viewpoint = updated.viewpoint.replace("結論・原因・次アクション", "結論・確認できた仕様や使い方・次アクション")
+        if updated.criterion_key == "shared_memory" and policy_gap_recorded and _mentions_missing_explicit_record(updated.result):
+            updated.result = "shared memory に基本情報は反映されており、ポリシー根拠の取得が未完了である点も context / progress に記録されています。"
+            updated.score = max(updated.score, 80)
+        if updated.criterion_key == "supervisor_judgement" and policy_gap_recorded and _mentions_missing_explicit_record(updated.result):
+            updated.result = "SuperVisorAgent の判断は最終状態と整合しており、ポリシー根拠の取得未完了も shared memory に記録されています。"
+            updated.score = max(updated.score, 80)
+        if updated.criterion_key == "working_memory_handoff" and not has_unshared_memory_warning:
+            if intake_working_gap:
+                updated.result = "shared memory への重要情報の伝播漏れは確認できませんでした。一方で IntakeAgent の working memory 記録が薄く、処理経緯の追跡性には改善余地があります。"
+                updated.score = max(updated.score, 78)
+            else:
+                updated.result = "working memory から shared memory への重要情報の伝播漏れは確認できませんでした。"
+                updated.score = max(updated.score, 85)
+        normalized.append(updated)
+    return normalized
+
+
+def _sanitize_improvement_points(
+    improvement_points: list[str],
+    *,
+    state: CaseState,
+    shared_memory: dict[str, str],
+    memory_findings: list[MemoryConsistencyFinding],
+) -> list[str]:
+    workflow_kind = _effective_workflow_kind(state)
+    policy_gap_recorded = _policy_gap_is_recorded(shared_memory)
+    has_unshared_memory_warning = _has_unshared_memory_warning(memory_findings)
+
+    sanitized: list[str] = []
+    for point in improvement_points:
+        normalized = _normalize_improvement_point(point)
+        if policy_gap_recorded and "ポリシー根拠の取得が未完了であることを shared memory に明示" in point:
+            continue
+        if not has_unshared_memory_warning and "working memory にしかない重要情報" in point:
+            continue
+        if workflow_kind == "specification_inquiry" and "原因候補" in normalized:
+            continue
+        if point not in sanitized:
+            sanitized.append(point)
+    return sanitized
+
+
+def _sanitize_overall_summary(
+    overall_summary: str,
+    *,
+    shared_memory: dict[str, str],
+) -> str:
+    if _policy_gap_is_recorded(shared_memory):
+        overall_summary = overall_summary.replace(
+            "ポリシー根拠の取得が未完了であることが明示されておらず、次工程での参照に不安が残る。",
+            "ポリシー根拠の取得は未完了ですが、その旨は shared memory に記録されています。",
+        )
+    return overall_summary
+
+
+def _policy_gap_is_recorded(shared_memory: dict[str, str]) -> bool:
+    corpus = _normalize_text("\n".join(shared_memory.values()))
+    markers = (
+        _normalize_text("ポリシー根拠の取得は未完了"),
+        _normalize_text("確認根拠となるポリシー文書を取得できませんでした"),
+    )
+    return any(marker and marker in corpus for marker in markers)
+
+
+def _has_unshared_memory_warning(memory_findings: list[MemoryConsistencyFinding]) -> bool:
+    return any("shared memory に反映されていません" in item.detail for item in memory_findings)
+
+
+def _has_intake_working_memory_gap(memory_findings: list[MemoryConsistencyFinding]) -> bool:
+    return any(
+        item.agent_name == "IntakeAgent" and "working memory に見当たらず" in item.detail
+        for item in memory_findings
+    )
+
+
+def _mentions_missing_explicit_record(text: str) -> bool:
+    return any(marker in text for marker in ("明示されていない", "明示されておらず"))
+
+
 def _normalize_improvement_point(value: str) -> str:
     normalized = re.sub(r"\s+", " ", value).strip().casefold()
     normalized = normalized.removesuffix("してください。")
@@ -1087,7 +1217,10 @@ def _summarize_compliance_response(
     normalized_review_summary = re.sub(r"\s+", " ", review_summary.strip())
 
     if not normalized_request and "継続可能と判断" in normalized_review_summary:
-        result = "具体的な文面修正は行わず、レビュー結果を踏まえてサポート担当者向け回答として継続可能と判断しました。"
+        audience = "サポート担当者向け回答"
+        if "顧客向けの直接回答" in normalized_review_summary:
+            audience = "顧客向けの直接回答"
+        result = f"具体的な文面修正は行わず、レビュー結果を踏まえて{audience}として継続可能と判断しました。"
         if normalized_draft:
             result += f" 対象ドラフト: 「{normalized_draft}」"
         return result

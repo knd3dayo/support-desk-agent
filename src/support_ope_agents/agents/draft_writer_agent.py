@@ -205,15 +205,29 @@ class DraftWriterPhaseExecutor:
         links = self._format_markdown_links([primary_result] if feature_bullets and is_feature_list_request else document_results)
 
         lines = ["お問い合わせありがとうございます。"]
-        lines.append(f"{source_name} について、現時点で確認できた内容は以下のとおりです。")
-        if feature_bullets and is_feature_list_request:
-            lines.append("主な機能:")
-            lines.extend(f"- {bullet}" for bullet in feature_bullets)
-        elif summary:
-            lines.append(summary)
+        if summary:
+            lines.append(f"結論: {summary}")
+        else:
+            lines.append(f"結論: {source_name} について、現時点で確認できた内容を整理しました。")
+
+        detail_bullets = feature_bullets[:5]
+        if detail_bullets:
+            heading = "主な機能:" if is_feature_list_request else "確認できたポイント:"
+            lines.append(heading)
+            lines.extend(f"- {bullet}" for bullet in detail_bullets)
+
+        if summary and detail_bullets and not is_feature_list_request:
+            lines.append("補足: 必要であれば、対象機能ごとの利用方法や関連設定まで掘り下げて確認できます。")
+        elif not detail_bullets and summary:
+            lines.append("補足: 現時点では概要レベルの確認結果です。必要であれば、利用方法、関連機能、設定観点を追加で整理します。")
+
         if links:
             lines.append(f"根拠資料: {links}")
-        lines.append("必要であれば、個別機能ごとの詳細も確認してご案内します。")
+
+        next_action = "次アクション: 必要であれば、個別機能ごとの詳細、利用手順、関連設定の観点で追加調査して案内できます。"
+        if is_feature_list_request:
+            next_action = "次アクション: 必要であれば、各機能の使い分け、利用手順、制約事項まで分解して案内できます。"
+        lines.append(next_action)
         return "\n\n".join(lines)
 
     def _required_notice_phrase(self) -> str:
@@ -354,7 +368,11 @@ class DraftWriterPhaseExecutor:
             draft_response = self._strip_internal_review_content(existing_draft, revision_request)
             draft_response = self._ensure_support_response_structure(draft_response, state)
         else:
-            generated = self._invoke_tool(self._generate_with_llm, state)
+            generated = ""
+            if self._resolve_effective_workflow_kind(state) == "specification_inquiry" and not revision_request:
+                generated = self._build_specification_response(state)
+            if not generated:
+                generated = self._invoke_tool(self._generate_with_llm, state)
             draft_response = self._strip_internal_review_content(generated, revision_request)
             draft_response = self._ensure_support_response_structure(draft_response, state)
         case_id = str(state.get("case_id") or "").strip()
