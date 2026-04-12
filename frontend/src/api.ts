@@ -14,6 +14,11 @@ import type {
 
 const AUTH_TOKEN_STORAGE_KEY = 'support-ope-agents-auth-token';
 
+type TicketIdOptions = {
+  externalTicketId?: string;
+  internalTicketId?: string;
+};
+
 function getAuthHeaders(): Record<string, string> {
   const token = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)?.trim();
   if (!token) {
@@ -84,8 +89,16 @@ export function browseWorkspace(caseId: string, workspacePath: string, path = '.
   return requestJson<WorkspaceBrowseResponse>(`/cases/${caseId}/workspace?${params.toString()}`);
 }
 
-export function loadFile(caseId: string, workspacePath: string, path: string): Promise<WorkspaceFileResponse> {
+export function loadFile(
+  caseId: string,
+  workspacePath: string,
+  path: string,
+  options?: { maxChars?: number }
+): Promise<WorkspaceFileResponse> {
   const params = new URLSearchParams({ workspace_path: workspacePath, path });
+  if (options?.maxChars) {
+    params.set('max_chars', String(options.maxChars));
+  }
   return requestJson<WorkspaceFileResponse>(`/cases/${caseId}/workspace/file?${params.toString()}`);
 }
 
@@ -161,10 +174,21 @@ export function loadRuntimeAudit(caseId: string, workspacePath: string, traceId:
   return requestJson<RuntimeAuditResponse>(`/cases/${caseId}/runtime-audit?${params.toString()}`);
 }
 
-export function sendAction(prompt: string, workspacePath: string, caseId: string): Promise<RuntimeEnvelope> {
+export function sendAction(
+  prompt: string,
+  workspacePath: string,
+  caseId: string,
+  ticketIds?: TicketIdOptions
+): Promise<RuntimeEnvelope> {
   return requestJson<RuntimeEnvelope>('/action', {
     method: 'POST',
-    body: JSON.stringify({ prompt, workspace_path: workspacePath, case_id: caseId }),
+    body: JSON.stringify({
+      prompt,
+      workspace_path: workspacePath,
+      case_id: caseId,
+      external_ticket_id: ticketIds?.externalTicketId,
+      internal_ticket_id: ticketIds?.internalTicketId,
+    }),
   });
 }
 
@@ -173,7 +197,8 @@ export function resumeCustomerInput(
   traceId: string,
   workspacePath: string,
   additionalInput: string,
-  answerKey?: string
+  answerKey?: string,
+  ticketIds?: TicketIdOptions
 ): Promise<RuntimeEnvelope> {
   return requestJson<RuntimeEnvelope>('/resume-customer-input', {
     method: 'POST',
@@ -183,6 +208,8 @@ export function resumeCustomerInput(
       workspace_path: workspacePath,
       additional_input: additionalInput,
       answer_key: answerKey ?? null,
+      external_ticket_id: ticketIds?.externalTicketId,
+      internal_ticket_id: ticketIds?.internalTicketId,
     }),
   });
 }

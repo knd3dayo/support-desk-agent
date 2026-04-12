@@ -237,6 +237,27 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertIn("[defined] workflow.approval_node", content)
         self.assertIn("config_key: workflow.approval_node", content)
 
+    def test_action_endpoint_accepts_explicit_case_and_ticket_ids(self) -> None:
+        explicit_case_path = self.cases_root / "CASE-API-EXPLICIT"
+
+        response = self.client.post(
+            "/action",
+            json={
+                "prompt": "内部外部チケットを参照してください。",
+                "workspace_path": str(explicit_case_path),
+                "case_id": "CASE-API-EXPLICIT",
+                "external_ticket_id": "ext-111",
+                "internal_ticket_id": "int-222",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["case_id"], "CASE-API-EXPLICIT")
+        self.assertEqual(payload["external_ticket_id"], "EXT-111")
+        self.assertEqual(payload["internal_ticket_id"], "INT-222")
+        self.assertTrue((explicit_case_path / ".support-ope-case-id").exists())
+
     def test_control_catalog_endpoint_returns_summary(self) -> None:
         response = self.client.get("/control-catalog")
 

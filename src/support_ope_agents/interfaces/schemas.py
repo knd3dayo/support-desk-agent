@@ -14,6 +14,7 @@ class PlanRequest(BaseModel):
 
 class ActionRequest(BaseModel):
     prompt: str
+    case_id: str | None = None
     workspace_path: str
     trace_id: str | None = None
     execution_plan: str | None = None

@@ -66,6 +66,8 @@ export type RuntimeEnvelope = {
   workflow_kind?: string | null;
   workflow_label?: string | null;
   execution_mode?: string | null;
+  external_ticket_id?: string | null;
+  internal_ticket_id?: string | null;
   plan_summary?: string | null;
   plan_steps: string[];
   requires_approval?: boolean | null;

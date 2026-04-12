@@ -242,6 +242,21 @@ class IntakeAgent:
     def _ticket_lookup_requested(update: dict[str, object], ticket_kind: str) -> bool:
         return bool(update.get(f"{ticket_kind}_ticket_lookup_enabled"))
 
+    def _ticket_tool_is_enabled(self, ticket_kind: str) -> bool:
+        settings = self.config.tools.get_logical_tool(f"{ticket_kind}_ticket")
+        return not (settings is not None and not settings.enabled)
+
+    @staticmethod
+    def _is_ticket_tool_unavailable_error(error: Exception) -> bool:
+        message = str(error)
+        unavailable_markers = (
+            "tool is not configured",
+            "is disabled in config.yml",
+            "requested MCP provider",
+            "requires an MCP resolver",
+        )
+        return any(marker in message for marker in unavailable_markers)
+
     @staticmethod
     def _build_ticket_summary(parsed: dict[str, object], raw_result: str) -> str:
         for key in ("summary", "message", "title", "subject", "description"):
@@ -366,12 +381,23 @@ class IntakeAgent:
             ticket_id = str(update.get(f"{ticket_kind}_ticket_id") or "").strip()
             if not ticket_id or not self._ticket_lookup_requested(update, ticket_kind):
                 continue
-            summary, artifact_paths = self._hydrate_ticket_context(
-                ticket_kind=ticket_kind,
-                ticket_id=ticket_id,
-                tool=tool,
-                workspace_path=workspace_path,
-            )
+
+            if not self._ticket_tool_is_enabled(ticket_kind):
+                update[f"{ticket_kind}_ticket_lookup_enabled"] = False
+                continue
+
+            try:
+                summary, artifact_paths = self._hydrate_ticket_context(
+                    ticket_kind=ticket_kind,
+                    ticket_id=ticket_id,
+                    tool=tool,
+                    workspace_path=workspace_path,
+                )
+            except Exception as error:
+                if not self._is_ticket_tool_unavailable_error(error):
+                    raise
+                update[f"{ticket_kind}_ticket_lookup_enabled"] = False
+                continue
             ticket_summaries[f"{ticket_kind}_ticket"] = summary
             ticket_artifacts[f"{ticket_kind}_ticket"] = artifact_paths
 

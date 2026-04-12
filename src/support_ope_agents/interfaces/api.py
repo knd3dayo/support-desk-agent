@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from support_ope_agents.runtime import RuntimeService, build_runtime_context
+from support_ope_agents.runtime.case_titles import derive_case_title
 
 from .schemas import (
     ActionRequest,
@@ -129,7 +130,9 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             messages = service.get_chat_history(case_id=case_id, workspace_path=resolved_workspace)
         except Exception as exc:
             raise map_error(exc) from exc
-        return ChatHistoryResponse(case_id=case_id, workspace_path=resolved_workspace, messages=messages)
+        return ChatHistoryResponse.model_validate(
+            {"case_id": case_id, "workspace_path": resolved_workspace, "messages": messages}
+        )
 
     @app.get("/cases/{case_id}/workspace", response_model=WorkspaceBrowseResponse)
     def browse_workspace(
@@ -235,7 +238,11 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
     def init_case(request: InitCaseRequest, _: None = Depends(require_auth)) -> InitCaseResponse:
         case_id = service.resolve_case_id(prompt=request.prompt, workspace_path=request.workspace_path)
         case_path = service.initialize_case(case_id, workspace_path=request.workspace_path)
-        return InitCaseResponse(case_id=case_id, case_path=str(case_path))
+        return InitCaseResponse(
+            case_id=case_id,
+            case_path=str(case_path),
+            case_title=derive_case_title(request.prompt, fallback=case_id),
+        )
 
     @app.post("/describe-agents")
     def describe_agents(request: DescribeAgentsRequest, _: None = Depends(require_auth)) -> list[dict[str, object]]:
@@ -276,6 +283,7 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
     def action(request: ActionRequest, _: None = Depends(require_auth)) -> RuntimeEnvelope:
         result = service.action(
             prompt=request.prompt,
+            case_id=request.case_id,
             workspace_path=request.workspace_path,
             trace_id=request.trace_id,
             execution_plan=request.execution_plan,

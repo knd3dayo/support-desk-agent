@@ -154,6 +154,42 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
 
         self.assertEqual(resolved, "incident_investigation")
 
+    def test_hydrate_tickets_skips_when_mcp_ticket_tool_is_not_configured(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+        agent = IntakeAgent(
+            config=config,
+            pii_mask_tool=lambda *_args, **_kwargs: "",
+            external_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("external_ticket tool is not configured. Configure tools.logical_tools.external_ticket in config.yml.")),
+            internal_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("internal_ticket tool is not configured. Configure tools.logical_tools.internal_ticket in config.yml.")),
+            classify_ticket_tool=lambda *_args, **_kwargs: "",
+            write_shared_memory_tool=lambda *_args, **_kwargs: "",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = agent.hydrate_tickets(
+                {
+                    "raw_issue": "内部外部チケットを確認してください",
+                    "workspace_path": tmpdir,
+                    "external_ticket_id": "EXT-123",
+                    "internal_ticket_id": "INT-456",
+                    "external_ticket_lookup_enabled": True,
+                    "internal_ticket_lookup_enabled": True,
+                }
+            )
+
+        self.assertFalse(bool(result.get("external_ticket_lookup_enabled")))
+        self.assertFalse(bool(result.get("internal_ticket_lookup_enabled")))
+        self.assertEqual(result.get("intake_ticket_context_summary"), {})
+        self.assertEqual(result.get("intake_ticket_artifacts"), {})
+
 
 if __name__ == "__main__":
     unittest.main()

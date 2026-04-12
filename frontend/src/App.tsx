@@ -322,7 +322,7 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
 
     async function run() {
       try {
-        const nextPreview = await loadFile(caseId, workspacePath, path);
+        const nextPreview = await loadFile(caseId, workspacePath, path, { maxChars: 200000 });
         if (cancelled) {
           return;
         }
@@ -423,6 +423,8 @@ export default function App() {
   const [statusLine, setStatusLine] = useState('ケースを選択するか、そのまま最初のメッセージを送信してください。');
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [authToken, setAuthToken] = useState(() => getSavedAuthToken());
+  const [externalTicketId, setExternalTicketId] = useState('');
+  const [internalTicketId, setInternalTicketId] = useState('');
   const [inlinePreviewUrl, setInlinePreviewUrl] = useState<string | null>(null);
   const [activeSidebarView, setActiveSidebarView] = useState<SidebarView>('sessions');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -530,6 +532,8 @@ export default function App() {
       setSelectedEntry(null);
       setPreview(null);
       setPendingQuestion(null);
+      setExternalTicketId('');
+      setInternalTicketId('');
     });
     await refreshRuntimeAudit(target, findLatestTraceId(history.messages));
     setStatusLine(`${target.case_id} を表示しています。`);
@@ -546,6 +550,8 @@ export default function App() {
       setDraftPrompt('');
       setQueuedFiles([]);
       setRuntimeAudit(null);
+      setExternalTicketId('');
+      setInternalTicketId('');
     });
     if (inlinePreviewUrl) {
       URL.revokeObjectURL(inlinePreviewUrl);
@@ -697,6 +703,24 @@ export default function App() {
     setStatusLine(authToken.trim() ? '認証トークンを保存しました。' : '認証トークンをクリアしました。');
   }
 
+  function handlePromptKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    void submitMessage();
+  }
+
+  function buildTicketIdPayload() {
+    const normalizedExternalTicketId = externalTicketId.trim();
+    const normalizedInternalTicketId = internalTicketId.trim();
+    return {
+      externalTicketId: normalizedExternalTicketId || undefined,
+      internalTicketId: normalizedInternalTicketId || undefined,
+    };
+  }
+
   async function submitMessage() {
     if (busy) {
       return;
@@ -735,6 +759,7 @@ export default function App() {
 
       setSubmissionStage('running-workflow');
       let result: RuntimeEnvelope;
+      const ticketIdPayload = buildTicketIdPayload();
       if (pendingQuestion && trimmedPrompt) {
         try {
           result = await resumeCustomerInput(
@@ -742,7 +767,8 @@ export default function App() {
             pendingQuestion.traceId,
             activeCase.workspace_path,
             trimmedPrompt,
-            pendingQuestion.answerKey
+            pendingQuestion.answerKey,
+            ticketIdPayload
           );
         } catch (error) {
           const message = error instanceof Error ? error.message : '';
@@ -750,10 +776,20 @@ export default function App() {
             throw error;
           }
           setPendingQuestion(null);
-          result = await sendAction(trimmedPrompt || '添付ファイルを確認してください。', activeCase.workspace_path, activeCase.case_id);
+          result = await sendAction(
+            trimmedPrompt || '添付ファイルを確認してください。',
+            activeCase.workspace_path,
+            activeCase.case_id,
+            ticketIdPayload
+          );
         }
       } else {
-        result = await sendAction(trimmedPrompt || '添付ファイルを確認してください。', activeCase.workspace_path, activeCase.case_id);
+        result = await sendAction(
+          trimmedPrompt || '添付ファイルを確認してください。',
+          activeCase.workspace_path,
+          activeCase.case_id,
+          ticketIdPayload
+        );
       }
 
       setSubmissionStage('syncing-results');
@@ -1162,9 +1198,32 @@ export default function App() {
         ) : null}
 
         <div className="composer panel-subtle">
+          <div className="composer-ticket-grid">
+            <label className="composer-field">
+              <span>外部チケットID</span>
+              <input
+                type="text"
+                value={externalTicketId}
+                onChange={(event) => setExternalTicketId(event.target.value)}
+                placeholder="任意: EXT-12345"
+                disabled={busy}
+              />
+            </label>
+            <label className="composer-field">
+              <span>内部チケットID</span>
+              <input
+                type="text"
+                value={internalTicketId}
+                onChange={(event) => setInternalTicketId(event.target.value)}
+                placeholder="任意: INT-67890"
+                disabled={busy}
+              />
+            </label>
+          </div>
           <textarea
             value={draftPrompt}
             onChange={(event) => setDraftPrompt(event.target.value)}
+            onKeyDown={handlePromptKeyDown}
             placeholder={pendingQuestion ? '追加情報を入力してください' : '問い合わせ内容を入力してください'}
             rows={4}
             disabled={busy}
