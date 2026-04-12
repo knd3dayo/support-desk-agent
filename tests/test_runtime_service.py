@@ -1127,6 +1127,25 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(history[1]["role"], "assistant")
         self.assertEqual(history[1]["trace_id"], result["trace_id"])
 
+    def test_action_merges_generic_followup_with_previous_issue(self) -> None:
+        self.service.action(
+            prompt="ai-chat-utilについて教えて",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-017-FOLLOWUP",
+        )
+
+        result = self.service.action(
+            prompt="詳細を教えてください",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-017-FOLLOWUP",
+        )
+
+        state = cast(CaseState, result["state"])
+        raw_issue = str(state.get("raw_issue") or "")
+        self.assertIn("ai-chat-utilについて教えて", raw_issue)
+        self.assertIn("[Follow-up request]", raw_issue)
+        self.assertIn("詳細を教えてください", raw_issue)
+
     def test_action_auto_generates_report_when_supervisor_enabled(self) -> None:
         config = AppConfig.model_validate(
             {

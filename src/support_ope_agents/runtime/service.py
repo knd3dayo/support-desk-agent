@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+import re
 from typing import cast
 from uuid import uuid4
 
@@ -438,6 +439,48 @@ class RuntimeService:
         )
 
     @staticmethod
+    def _is_context_dependent_followup(prompt: str) -> bool:
+        normalized = re.sub(r"\s+", " ", prompt).strip()
+        if not normalized or len(normalized) > 40:
+            return False
+        generic_patterns = (
+            "詳細を教えてください",
+            "詳しく教えてください",
+            "詳しくお願いします",
+            "詳細をお願いします",
+            "もっと詳しく",
+            "詳細は",
+        )
+        if any(pattern in normalized for pattern in generic_patterns):
+            return True
+        return normalized in {"詳細", "詳しく", "詳細に", "詳しく教えて", "続きを教えてください"}
+
+    def _resolve_followup_anchor_issue(self, *, case_id: str, workspace_path: str, saved_state: CaseState) -> str:
+        history = self.get_chat_history(case_id=case_id, workspace_path=workspace_path)
+        for message in reversed(history):
+            if str(message.get("role") or "") != "user":
+                continue
+            content = str(message.get("content") or "").strip()
+            if not content or self._is_context_dependent_followup(content):
+                continue
+            return content
+        return str(saved_state.get("raw_issue") or "").strip()
+
+    def _resolve_action_prompt(self, *, prompt: str, case_id: str, workspace_path: str, saved_state: CaseState) -> str:
+        normalized_prompt = prompt.strip()
+        if not self._is_context_dependent_followup(normalized_prompt):
+            return normalized_prompt
+
+        anchor_issue = self._resolve_followup_anchor_issue(
+            case_id=case_id,
+            workspace_path=workspace_path,
+            saved_state=saved_state,
+        )
+        if not anchor_issue or anchor_issue == normalized_prompt:
+            return normalized_prompt
+        return f"{anchor_issue}\n\n[Follow-up request]\n{normalized_prompt}"
+
+    @staticmethod
     def _build_assistant_history_content(result: dict[str, object]) -> str:
         state = cast(dict[str, object], result.get("state") or {})
         candidates = [
@@ -587,6 +630,12 @@ class RuntimeService:
             plan_summary = str(saved_state.get("plan_summary") or execution_plan or summarize_plan(workflow_kind))
 
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
+        resolved_prompt = self._resolve_action_prompt(
+            prompt=prompt,
+            case_id=selected_case_id,
+            workspace_path=workspace_path,
+            saved_state=saved_state,
+        )
         state: CaseState = {
             "case_id": selected_case_id,
             "workflow_run_id": current_trace_id,
@@ -595,7 +644,7 @@ class RuntimeService:
             "workflow_kind": workflow_kind,  # type: ignore[typeddict-item]
             "execution_mode": "action",
             "workspace_path": workspace_path,
-            "raw_issue": prompt,
+            "raw_issue": resolved_prompt,
             "external_ticket_id": resolved_external_ticket_id,
             "internal_ticket_id": resolved_internal_ticket_id,
             "external_ticket_lookup_enabled": external_ticket_lookup_enabled,
