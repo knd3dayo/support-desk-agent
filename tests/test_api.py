@@ -16,6 +16,7 @@ from support_ope_agents.agents.objective_evaluation_agent import (
     StructuredCriterionEvaluation,
 )
 from support_ope_agents.interfaces.api import create_app
+from support_ope_agents.runtime.service import RuntimeService
 
 
 def _fake_objective_evaluation_result() -> ObjectiveEvaluationStructuredResult:
@@ -149,6 +150,18 @@ class ApiWorkspaceTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["app_name"], "Support Desk")
         self.assertFalse(payload["auth_required"])
+
+    def test_describe_agents_surfaces_backend_failure_details(self) -> None:
+        with patch.object(
+            RuntimeService,
+            "describe_agents",
+            side_effect=RuntimeError("DeepAgents agent initialization failed for role 'KnowledgeRetrieverAgent'."),
+        ):
+            response = self.client.post("/describe-agents", json={"prompt": "agent 構成を確認してください"})
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("LLM/DeepAgents backend failure", response.json()["detail"])
+        self.assertIn("KnowledgeRetrieverAgent", response.json()["detail"])
 
     def test_create_case_endpoint_initializes_workspace_under_default_cases_root(self) -> None:
         response = self.client.post("/cases", json={"prompt": "CASE-API-NEW の調査を開始してください"})

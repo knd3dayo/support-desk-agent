@@ -73,6 +73,49 @@ class ComplianceReviewerTests(unittest.TestCase):
             self.assertTrue(any("注意文が不足" in issue for issue in result["issues"]))
             self.assertTrue(any("断定的な表現" in issue for issue in result["issues"]))
 
+    def test_check_policy_raises_when_llm_review_fails(self) -> None:
+        class _FailingComplianceModel:
+            async def ainvoke(self, messages):
+                prompt = str(messages[0].content)
+                if "Expand the review query" in prompt:
+                    return type("_FakeResponse", (), {"content": '{"keywords": []}'})()
+                raise ConnectionError("LLM connection failed")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            policy_root = Path(tmpdir) / "policy"
+            policy_root.mkdir()
+            (policy_root / "guideline.md").write_text(
+                "# 回答ガイドライン\n\n生成AIを利用した回答には注意書きを含める。断定的な表現は避ける。",
+                encoding="utf-8",
+            )
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "ComplianceReviewerAgent": {
+                            "document_sources": [
+                                {
+                                    "name": "internal_policy",
+                                    "description": "社内回答ガイドライン",
+                                    "path": str(policy_root),
+                                }
+                            ]
+                        }
+                    },
+                }
+            )
+
+            with patch(
+                "support_ope_agents.tools.default_check_policy._get_chat_model",
+                return_value=_FailingComplianceModel(),
+            ):
+                tool = build_default_check_policy_tool(config)
+                with self.assertRaisesRegex(RuntimeError, "LLM-backed policy review failed"):
+                    asyncio.run(tool(draft_response="この回答は必ず正しいです。", review_focus="注意文と断定表現を確認する"))
+
     def test_loader_resolves_compliance_document_source_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

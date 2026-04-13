@@ -40,7 +40,7 @@ API と React UI を使って試す場合は、このディレクトリに追加
 /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample-react.sh
 ```
 
-API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ個別に起動したい場合は `start-sample-react.sh` も引き続き使えます。API 起動スクリプトも `--workspace-root` または `SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT` を必須とし、指定したディレクトリをケース作成先として使います。React 起動スクリプトはリポジトリ直下の frontend を開発モードで起動し、`API_PORT` が指定されていればそのポートの API を proxy します。
+API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ個別に起動したい場合は `start-sample-react.sh` も引き続き使えます。API 起動スクリプトは `--workspace-root` または `SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT` を必須とし、指定したディレクトリをケース作成先として使ったうえで、内部的には `uv run -m support_ope_agents.interfaces.api` を呼び出します。React 起動スクリプトはリポジトリ直下の frontend を開発モードで起動し、`API_PORT` が指定されていればそのポートの API を proxy します。
 
 sample config で MCP manifest が未設定の場合、API 起動スクリプトは UI テストを止めないために `external_ticket` と `internal_ticket` を一時的に無効化した設定を自動生成して起動します。実 MCP 連携を含めて試したい場合は、sample config の `tools.mcp_manifest_path` を有効化するか、起動時に `MCP_MANIFEST_PATH=/path/to/manifest.json` を渡してください。
 
@@ -64,7 +64,7 @@ SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT=/tmp/ai-platform-poc-sample-cases \
 ```
 
 ```bash
-HOST=127.0.0.1 PORT=5174 /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample-react.sh
+HOST=0.0.0.0 PORT=5174 /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample-react.sh
 ```
 
 実行例:

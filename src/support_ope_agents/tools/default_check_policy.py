@@ -288,8 +288,8 @@ def build_default_check_policy_tool(config: AppConfig):
                     for issue in llm_issues:
                         if issue not in issues:
                             issues.append(issue)
-            except Exception:
-                llm_review_summary = ""
+            except Exception as exc:
+                raise RuntimeError("LLM-backed policy review failed.") from exc
 
         status = "passed" if not issues else "revision_required"
         review_summary = (

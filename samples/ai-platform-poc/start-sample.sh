@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_SCRIPT="${SCRIPT_DIR}/start-sample-api.sh"
 UI_SCRIPT="${SCRIPT_DIR}/start-sample-react.sh"
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-0.0.0.0}"
 API_PORT="${API_PORT:-8000}"
 UI_PORT="${UI_PORT:-5173}"
 WORKSPACE_ROOT_ARG=""

@@ -50,54 +50,19 @@ class DeepAgentFactory:
         backend = self._build_backend_for_role(role)
 
         if create_deep_agent is None:
-            payload: dict[str, Any] = {
-                "role": role,
-                "description": definition.description,
-                "kind": definition.kind,
-                "parent_role": definition.parent_role,
-                "system_prompt": system_prompt,
-                "tools": [
-                    {
-                        "name": tool.name,
-                        "provider": tool.provider,
-                        "target": tool.target,
-                    }
-                    for tool in tools
-                ],
-            }
-            if backend is not None:
-                payload["backend"] = self._describe_backend_for_role(role)
-            return payload
+            raise RuntimeError("DeepAgents is unavailable because the deepagents package could not be imported.")
 
+        create_kwargs: dict[str, Any] = {
+            "tools": [tool.handler for tool in tools],
+            "system_prompt": system_prompt,
+            "model": selected_model,
+        }
+        if backend is not None:
+            create_kwargs["backend"] = backend
         try:
-            create_kwargs: dict[str, Any] = {
-                "tools": [tool.handler for tool in tools],
-                "system_prompt": system_prompt,
-                "model": selected_model,
-            }
-            if backend is not None:
-                create_kwargs["backend"] = backend
             return create_deep_agent(**create_kwargs)
         except Exception as exc:
-            payload = {
-                "role": role,
-                "description": definition.description,
-                "kind": definition.kind,
-                "parent_role": definition.parent_role,
-                "system_prompt": system_prompt,
-                "tools": [
-                    {
-                        "name": tool.name,
-                        "provider": tool.provider,
-                        "target": tool.target,
-                    }
-                    for tool in tools
-                ],
-                "runtime_warning": str(exc),
-            }
-            if backend is not None:
-                payload["backend"] = self._describe_backend_for_role(role)
-            return payload
+            raise RuntimeError(f"DeepAgents agent initialization failed for role '{role}'.") from exc
 
     def _build_backend_for_role(self, role: str) -> Any | None:
         if role not in {KNOWLEDGE_RETRIEVER_AGENT, COMPLIANCE_REVIEWER_AGENT}:

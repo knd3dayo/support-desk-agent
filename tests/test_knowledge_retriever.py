@@ -199,6 +199,66 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertEqual(parsed["status"], "unavailable")
         self.assertIn("参照可能なドキュメントがないので回答できません", parsed["message"])
 
+    def test_search_documents_raises_when_deepagents_search_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_root = Path(tmpdir) / "docs"
+            docs_root.mkdir()
+            (docs_root / "readme.md").write_text("# docs\n", encoding="utf-8")
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "KnowledgeRetrieverAgent": {
+                            "document_sources": [
+                                {"name": "docs", "description": "test docs", "path": str(docs_root)}
+                            ]
+                        }
+                    },
+                }
+            )
+
+            tool = build_default_search_documents_tool(config)
+
+            with patch(
+                "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+                side_effect=ConnectionError("LLM connection failed"),
+            ):
+                with self.assertRaisesRegex((RuntimeError, ConnectionError), "LLM connection failed|DeepAgents"):
+                    tool(query="生成AI基盤のアーキテクチャ概要")
+
+    def test_search_documents_raises_when_deepagents_returns_unstructured_response(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_root = Path(tmpdir) / "docs"
+            docs_root.mkdir()
+            (docs_root / "readme.md").write_text("# docs\n", encoding="utf-8")
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "KnowledgeRetrieverAgent": {
+                            "document_sources": [
+                                {"name": "docs", "description": "test docs", "path": str(docs_root)}
+                            ]
+                        }
+                    },
+                }
+            )
+
+            tool = build_default_search_documents_tool(config)
+
+            with patch(
+                "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+                return_value=None,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "structured response"):
+                    tool(query="生成AI基盤のアーキテクチャ概要")
+
     def test_removed_knowledge_retriever_search_settings_are_rejected(self) -> None:
         for removed_key, removed_value in [
             ("search_keywords", []),

@@ -146,50 +146,23 @@ def build_default_search_documents_tool(config: AppConfig):
             return json.dumps(payload, ensure_ascii=False)
 
         backend = build_document_source_backend(document_sources=settings.document_sources, route_base="knowledge")
-        if backend is None or create_deep_agent is None:
-            payload = {
-                "status": "unavailable",
-                "message": "参照可能なドキュメントがないので回答できません。agents.KnowledgeRetrieverAgent.document_sources を設定してください。 DeepAgents search を初期化できませんでした。",
-                "query": query,
-                "results": [],
-            }
-            return json.dumps(payload, ensure_ascii=False)
-
-        try:
-            normalized_by_source = _invoke_deepagents_search(
-                config=config,
-                backend=backend,
-                sources=settings.document_sources,
-                query=query,
-                extraction_mode=settings.extraction_mode,
-                conversation_messages=conversation_messages,
+        if backend is None:
+            raise RuntimeError(
+                "Knowledge document backend could not be initialized. Check agents.KnowledgeRetrieverAgent.document_sources."
             )
-        except Exception as exc:
-            normalized_by_source = {
-                source.name: {
-                    "source_name": source.name,
-                    "status": "unavailable",
-                    "summary": f"DeepAgents search failed: {exc}",
-                    "matched_paths": [],
-                    "evidence": [],
-                    "feature_bullets": [],
-                    "raw_content": "",
-                }
-                for source in settings.document_sources
-            }
+        if create_deep_agent is None:
+            raise RuntimeError("DeepAgents search is unavailable because deepagents could not be imported.")
+
+        normalized_by_source = _invoke_deepagents_search(
+            config=config,
+            backend=backend,
+            sources=settings.document_sources,
+            query=query,
+            extraction_mode=settings.extraction_mode,
+            conversation_messages=conversation_messages,
+        )
         if normalized_by_source is None:
-            normalized_by_source = {
-                source.name: {
-                    "source_name": source.name,
-                    "status": "unavailable",
-                    "summary": "DeepAgents search did not return a structured response.",
-                    "matched_paths": [],
-                    "evidence": [],
-                    "feature_bullets": [],
-                    "raw_content": "",
-                }
-                for source in settings.document_sources
-            }
+            raise RuntimeError("DeepAgents search did not return a structured response.")
 
         results: list[dict[str, object]] = []
         for source in settings.document_sources:

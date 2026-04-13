@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import mimetypes
+import os
+import tempfile
 from pathlib import Path
 
 from fastapi import Depends
@@ -14,6 +16,8 @@ from fastapi import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import uvicorn
+import yaml
 
 from support_ope_agents.runtime import RuntimeService, build_runtime_context
 from support_ope_agents.runtime.case_titles import derive_case_title
@@ -39,6 +43,10 @@ from .schemas import (
 )
 
 
+DEFAULT_API_HOST = "0.0.0.0"
+DEFAULT_API_PORT = 8000
+
+
 def create_app(config_path: str = "config.yml", cases_root: str | None = None) -> FastAPI:
     context = build_runtime_context(config_path)
     service = RuntimeService(context)
@@ -58,6 +66,21 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
     def resolve_workspace_path(case_id: str, workspace_path: str | None) -> str:
         return workspace_path or str(default_cases_root / case_id)
 
+    def is_backend_failure(exc: Exception) -> bool:
+        if isinstance(exc, (ConnectionError, TimeoutError)):
+            return True
+        message = str(exc).lower()
+        markers = (
+            "llm",
+            "openai",
+            "api connection",
+            "connection failed",
+            "deepagents",
+            "backend failure",
+            "timed out",
+        )
+        return any(marker in message for marker in markers)
+
     def map_error(exc: Exception) -> HTTPException:
         if isinstance(exc, FileNotFoundError):
             return HTTPException(status_code=404, detail=str(exc))
@@ -65,6 +88,8 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             return HTTPException(status_code=400, detail=str(exc))
         if isinstance(exc, ValueError):
             return HTTPException(status_code=400, detail=str(exc))
+        if is_backend_failure(exc):
+            return HTTPException(status_code=500, detail=f"LLM/DeepAgents backend failure: {exc}")
         return HTTPException(status_code=500, detail=str(exc))
 
     def require_auth(
@@ -261,7 +286,10 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
     @app.post("/describe-agents")
     def describe_agents(request: DescribeAgentsRequest, _: None = Depends(require_auth)) -> list[dict[str, object]]:
         case_id = service.resolve_case_id(prompt=request.prompt)
-        return service.describe_agents(case_id)
+        try:
+            return service.describe_agents(case_id)
+        except Exception as exc:
+            raise map_error(exc) from exc
 
     @app.get("/control-catalog")
     def describe_control_catalog(_: None = Depends(require_auth)) -> dict[str, object]:
@@ -338,3 +366,46 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             return FileResponse(frontend_dist / "index.html")
 
     return app
+
+
+def _prepare_effective_config(config_path: Path, manifest_override: str) -> Path:
+    with config_path.open("r", encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle) or {}
+
+    section = raw.setdefault("support_ope_agents", {})
+    tools = section.setdefault("tools", {})
+    logical_tools = tools.setdefault("logical_tools", {})
+    manifest_path = manifest_override or tools.get("mcp_manifest_path") or ""
+
+    if manifest_path:
+        tools["mcp_manifest_path"] = manifest_path
+        return config_path
+
+    for tool_name in ("external_ticket", "internal_ticket"):
+        tool_settings = logical_tools.get(tool_name)
+        if isinstance(tool_settings, dict):
+            tool_settings["enabled"] = False
+
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".yml", delete=False) as temp_handle:
+        yaml.safe_dump(raw, temp_handle, allow_unicode=True, sort_keys=False)
+        effective_config_path = Path(temp_handle.name)
+
+    print("MCP manifest was not configured. Starting with ticket MCP tools disabled for UI testing.")
+    return effective_config_path
+
+
+def main() -> int:
+    config_path = Path(os.environ.get("SUPPORT_OPE_SAMPLE_CONFIG", "config.yml")).expanduser().resolve()
+    manifest_override = os.environ.get("SUPPORT_OPE_SAMPLE_MCP_MANIFEST_PATH", "").strip()
+    cases_root = os.environ.get("SUPPORT_OPE_SAMPLE_CASES_ROOT")
+    host = os.environ.get("SUPPORT_OPE_SAMPLE_HOST") or os.environ.get("HOST") or DEFAULT_API_HOST
+    port_value = os.environ.get("SUPPORT_OPE_SAMPLE_PORT") or os.environ.get("PORT") or str(DEFAULT_API_PORT)
+
+    effective_config_path = _prepare_effective_config(config_path, manifest_override)
+    app = create_app(str(effective_config_path), cases_root=cases_root)
+    uvicorn.run(app, host=host, port=int(port_value))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

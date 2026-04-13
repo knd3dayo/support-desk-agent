@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FRONTEND_DIR="${REPO_ROOT}/frontend"
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-5173}"
 API_PORT="${API_PORT:-8000}"
 NPM_BIN="${NPM_BIN:-$(command -v npm || true)}"
