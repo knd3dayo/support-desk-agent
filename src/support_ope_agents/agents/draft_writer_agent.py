@@ -67,7 +67,8 @@ class DraftWriterPhaseExecutor:
         return self.config.agents.resolve_constraint_mode(DRAFT_WRITER_AGENT)
 
     def _runtime_constraints_enabled(self) -> bool:
-        return self.constraint_mode in {"default", "runtime_only"}
+        # Runtime constraint: customer-facing sanitization and guardrails depend on this switch.
+        return RuntimeHarnessManager.runtime_constraints_enabled_for_mode(self.constraint_mode)
 
     def _summary_snippet_max_chars(self) -> int:
         if self.runtime_harness_manager is not None:
@@ -411,11 +412,11 @@ class DraftWriterPhaseExecutor:
             self._invoke_tool(self.write_draft_tool, case_id, workspace_path, draft_response, "replace")
         return {"draft_response": draft_response}
 
-
-def build_draft_writer_agent_definition() -> AgentDefinition:
-    return AgentDefinition(
-        DRAFT_WRITER_AGENT,
-        "Write support-facing draft response",
-        kind="agent",
-        parent_role=SUPERVISOR_AGENT,
-    )
+    @staticmethod
+    def build_draft_writer_agent_definition() -> AgentDefinition:
+        return AgentDefinition(
+            DRAFT_WRITER_AGENT,
+            "Write support-facing draft response",
+            kind="agent",
+            parent_role=SUPERVISOR_AGENT,
+        )

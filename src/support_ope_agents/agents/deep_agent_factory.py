@@ -37,6 +37,7 @@ class DeepAgentFactory:
     def build_agent(self, case_id: str, definition: AgentDefinition) -> Any:
         role = definition.role
         agent_settings = self.get_agent_settings(role)
+        # Runtime constraint: resolved here once and then reused for instruction loading and agent execution.
         constraint_mode = (
             self._runtime_harness_manager.resolve(role)
             if self._runtime_harness_manager is not None

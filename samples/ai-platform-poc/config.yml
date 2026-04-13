@@ -34,7 +34,7 @@ support_ope_agents:
     ui_target_description: ai-platform-poc チームの問い合わせ検証とバックサポート連携を試すためのサンプル UI
 
   agents:
-    default_constraint_mode: bypass
+    default_constraint_mode: default
     # sample は通常運用寄りの挙動を既定にする。
     # extraction_mode は取得粒度だけを変える設定で、constraint_mode とは別物。
     # 挙動比較したい場合だけ agent ごとに instruction_only / bypass へ切り替える。

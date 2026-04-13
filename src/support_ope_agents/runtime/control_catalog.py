@@ -216,6 +216,7 @@ def _build_instruction_resolution_entry(
     runtime_harness_manager: RuntimeHarnessManager | None = None,
 ) -> dict[str, object]:
     harness = runtime_harness_manager or RuntimeHarnessManager(config)
+    # Runtime constraint: expose the resolved mode and enabled capabilities in the control catalog.
     constraint_mode = harness.resolve(role)
     instruction_text = instruction_loader.load(case_id, role, constraint_mode=constraint_mode)
     inferred_constraints = [

@@ -83,11 +83,11 @@ class BackSupportInquiryWriterPhaseExecutor:
             "draft_response": escalation_draft,
         }
 
-
-def build_back_support_inquiry_writer_agent_definition() -> AgentDefinition:
-    return AgentDefinition(
-        BACK_SUPPORT_INQUIRY_WRITER_AGENT,
-        "Write escalation inquiry drafts for users and back support",
-        kind="agent",
-        parent_role=SUPERVISOR_AGENT,
-    )
+    @staticmethod
+    def build_back_support_inquiry_writer_agent_definition() -> AgentDefinition:
+        return AgentDefinition(
+            BACK_SUPPORT_INQUIRY_WRITER_AGENT,
+            "Write escalation inquiry drafts for users and back support",
+            kind="agent",
+            parent_role=SUPERVISOR_AGENT,
+        )

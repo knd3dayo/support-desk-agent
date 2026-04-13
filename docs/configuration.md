@@ -138,6 +138,24 @@ support_ope_agents:
 
 `bypass` でも、破壊的な状態遷移や安全上必須の最小ガードまでは外さない。
 
+### 5.x ランタイム制約のコード上の位置
+
+ランタイム制約は設定だけで完結せず、コード上の複数箇所で実際の挙動に反映される。`Runtime constraint:` コメントで検索すると主要分岐を追える。
+
+| 役割 | ファイル | 何を決めるか |
+| --- | --- | --- |
+| 制約の解決中枢 | `src/support_ope_agents/runtime/runtime_harness_manager.py` | `constraint_mode` から instruction / runtime / summary の各有効状態を解決する |
+| instruction 抑止 | `src/support_ope_agents/instructions/loader.py` | `runtime_only` / `bypass` のとき role instruction を空文字にする |
+| agent 生成時の反映 | `src/support_ope_agents/agents/deep_agent_factory.py` | resolved `constraint_mode` を instruction loader と agent 実行へ渡す |
+| 可視化 | `src/support_ope_agents/runtime/control_catalog.py` | resolved mode と capability の on/off を control catalog に出す |
+| DraftWriter のガード | `src/support_ope_agents/agents/draft_writer_agent.py` | 顧客向け sanitize と runtime guardrail の有効化を切り替える |
+| KnowledgeRetriever の整形 | `src/support_ope_agents/agents/knowledge_retriever_agent.py` | 結果優先度付けと summary shaping の有効化を切り替える |
+| ComplianceReviewer の review | `src/support_ope_agents/agents/compliance_reviewer_agent.py` | runtime review を実行するか、制約により省略するかを切り替える |
+| Supervisor の runtime 分岐 | `src/support_ope_agents/agents/supervisor_agent.py` | 調査・レビュー周辺の runtime guardrail を切り替える |
+| Intake の正規化 | `src/support_ope_agents/agents/intake_agent.py` | urgency の追加正規化を有効にするかを切り替える |
+
+現在は `RuntimeHarnessManager` に mode 判定 helper を寄せており、各 agent は集合リテラルを直接持たず `RuntimeHarnessManager.runtime_constraints_enabled_for_mode()` などを使う。新しい制約分岐を追加するときは、この helper を使い、直上に `Runtime constraint:` コメントを付ける。
+
 ## 5.1 data_paths と checkpoint 保存先
 
 `data_paths.trace_subdir` では、workspace 配下に作る LangGraph checkpoint 保存ディレクトリ名を指定する。既定値は `.traces` である。

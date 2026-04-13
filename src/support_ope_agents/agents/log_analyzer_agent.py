@@ -207,11 +207,11 @@ class LogAnalyzerPhaseExecutor:
             "search_results": search_results,
         }
 
-
-def build_log_analyzer_agent_definition() -> AgentDefinition:
-    return AgentDefinition(
-        LOG_ANALYZER_AGENT,
-        "Analyze technical logs",
-        kind="agent",
-        parent_role=SUPERVISOR_AGENT,
-    )
+    @staticmethod
+    def build_log_analyzer_agent_definition() -> AgentDefinition:
+        return AgentDefinition(
+            LOG_ANALYZER_AGENT,
+            "Analyze technical logs",
+            kind="agent",
+            parent_role=SUPERVISOR_AGENT,
+        )

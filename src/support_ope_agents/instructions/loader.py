@@ -40,6 +40,7 @@ class InstructionLoader:
         if effective_constraint_mode is None:
             effective_constraint_mode = "default"
         if effective_constraint_mode in {"runtime_only", "bypass"}:
+            # Runtime constraint: these modes intentionally suppress role instructions.
             return ""
 
         parts: list[str] = []

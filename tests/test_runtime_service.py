@@ -546,6 +546,29 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertTrue(knowledge_resolution["summary_constraints_enabled"])
         self.assertTrue(any(str(item.get("policy_id") or "") == "knowledge.highlight_max_chars" for item in knowledge_resolution["policies"]))
 
+    def test_runtime_harness_manager_mode_helpers_match_role_resolution(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {
+                    "default_constraint_mode": "instruction_only",
+                    "DraftWriterAgent": {"constraint_mode": "runtime_only"},
+                    "KnowledgeRetrieverAgent": {"constraint_mode": "bypass"},
+                },
+            }
+        )
+
+        harness = RuntimeHarnessManager(config)
+
+        self.assertTrue(RuntimeHarnessManager.runtime_constraints_enabled_for_mode(harness.resolve(DRAFT_WRITER_AGENT)))
+        self.assertFalse(RuntimeHarnessManager.instructions_enabled_for_mode(harness.resolve(DRAFT_WRITER_AGENT)))
+        self.assertFalse(RuntimeHarnessManager.summary_constraints_enabled_for_mode(harness.resolve(KNOWLEDGE_RETRIEVER_AGENT)))
+        self.assertTrue(RuntimeHarnessManager.instructions_enabled_for_mode(harness.resolve(SUPERVISOR_AGENT)))
+        self.assertFalse(RuntimeHarnessManager.runtime_constraints_enabled_for_mode(harness.resolve(SUPERVISOR_AGENT)))
+
     def test_agent_default_constraint_mode_is_inherited_when_agent_setting_is_omitted(self) -> None:
         config = AppConfig.model_validate(
             {

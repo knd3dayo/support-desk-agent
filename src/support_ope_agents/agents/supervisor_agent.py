@@ -11,6 +11,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import EscalationSettings
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
@@ -40,7 +41,8 @@ class SupervisorPhaseExecutor:
     review_excerpt_max_chars: int | None = None
 
     def _runtime_constraints_enabled(self) -> bool:
-        return self.constraint_mode in {"default", "runtime_only"}
+        # Runtime constraint: supervisor-side runtime guardrails follow default and runtime_only.
+        return RuntimeHarnessManager.runtime_constraints_enabled_for_mode(self.constraint_mode)
 
     @staticmethod
     def passthrough_state(state: dict[str, object]) -> dict[str, object]:
@@ -1096,6 +1098,6 @@ class SupervisorPhaseExecutor:
             )
         return cast("CaseState", update)
 
-
-def build_supervisor_agent_definition() -> AgentDefinition:
-    return AgentDefinition(SUPERVISOR_AGENT, "Supervise the full support workflow", kind="supervisor")
+    @staticmethod
+    def build_supervisor_agent_definition() -> AgentDefinition:
+        return AgentDefinition(SUPERVISOR_AGENT, "Supervise the full support workflow", kind="supervisor")

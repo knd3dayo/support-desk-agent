@@ -80,11 +80,11 @@ class ObjectiveEvaluationAgent:
             return ObjectiveEvaluationStructuredResult.model_validate(response.model_dump())
         raise ValueError("ObjectiveEvaluationAgent returned an unsupported structured output payload.")
 
-
-def build_objective_evaluation_agent_definition() -> AgentDefinition:
-    return AgentDefinition(
-        OBJECTIVE_EVALUATION_AGENT,
-        "Evaluate support handling objectively for report generation",
-        kind="agent",
-        parent_role=SUPERVISOR_AGENT,
-    )
+    @staticmethod
+    def build_objective_evaluation_agent_definition() -> AgentDefinition:
+        return AgentDefinition(
+            OBJECTIVE_EVALUATION_AGENT,
+            "Evaluate support handling objectively for report generation",
+            kind="agent",
+            parent_role=SUPERVISOR_AGENT,
+        )

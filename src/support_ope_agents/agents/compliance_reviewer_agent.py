@@ -8,6 +8,7 @@ from typing import Any, Callable, cast
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import COMPLIANCE_REVIEWER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 
@@ -19,7 +20,8 @@ class ComplianceReviewerPhaseExecutor:
     constraint_mode: str = "default"
 
     def _runtime_constraints_enabled(self) -> bool:
-        return self.constraint_mode in {"default", "runtime_only"}
+        # Runtime constraint: review tools run only when runtime constraints are enabled.
+        return RuntimeHarnessManager.runtime_constraints_enabled_for_mode(self.constraint_mode)
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -50,6 +52,7 @@ class ComplianceReviewerPhaseExecutor:
         draft_response = str(state.get("draft_response") or "")
         review_focus = str(state.get("review_focus") or "")
         if not self._runtime_constraints_enabled():
+            # Runtime constraint: bypass and instruction_only skip compliance review entirely.
             return {
                 "compliance_review_summary": "constraint_mode により ComplianceReviewerAgent の runtime review を省略しました。",
                 "compliance_review_results": [],
@@ -117,11 +120,11 @@ class ComplianceReviewerPhaseExecutor:
             "compliance_review_passed": review_passed,
         }
 
-
-def build_compliance_reviewer_agent_definition() -> AgentDefinition:
-    return AgentDefinition(
-        COMPLIANCE_REVIEWER_AGENT,
-        "Review draft against policy",
-        kind="agent",
-        parent_role=SUPERVISOR_AGENT,
-    )
+    @staticmethod
+    def build_compliance_reviewer_agent_definition() -> AgentDefinition:
+        return AgentDefinition(
+            COMPLIANCE_REVIEWER_AGENT,
+            "Review draft against policy",
+            kind="agent",
+            parent_role=SUPERVISOR_AGENT,
+        )

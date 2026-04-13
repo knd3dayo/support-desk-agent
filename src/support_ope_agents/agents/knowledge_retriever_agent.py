@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, cast
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
 
 
@@ -23,7 +24,8 @@ class KnowledgeRetrieverPhaseExecutor:
     highlight_max_chars: int | None = None
 
     def _uses_summary_constraints(self) -> bool:
-        return self.constraint_mode not in {"bypass", "instruction_only"}
+        # Runtime constraint: result prioritization and summary shaping are skipped in bypass and instruction_only.
+        return RuntimeHarnessManager.summary_constraints_enabled_for_mode(self.constraint_mode)
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -425,10 +427,11 @@ class KnowledgeRetrieverPhaseExecutor:
         }
 
 
-def build_knowledge_retriever_agent_definition() -> AgentDefinition:
-    return AgentDefinition(
-        KNOWLEDGE_RETRIEVER_AGENT,
-        "Search knowledge sources",
-        kind="agent",
-        parent_role=SUPERVISOR_AGENT,
-    )
+    @staticmethod
+    def build_knowledge_retriever_agent_definition() -> AgentDefinition:
+        return AgentDefinition(
+            KNOWLEDGE_RETRIEVER_AGENT,
+            "Search knowledge sources",
+            kind="agent",
+            parent_role=SUPERVISOR_AGENT,
+        )

@@ -96,11 +96,11 @@ class BackSupportEscalationPhaseExecutor:
             "current_agent": BACK_SUPPORT_ESCALATION_AGENT,
         }
 
-
-def build_back_support_escalation_agent_definition() -> AgentDefinition:
-    return AgentDefinition(
-        BACK_SUPPORT_ESCALATION_AGENT,
-        "Organize evidence and missing artifacts for back support escalation",
-        kind="agent",
-        parent_role=SUPERVISOR_AGENT,
-    )
+    @staticmethod
+    def build_back_support_escalation_agent_definition() -> AgentDefinition:
+        return AgentDefinition(
+            BACK_SUPPORT_ESCALATION_AGENT,
+            "Organize evidence and missing artifacts for back support escalation",
+            kind="agent",
+            parent_role=SUPERVISOR_AGENT,
+        )

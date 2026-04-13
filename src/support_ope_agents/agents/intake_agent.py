@@ -141,7 +141,8 @@ class IntakeAgent:
             if self.runtime_harness_manager is not None
             else self.config.agents.resolve_constraint_mode(INTAKE_AGENT)
         )
-        if constraint_mode in {"bypass", "instruction_only"}:
+        if not RuntimeHarnessManager.runtime_constraints_enabled_for_mode(constraint_mode):
+            # Runtime constraint: urgency normalization is skipped when intake runtime constraints are off.
             return urgency.strip() or "medium"
         return self._normalize_incident_urgency(raw_issue, category, urgency)
 
@@ -667,6 +668,6 @@ class IntakeAgent:
         graph.add_edge("wait_for_customer_input", END)
         return graph.compile()
 
-
-def build_intake_agent_definition() -> AgentDefinition:
-    return AgentDefinition(INTAKE_AGENT, "Triage and initialize the case", kind="phase", parent_role=SUPERVISOR_AGENT)
+    @staticmethod
+    def build_intake_agent_definition() -> AgentDefinition:
+        return AgentDefinition(INTAKE_AGENT, "Triage and initialize the case", kind="phase", parent_role=SUPERVISOR_AGENT)

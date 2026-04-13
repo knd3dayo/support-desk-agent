@@ -67,17 +67,32 @@ class RuntimeHarnessManager:
         except (TypeError, ValueError):
             return default
 
+    @staticmethod
+    def instructions_enabled_for_mode(constraint_mode: str) -> bool:
+        return constraint_mode not in {"runtime_only", "bypass"}
+
+    @staticmethod
+    def runtime_constraints_enabled_for_mode(constraint_mode: str) -> bool:
+        return constraint_mode in {"default", "runtime_only"}
+
+    @staticmethod
+    def summary_constraints_enabled_for_mode(constraint_mode: str) -> bool:
+        return constraint_mode not in {"bypass", "instruction_only"}
+
     def resolve(self, role: str) -> str:
         return self.config.agents.resolve_constraint_mode(role)
 
     def should_load_instructions(self, role: str) -> bool:
-        return self.resolve(role) not in {"runtime_only", "bypass"}
+        # Runtime constraint: instruction loading is disabled for runtime_only and bypass.
+        return self.instructions_enabled_for_mode(self.resolve(role))
 
     def should_apply_runtime_constraints(self, role: str) -> bool:
-        return self.resolve(role) in {"default", "runtime_only"}
+        # Runtime constraint: runtime guards are active only for default and runtime_only.
+        return self.runtime_constraints_enabled_for_mode(self.resolve(role))
 
     def should_use_summary_constraints(self, role: str) -> bool:
-        return self.resolve(role) not in {"bypass", "instruction_only"}
+        # Runtime constraint: summary shaping is disabled for bypass and instruction_only.
+        return self.summary_constraints_enabled_for_mode(self.resolve(role))
 
     def is_enabled(self, role: str, capability: ConstraintCapability) -> bool:
         if capability == "instruction":
