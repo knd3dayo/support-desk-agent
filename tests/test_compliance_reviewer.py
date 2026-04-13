@@ -424,8 +424,8 @@ class ComplianceReviewerTests(unittest.TestCase):
                 async def ainvoke(self, messages):
                     prompt = str(messages[0].content)
                     if "Expand the review query" in prompt:
-                        return _FakeResponse('{"keywords": ["独自注記"]}')
-                    return _FakeResponse('{"summary": "reviewed", "issues": []}')
+                        return _FakeResponse('```json\n{"keywords": ["独自注記"]}\n```')
+                    return _FakeResponse('```json\n{"summary": "reviewed", "issues": []}\n```')
 
             with patch("support_ope_agents.tools.default_check_policy._get_chat_model", return_value=_FakeModel()):
                 tool = build_default_check_policy_tool(config)

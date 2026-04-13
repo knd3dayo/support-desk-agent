@@ -78,6 +78,27 @@ function ensureMermaidInitialized() {
   mermaidInitialized = true;
 }
 
+function formatCoverage(activeCount: number | null | undefined, definedCount: number | null | undefined): string {
+  if (typeof activeCount !== 'number' || typeof definedCount !== 'number') {
+    return '-';
+  }
+  return `${activeCount}/${definedCount}`;
+}
+
+function countEnabledLogicalTools(controlCatalog: ControlCatalogResponse | null): number | null {
+  if (!controlCatalog) {
+    return null;
+  }
+  return controlCatalog.logical_tools.filter((tool) => tool.enabled).length;
+}
+
+function countActiveControlPoints(runtimeAudit: RuntimeAuditResponse | null): number | null {
+  if (!runtimeAudit) {
+    return null;
+  }
+  return new Set(runtimeAudit.active_control_point_ids).size;
+}
+
 function MermaidBlock({ chart }: { chart: string }) {
   const [svg, setSvg] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -536,6 +557,22 @@ export default function App() {
     ...uiConfig.knowledge_sources.map((item) => ({ ...item, routeBase: 'knowledge' as const })),
     ...uiConfig.policy_sources.map((item) => ({ ...item, routeBase: 'policy' as const })),
   ];
+  const controlPointCoverage = formatCoverage(
+    countActiveControlPoints(runtimeAudit),
+    controlCatalog?.summary.control_point_count,
+  );
+  const workflowNodeCoverage = formatCoverage(
+    runtimeAudit?.workflow_path.length,
+    controlCatalog?.summary.workflow_node_count,
+  );
+  const logicalToolCoverage = formatCoverage(
+    countEnabledLogicalTools(controlCatalog),
+    controlCatalog?.summary.logical_tool_count,
+  );
+  const usedRoleCoverage = formatCoverage(
+    runtimeAudit?.summary.used_role_count,
+    controlCatalog?.summary.agent_count,
+  );
 
   useEffect(() => {
     void refreshUiConfig();
@@ -1142,19 +1179,19 @@ export default function App() {
                 <div className="control-summary-grid">
                   <div className="control-stat-card">
                     <span>Control points</span>
-                    <strong>{controlCatalog?.summary.control_point_count ?? '-'}</strong>
+                    <strong>{controlPointCoverage}</strong>
                   </div>
                   <div className="control-stat-card">
                     <span>Workflow nodes</span>
-                    <strong>{controlCatalog?.summary.workflow_node_count ?? '-'}</strong>
+                    <strong>{workflowNodeCoverage}</strong>
                   </div>
                   <div className="control-stat-card">
                     <span>Logical tools</span>
-                    <strong>{controlCatalog?.summary.logical_tool_count ?? '-'}</strong>
+                    <strong>{logicalToolCoverage}</strong>
                   </div>
                   <div className="control-stat-card">
                     <span>Used roles</span>
-                    <strong>{runtimeAudit?.summary.used_role_count ?? '-'}</strong>
+                    <strong>{usedRoleCoverage}</strong>
                   </div>
                 </div>
                 {runtimeAudit ? (

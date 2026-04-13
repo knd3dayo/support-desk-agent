@@ -11,6 +11,7 @@ export default defineConfig(function (_a) {
             proxy: {
                 '/health': apiProxyTarget,
                 '/ui-config': apiProxyTarget,
+                '/control-catalog': apiProxyTarget,
                 '/cases': apiProxyTarget,
                 '/init-case': apiProxyTarget,
                 '/plan': apiProxyTarget,

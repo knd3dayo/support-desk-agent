@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any, cast
 
 from langchain_core.messages import HumanMessage
@@ -84,6 +85,23 @@ def _truncate_for_log(value: str, limit: int = 2000) -> str:
     return normalized[:limit] + "...<truncated>"
 
 
+def _parse_json_response(content: str) -> Any:
+    normalized = content.strip()
+    try:
+        return json.loads(normalized)
+    except json.JSONDecodeError:
+        code_fence_match = re.search(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", normalized, flags=re.DOTALL)
+        inline_json_match = re.search(r"(\{.*\}|\[.*\])", normalized, flags=re.DOTALL)
+        candidate = ""
+        if code_fence_match:
+            candidate = code_fence_match.group(1).strip()
+        elif inline_json_match:
+            candidate = inline_json_match.group(1).strip()
+        if not candidate:
+            raise
+        return json.loads(candidate)
+
+
 async def _expand_policy_keywords(model: ChatOpenAI, query: str, limit: int) -> list[str]:
     if not query.strip() or limit <= 0:
         return []
@@ -98,7 +116,7 @@ async def _expand_policy_keywords(model: ChatOpenAI, query: str, limit: int) -> 
         [HumanMessage(content="Return JSON only. Generate concise policy search keywords.\n" + json.dumps(prompt, ensure_ascii=False))]
     )
     content = _stringify_response_content(response.content)
-    parsed = json.loads(content)
+    parsed = _parse_json_response(content)
     if isinstance(parsed, dict):
         return _normalize_keywords(list(parsed.get("keywords") or []), limit)
     raise ValueError("policy keyword expansion returned an invalid payload")
@@ -292,7 +310,7 @@ def build_default_check_policy_tool(config: AppConfig):
                 )
                 content = _stringify_response_content(response.content)
                 try:
-                    parsed = json.loads(content)
+                    parsed = _parse_json_response(content)
                 except json.JSONDecodeError:
                     logger.exception(
                         "Policy review LLM returned non-JSON content. raw_response=%s",

@@ -112,6 +112,10 @@ export type ControlCatalogResponse = {
     instruction_role_count: number;
     control_point_count: number;
   };
+  logical_tools: Array<{
+    name: string;
+    enabled: boolean;
+  }>;
 };
 
 export type RuntimeAuditDecision = {
@@ -137,6 +141,7 @@ export type RuntimeAuditResponse = {
   workflow_path: string[];
   used_roles: string[];
   decision_log: RuntimeAuditDecision[];
+  active_control_point_ids: string[];
 };
 
 export type InitCaseResponse = {

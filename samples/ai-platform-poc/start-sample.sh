@@ -7,7 +7,12 @@ UI_SCRIPT="${SCRIPT_DIR}/start-sample-react.sh"
 HOST="${HOST:-0.0.0.0}"
 API_PORT="${API_PORT:-8000}"
 UI_PORT="${UI_PORT:-5173}"
+API_READY_HOST="${API_READY_HOST:-${HOST}}"
 WORKSPACE_ROOT_ARG=""
+
+if [[ "${API_READY_HOST}" == "0.0.0.0" || "${API_READY_HOST}" == "::" ]]; then
+  API_READY_HOST="127.0.0.1"
+fi
 
 usage() {
   echo "Usage: $0 --workspace-root <dir>" >&2
@@ -61,6 +66,23 @@ fi
 api_pid=""
 ui_pid=""
 
+wait_for_api() {
+  local url="http://${API_READY_HOST}:${API_PORT}/health"
+  local attempt
+  for attempt in $(seq 1 60); do
+    if curl --silent --fail --output /dev/null "${url}"; then
+      return 0
+    fi
+    if [[ -n "${api_pid}" ]] && ! kill -0 "${api_pid}" >/dev/null 2>&1; then
+      echo "API process exited before becoming ready." >&2
+      return 1
+    fi
+    sleep 1
+  done
+  echo "Timed out waiting for API readiness: ${url}" >&2
+  return 1
+}
+
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
@@ -84,6 +106,9 @@ echo "  ui:  http://${HOST}:${UI_PORT}"
 
 HOST="${HOST}" PORT="${API_PORT}" MCP_MANIFEST_PATH="${MCP_MANIFEST_PATH:-}" SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT="${WORKSPACE_ROOT}" "${API_SCRIPT}" &
 api_pid=$!
+
+echo "Waiting for API readiness on http://${API_READY_HOST}:${API_PORT}/health"
+wait_for_api
 
 HOST="${HOST}" PORT="${UI_PORT}" API_PORT="${API_PORT}" "${UI_SCRIPT}" &
 ui_pid=$!
