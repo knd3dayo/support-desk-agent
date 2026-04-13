@@ -71,7 +71,7 @@ class RuntimeContext:
 def build_runtime_context(config_path: str) -> RuntimeContext:
     config = load_config(config_path)
     memory_store = CaseMemoryStore(config)
-    runtime_harness_manager = RuntimeHarnessManager(config)
+    runtime_harness_manager = RuntimeHarnessManager(config=config)
     instruction_loader = InstructionLoader(config, memory_store, runtime_harness_manager)
     mcp_override_resolver = (
         McpToolOverrideResolver.from_config(config)
@@ -136,9 +136,10 @@ class RuntimeService:
             write_working_memory_tool=log_analyzer_tools["write_working_memory"],
         )
         self._knowledge_retriever_executor = KnowledgeRetrieverPhaseExecutor(
-            search_documents_tool=knowledge_retriever_tools["search_documents"],
             external_ticket_tool=knowledge_retriever_tools["external_ticket"],
             internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
+            config=context.config,
+            document_sources=list(context.config.agents.KnowledgeRetrieverAgent.document_sources),
             write_shared_memory_tool=knowledge_retriever_tools.get("write_shared_memory"),
             write_working_memory_tool=knowledge_retriever_tools["write_working_memory"],
             constraint_mode=context.runtime_harness_manager.resolve(KNOWLEDGE_RETRIEVER_AGENT),
@@ -146,6 +147,12 @@ class RuntimeService:
                 "knowledge.highlight_max_chars",
                 role=KNOWLEDGE_RETRIEVER_AGENT,
             ),
+            search_strategy=context.config.agents.KnowledgeRetrieverAgent.search_strategy,
+            result_mode=context.config.agents.KnowledgeRetrieverAgent.result_mode,
+            backend_read_char_limit=context.config.agents.KnowledgeRetrieverAgent.backend_read_char_limit,
+            max_evidence_count=context.config.agents.KnowledgeRetrieverAgent.max_evidence_count,
+            candidate_path_limit=context.config.agents.KnowledgeRetrieverAgent.candidate_path_limit,
+            persist_raw_search_snapshot=context.config.agents.KnowledgeRetrieverAgent.persist_raw_search_snapshot,
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],

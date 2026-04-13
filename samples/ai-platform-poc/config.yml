@@ -64,7 +64,8 @@ support_ope_agents:
       enabled: true
       auto_compress: true
       # constraint_mode: default
-      extraction_mode: raw_backend
+      search_strategy: hybrid
+      result_mode: relaxed
       document_sources:
         - name: ai-platform-poc
           description: ai-platform-poc の技術検証資料と設計資料

@@ -286,7 +286,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                         }
                     )
 
-    def test_limited_extraction_mode_is_rejected(self) -> None:
+    def test_limited_result_mode_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             AppConfig.model_validate(
                 {
@@ -296,7 +296,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                     "agents": {
                         "KnowledgeRetrieverAgent": {
                             "document_sources": [{"name": "docs", "description": "test docs", "path": "/tmp/docs"}],
-                            "extraction_mode": "limited",
+                            "result_mode": "limited",
                         }
                     },
                     "interfaces": {},
@@ -547,6 +547,76 @@ class KnowledgeRetrieverTests(unittest.TestCase):
             self.assertIn("Raw result:", content)
             self.assertIn('"source_name": "sample"', content)
 
+    def test_executor_hybrid_raw_backend_persists_snapshot_and_backend_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir)
+            source_root = workspace_path / "docs"
+            source_root.mkdir()
+            (source_root / "README.md").write_text(
+                "# sample\n\n概要です。\n\n## できること\n\n- テキストチャットを LLM に送る\n",
+                encoding="utf-8",
+            )
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "agents": {
+                        "KnowledgeRetrieverAgent": {
+                            "document_sources": [{"name": "sample", "description": "sample docs", "path": str(source_root)}],
+                            "search_strategy": "hybrid",
+                            "result_mode": "raw_backend",
+                            "persist_raw_search_snapshot": True,
+                        }
+                    },
+                    "interfaces": {},
+                }
+            )
+            executor = KnowledgeRetrieverPhaseExecutor(
+                config=config,
+                document_sources=list(config.agents.KnowledgeRetrieverAgent.document_sources),
+                external_ticket_tool=lambda: "external_ticket tool is not configured.",
+                internal_ticket_tool=lambda: "internal_ticket tool is not configured.",
+                write_working_memory_tool=ToolRegistry(config).get_tools("KnowledgeRetrieverAgent")[-1].handler,
+                search_strategy=config.agents.KnowledgeRetrieverAgent.search_strategy,
+                result_mode=config.agents.KnowledgeRetrieverAgent.result_mode,
+                persist_raw_search_snapshot=config.agents.KnowledgeRetrieverAgent.persist_raw_search_snapshot,
+            )
+            with patch(
+                "support_ope_agents.agents.knowledge_retriever_agent._invoke_deepagents_search",
+                return_value={
+                    "sample": {
+                        "source_name": "sample",
+                        "status": "matched",
+                        "summary": "概要です。",
+                        "matched_paths": ["/knowledge/sample/README.md"],
+                        "evidence": ["概要です。"],
+                        "feature_bullets": [],
+                        "raw_content": "# sample\n\na...",
+                    }
+                },
+            ):
+                result = executor.execute(
+                    {
+                        "case_id": "CASE-TEST-SNAPSHOT-001",
+                        "workspace_path": str(workspace_path),
+                        "raw_issue": "sampleの詳細を教えて",
+                    }
+                )
+
+            source_result = next(
+                item for item in cast(list[dict[str, object]], result["knowledge_retrieval_results"]) if item.get("source_name") == "sample"
+            )
+            raw_backend = cast(dict[str, object], source_result["raw_backend"])
+            file_data = cast(dict[str, object], raw_backend["file_data"])
+            self.assertIn("概要です", str(file_data["content"]))
+            self.assertEqual(raw_backend["llm_excerpt"], "# sample\n\na...")
+
+            snapshot_path = workspace_path / ".memory" / "agents" / "KnowledgeRetrieverAgent" / "search-results.json"
+            snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            self.assertEqual(snapshot["search_strategy"], "hybrid")
+            self.assertEqual(snapshot["result_mode"], "raw_backend")
+
     def test_search_documents_raw_backend_mode_includes_backend_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -564,7 +634,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                     "agents": {
                         "KnowledgeRetrieverAgent": {
                             "document_sources": [{"name": "sample", "description": "sample docs", "path": str(root)}],
-                            "extraction_mode": "raw_backend",
+                            "result_mode": "raw_backend",
                         }
                     },
                     "interfaces": {},
@@ -610,7 +680,7 @@ class KnowledgeRetrieverTests(unittest.TestCase):
                     "agents": {
                         "KnowledgeRetrieverAgent": {
                             "document_sources": [{"name": "sample", "description": "sample docs", "path": str(root)}],
-                            "extraction_mode": "relaxed",
+                            "result_mode": "relaxed",
                         }
                     },
                     "interfaces": {},

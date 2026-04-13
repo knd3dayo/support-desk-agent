@@ -243,11 +243,29 @@ support_ope_agents:
   #     auto_compress: true
   #     constraint_mode: default
   #     # constraint_mode は制約の適用方針です。
-  #     # extraction_mode は文書取得の詳細度で、別の意味を持ちます。
-  #     # 文書抽出の挙動です。relaxed / raw_backend を指定できます。
-  #     # relaxed: 既定値です。DeepAgents に広めの探索を依頼し、要点を返します。
-  #     # raw_backend: 診断向けです。DeepAgents が選んだ主要文書の生テキストも payload に残します。
-  #     extraction_mode: relaxed
+  #     # search_strategy は検索の進め方です。deepagents / hybrid / backend_only を指定できます。
+  #     # deepagents: DeepAgents の探索結果を主に使います。
+  #     # hybrid: DeepAgents の結果を起点に backend 読み取りと grep 証跡で補強します。
+  #     # backend_only: backend 読み取りと grep だけで deterministic に検索します。
+  #     search_strategy: hybrid
+  #
+  #     # result_mode は検索結果として何を保持するかです。relaxed / raw_backend を指定できます。
+  #     # relaxed: 要点、根拠断片、機能箇条書きを中心に保持します。
+  #     # raw_backend: 上記に加えて backend から読んだ本文も保持します。
+  #     result_mode: relaxed
+  #
+  #     # backend から本文を読むときの最大文字数です。
+  #     # 通常は既定値のままで構いません。
+  #     backend_read_char_limit: 8000
+  #
+  #     # 根拠断片として保持する grep 一致件数の上限です。
+  #     max_evidence_count: 3
+  #
+  #     # source ごとに候補として保持する Markdown パス数の上限です。
+  #     candidate_path_limit: 5
+  #
+  #     # true の場合、KnowledgeRetrieverAgent 配下に raw search snapshot を JSON で保存します。
+  #     persist_raw_search_snapshot: false
   #
   #     # KnowledgeRetrieverAgent が参照する文書群です。
   #     document_sources:

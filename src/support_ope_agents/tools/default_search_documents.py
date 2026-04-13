@@ -158,7 +158,7 @@ def build_default_search_documents_tool(config: AppConfig):
             backend=backend,
             sources=settings.document_sources,
             query=query,
-            extraction_mode=settings.extraction_mode,
+            extraction_mode=settings.result_mode,
             conversation_messages=conversation_messages,
         )
         if normalized_by_source is None:
@@ -188,11 +188,11 @@ def build_default_search_documents_tool(config: AppConfig):
                 "evidence": [str(item).strip() for item in list(normalized.get("evidence") or []) if str(item).strip()],
                 "feature_bullets": [str(item).strip() for item in list(normalized.get("feature_bullets") or []) if str(item).strip()],
             }
-            if settings.extraction_mode == "raw_backend":
+            if settings.result_mode == "raw_backend":
                 raw_content = str(normalized.get("raw_content") or "")
                 primary_path = str((result_payload["matched_paths"] or [""])[0])
                 result_payload["raw_backend"] = {
-                    "mode": settings.extraction_mode,
+                    "mode": settings.result_mode,
                     "file_data": {"content": raw_content}
                     if raw_content
                     else (read_backend_file_data(backend, primary_path) if primary_path else None),

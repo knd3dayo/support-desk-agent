@@ -141,6 +141,7 @@ class IntakePiiMaskSettings(StrictConfigModel):
 
 
 ConstraintMode = Literal["default", "instruction_only", "runtime_only", "bypass"]
+KnowledgeSearchStrategy = Literal["deepagents", "hybrid", "backend_only"]
 
 
 class IntakeAgentSettings(StrictConfigModel):
@@ -165,7 +166,12 @@ class AgentSettings(StrictConfigModel):
 
 class KnowledgeRetrieverAgentSettings(AgentSettings):
     document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
-    extraction_mode: Literal["relaxed", "raw_backend"] = "relaxed"
+    search_strategy: KnowledgeSearchStrategy = "hybrid"
+    result_mode: Literal["relaxed", "raw_backend"] = "relaxed"
+    backend_read_char_limit: int | None = 8000
+    max_evidence_count: int = 3
+    candidate_path_limit: int = 5
+    persist_raw_search_snapshot: bool = False
 
 
 class ComplianceReviewerAgentSettings(AgentSettings):
