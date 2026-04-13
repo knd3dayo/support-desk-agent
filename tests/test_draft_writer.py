@@ -197,6 +197,53 @@ class DraftWriterTests(unittest.TestCase):
             self.assertIn("SuperVisorAgent", draft)
             self.assertIn("query: internal", draft)
 
+    def test_draft_writer_instruction_only_and_bypass_disable_feature_list_output_controls(self) -> None:
+        for constraint_mode in ("instruction_only", "bypass"):
+            config = AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "interfaces": {},
+                    "agents": {
+                        "DraftWriterAgent": {
+                            "constraint_mode": constraint_mode,
+                        }
+                    },
+                }
+            )
+            executor = DraftWriterPhaseExecutor(
+                config=config,
+                write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
+            )
+
+            result = executor.execute(
+                {
+                    "workflow_kind": "specification_inquiry",
+                    "raw_issue": "ai-chat-utilの機能について教えて",
+                    "knowledge_retrieval_results": [
+                        {
+                            "source_name": "ai-chat-util",
+                            "source_type": "document_source",
+                            "summary": "ai_chat_util は生成AIを使ったチャット、文書解析、バッチ処理、MCP 連携をまとめて扱うためのユーティリティです。",
+                            "matched_paths": ["/knowledge/ai-chat-util/README.md"],
+                            "feature_bullets": [
+                                "チャット支援機能を提供します",
+                                "文書解析を扱えます",
+                                "MCP 連携を扱えます",
+                            ],
+                        }
+                    ],
+                    "knowledge_retrieval_final_adopted_source": "ai-chat-util",
+                }
+            )
+
+            draft = str(result.get("draft_response") or "")
+            self.assertIn("結論:", draft)
+            self.assertNotIn("主な機能:", draft)
+            self.assertNotIn("確認できたポイント:", draft)
+            self.assertIn("概要レベルの確認結果", draft)
+
     def test_draft_writer_default_mode_preserves_findings_while_replacing_internal_terms(self) -> None:
         config = AppConfig.model_validate(
             {

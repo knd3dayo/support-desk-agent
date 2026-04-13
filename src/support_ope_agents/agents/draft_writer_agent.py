@@ -145,8 +145,10 @@ class DraftWriterPhaseExecutor:
                 deduplicated.append(link)
         return "、".join(deduplicated[:3])
 
-    @staticmethod
-    def _is_feature_list_request(state: Mapping[str, object]) -> bool:
+    def _is_feature_list_request(self, state: Mapping[str, object]) -> bool:
+        # Runtime constraint: feature-list style output is controlled as a runtime presentation rule.
+        if not self._runtime_constraints_enabled():
+            return False
         raw_issue = str(state.get("raw_issue") or "").lower()
         if any(token in raw_issue for token in ["機能", "一覧", "できること", "features", "feature"]):
             return True
@@ -176,6 +178,9 @@ class DraftWriterPhaseExecutor:
         return str(file_data.get("content") or "")
 
     def _feature_bullets_from_result(self, state: Mapping[str, object], result: Mapping[str, object]) -> list[str]:
+        # Runtime constraint: feature bullet expansion is an output-shaping rule, not a workflow rule.
+        if not self._runtime_constraints_enabled():
+            return []
         raw_feature_bullets = result.get("feature_bullets")
         feature_values = raw_feature_bullets if isinstance(raw_feature_bullets, list) else []
         feature_bullets = [str(item).strip() for item in feature_values if str(item).strip()]
