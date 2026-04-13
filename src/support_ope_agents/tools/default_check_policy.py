@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any, cast
 
 from langchain_core.messages import HumanMessage
@@ -28,6 +29,8 @@ RISKY_EXPRESSIONS = [
     "保証します",
     "問題ありません",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 def _get_chat_model(config: AppConfig) -> ChatOpenAI:
@@ -72,6 +75,13 @@ def _normalize_keywords(values: list[str], limit: int) -> list[str]:
         if len(normalized) >= limit:
             break
     return normalized
+
+
+def _truncate_for_log(value: str, limit: int = 2000) -> str:
+    normalized = value.strip()
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[:limit] + "...<truncated>"
 
 
 async def _expand_policy_keywords(model: ChatOpenAI, query: str, limit: int) -> list[str]:
@@ -281,7 +291,14 @@ def build_default_check_policy_tool(config: AppConfig):
                     ]
                 )
                 content = _stringify_response_content(response.content)
-                parsed = json.loads(content)
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError:
+                    logger.exception(
+                        "Policy review LLM returned non-JSON content. raw_response=%s",
+                        _truncate_for_log(content),
+                    )
+                    raise
                 if isinstance(parsed, dict):
                     llm_review_summary = str(parsed.get("summary") or "").strip()
                     llm_issues = [str(item).strip() for item in list(parsed.get("issues") or []) if str(item).strip()]
@@ -289,7 +306,9 @@ def build_default_check_policy_tool(config: AppConfig):
                         if issue not in issues:
                             issues.append(issue)
             except Exception as exc:
-                raise RuntimeError("LLM-backed policy review failed.") from exc
+                raise RuntimeError(
+                    f"LLM-backed policy review failed: {type(exc).__name__}: {exc}"
+                ) from exc
 
         status = "passed" if not issues else "revision_required"
         review_summary = (

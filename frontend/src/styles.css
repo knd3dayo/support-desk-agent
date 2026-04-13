@@ -451,6 +451,7 @@ input {
 .sidebar-panel-content {
   flex: 1;
   min-height: 0;
+  align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -817,6 +818,19 @@ input {
   margin-right: auto;
   background: rgba(255, 255, 255, 0.86);
   border-bottom-left-radius: 8px;
+}
+
+.message.error {
+  align-self: stretch;
+  max-width: 100%;
+  border: 1px solid rgba(176, 41, 41, 0.18);
+  background: linear-gradient(180deg, rgba(177, 39, 39, 0.08), rgba(255, 244, 242, 0.96));
+  color: #6d1f1f;
+  border-bottom-left-radius: 24px;
+}
+
+.message.error .message-role {
+  color: #8b2020;
 }
 
 .message-pending {

@@ -56,6 +56,10 @@ class _FakeComplianceModel:
 
 class ApiWorkspaceTests(unittest.TestCase):
     def setUp(self) -> None:
+        self._startup_probe_patcher = patch(
+            "support_ope_agents.interfaces.api._probe_llm_backend",
+            return_value=None,
+        )
         self._objective_eval_patcher = patch.object(
             ObjectiveEvaluationAgent,
             "_invoke_structured_evaluation",
@@ -73,6 +77,7 @@ class ApiWorkspaceTests(unittest.TestCase):
             "support_ope_agents.tools.default_check_policy._get_chat_model",
             return_value=_FakeComplianceModel(),
         )
+        self._startup_probe_patcher.start()
         self._objective_eval_patcher.start()
         self._classify_model_patcher.start()
         self._draft_model_patcher.start()
@@ -125,6 +130,7 @@ class ApiWorkspaceTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.client.close()
         self.secure_client.close()
+        self._startup_probe_patcher.stop()
         self._compliance_model_patcher.stop()
         self._draft_model_patcher.stop()
         self._classify_model_patcher.stop()
@@ -162,6 +168,32 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertIn("LLM/DeepAgents backend failure", response.json()["detail"])
         self.assertIn("KnowledgeRetrieverAgent", response.json()["detail"])
+
+    def test_app_startup_fails_when_llm_probe_fails(self) -> None:
+        config_path = self.repo_root / "startup-failure-config.yml"
+        config_path.write_text(
+                        "\n".join([
+                                "support_ope_agents:",
+                                "  llm:",
+                                "    provider: openai",
+                                "    model: gpt-4.1",
+                                "    api_key: sk-test-value",
+                                "  config_paths: {}",
+                                "  data_paths: {}",
+                                "  interfaces: {}",
+                                "  agents: {}",
+                        ])
+                        + "\n",
+            encoding="utf-8",
+        )
+
+        with patch(
+            "support_ope_agents.interfaces.api._probe_llm_backend",
+            side_effect=RuntimeError("LLM startup probe failed."),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "LLM startup probe failed"):
+                with TestClient(create_app(str(config_path))):
+                    pass
 
     def test_create_case_endpoint_initializes_workspace_under_default_cases_root(self) -> None:
         response = self.client.post("/cases", json={"prompt": "CASE-API-NEW の調査を開始してください"})
@@ -285,6 +317,27 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertIn("ai-chat-utilについて教えて", raw_issue)
         self.assertIn("詳細を教えてください", raw_issue)
         self.assertEqual(conversation_messages[0]["type"], "human")
+
+    def test_action_endpoint_surfaces_backend_failure_details(self) -> None:
+        with patch.object(
+            RuntimeService,
+            "action",
+            side_effect=RuntimeError(
+                "LLM-backed policy review failed: JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+            ),
+        ):
+            response = self.client.post(
+                "/action",
+                json={
+                    "prompt": "ai-chat-utilについて教えて",
+                    "workspace_path": str(self.case_path),
+                    "case_id": "CASE-API-001",
+                },
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("LLM/DeepAgents backend failure", response.json()["detail"])
+        self.assertIn("JSONDecodeError", response.json()["detail"])
 
     def test_history_endpoint_returns_langchain_conversation_messages(self) -> None:
         self.client.post(

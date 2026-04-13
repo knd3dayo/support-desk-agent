@@ -299,6 +299,14 @@ function formatTimestamp(value?: string | null): string {
   }).format(date);
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    return message || fallback;
+  }
+  return fallback;
+}
+
 function describeRun(result: RuntimeEnvelope): string {
   if (result.requires_customer_input) {
     return '追加の顧客情報が必要です';
@@ -406,9 +414,9 @@ function StandalonePreview({ caseId, workspacePath, path }: StandalonePreviewPar
         setPreview(nextPreview);
         setUiConfig(nextUiConfig);
         setStatus(nextPreview.name);
-      } catch {
+      } catch (error) {
         if (!cancelled) {
-          setStatus('プレビューの取得に失敗しました。');
+          setStatus(getErrorMessage(error, 'プレビューの取得に失敗しました。'));
         }
       }
     }
@@ -502,6 +510,7 @@ export default function App() {
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
   const [submissionStage, setSubmissionStage] = useState<SubmissionStage>('running-workflow');
   const [statusLine, setStatusLine] = useState('ケースを選択するか、そのまま最初のメッセージを送信してください。');
+  const [conversationError, setConversationError] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [authToken, setAuthToken] = useState(() => getSavedAuthToken());
   const [externalTicketId, setExternalTicketId] = useState('');
@@ -556,12 +565,16 @@ export default function App() {
   }, [messages, isAwaitingResponse, submissionStage, pendingQuestion]);
 
   async function refreshCases() {
-    const nextCases = sortCasesByUpdatedAt(await listCases());
-    startTransition(() => {
-      setCases(nextCases);
-    });
-    if (!selectedCase && nextCases.length > 0) {
-      await selectCase(nextCases[0]);
+    try {
+      const nextCases = sortCasesByUpdatedAt(await listCases());
+      startTransition(() => {
+        setCases(nextCases);
+      });
+      if (!selectedCase && nextCases.length > 0) {
+        await selectCase(nextCases[0]);
+      }
+    } catch (error) {
+      setStatusLine(getErrorMessage(error, 'ケース一覧の取得に失敗しました。'));
     }
   }
 
@@ -572,8 +585,8 @@ export default function App() {
       if (config.auth_required && !getSavedAuthToken()) {
         setStatusLine('この画面は認証トークンが必要です。右上に入力してください。');
       }
-    } catch {
-      setStatusLine('UI 設定の取得に失敗しました。');
+    } catch (error) {
+      setStatusLine(getErrorMessage(error, 'UI 設定の取得に失敗しました。'));
     }
   }
 
@@ -610,22 +623,27 @@ export default function App() {
   async function selectCase(target: CaseSummary) {
     setSelectedCase(target);
     setStatusLine(`${target.case_id} を読み込み中です。`);
-    const [history, workspace] = await Promise.all([
-      loadHistory(target.case_id, target.workspace_path),
-      browseWorkspace(target.case_id, target.workspace_path),
-    ]);
-    startTransition(() => {
-      setMessages(history.messages);
-      setConversationMessages(history.conversation_messages);
-      setWorkspaceView(workspace);
-      setSelectedEntry(null);
-      setPreview(null);
-      setPendingQuestion(null);
-      setExternalTicketId('');
-      setInternalTicketId('');
-    });
-    await refreshRuntimeAudit(target, findLatestTraceId(history.messages));
-    setStatusLine(`${target.case_id} を表示しています。`);
+    try {
+      const [history, workspace] = await Promise.all([
+        loadHistory(target.case_id, target.workspace_path),
+        browseWorkspace(target.case_id, target.workspace_path),
+      ]);
+      startTransition(() => {
+        setMessages(history.messages);
+        setConversationMessages(history.conversation_messages);
+        setWorkspaceView(workspace);
+        setSelectedEntry(null);
+        setPreview(null);
+        setConversationError(null);
+        setPendingQuestion(null);
+        setExternalTicketId('');
+        setInternalTicketId('');
+      });
+      await refreshRuntimeAudit(target, findLatestTraceId(history.messages));
+      setStatusLine(`${target.case_id} を表示しています。`);
+    } catch (error) {
+      setStatusLine(getErrorMessage(error, `${target.case_id} の読み込みに失敗しました。`));
+    }
   }
 
   function startNewCase() {
@@ -636,6 +654,7 @@ export default function App() {
       setWorkspaceView(null);
       setSelectedEntry(null);
       setPreview(null);
+      setConversationError(null);
       setPendingQuestion(null);
       setDraftPrompt('');
       setQueuedFiles([]);
@@ -654,15 +673,19 @@ export default function App() {
     if (!selectedCase) {
       return;
     }
-    setActiveSidebarView('files');
-    setWorkspaceCollapsed(false);
-    const workspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, path);
-    setWorkspaceView(workspace);
-    setPreview(null);
-    setSelectedEntry(null);
-    if (inlinePreviewUrl) {
-      URL.revokeObjectURL(inlinePreviewUrl);
-      setInlinePreviewUrl(null);
+    try {
+      setActiveSidebarView('files');
+      setWorkspaceCollapsed(false);
+      const workspace = await browseWorkspace(selectedCase.case_id, selectedCase.workspace_path, path);
+      setWorkspaceView(workspace);
+      setPreview(null);
+      setSelectedEntry(null);
+      if (inlinePreviewUrl) {
+        URL.revokeObjectURL(inlinePreviewUrl);
+        setInlinePreviewUrl(null);
+      }
+    } catch (error) {
+      setStatusLine(getErrorMessage(error, `${path} の参照に失敗しました。`));
     }
   }
 
@@ -677,16 +700,20 @@ export default function App() {
       await openDirectory(entry.path);
       return;
     }
-    const nextPreview = await loadFile(selectedCase.case_id, selectedCase.workspace_path, entry.path);
-    if (inlinePreviewUrl) {
-      URL.revokeObjectURL(inlinePreviewUrl);
-      setInlinePreviewUrl(null);
+    try {
+      const nextPreview = await loadFile(selectedCase.case_id, selectedCase.workspace_path, entry.path);
+      if (inlinePreviewUrl) {
+        URL.revokeObjectURL(inlinePreviewUrl);
+        setInlinePreviewUrl(null);
+      }
+      if ((nextPreview.mime_type || '').startsWith('image/') || nextPreview.mime_type === 'application/pdf') {
+        const blob = await loadRawFileBlob(selectedCase.case_id, selectedCase.workspace_path, entry.path);
+        setInlinePreviewUrl(URL.createObjectURL(blob));
+      }
+      setPreview(nextPreview);
+    } catch (error) {
+      setStatusLine(getErrorMessage(error, `${entry.path} のプレビュー取得に失敗しました。`));
     }
-    if ((nextPreview.mime_type || '').startsWith('image/') || nextPreview.mime_type === 'application/pdf') {
-      const blob = await loadRawFileBlob(selectedCase.case_id, selectedCase.workspace_path, entry.path);
-      setInlinePreviewUrl(URL.createObjectURL(blob));
-    }
-    setPreview(nextPreview);
   }
 
   async function openWorkspaceFileFromLink(target: { workspacePath: string; path: string }) {
@@ -716,8 +743,8 @@ export default function App() {
         setPreview(nextPreview);
       });
       setStatusLine(`${nextPreview.name} をプレビューしています。`);
-    } catch {
-      setStatusLine(`リンク先 ${target.path} を開けませんでした。`);
+    } catch (error) {
+      setStatusLine(getErrorMessage(error, `リンク先 ${target.path} を開けませんでした。`));
     }
   }
 
@@ -749,8 +776,8 @@ export default function App() {
         'noopener,noreferrer'
       );
       setStatusLine(`${latestReport.name} を別ウィンドウで開きました。`);
-    } catch {
-      setStatusLine('最新レポートの取得に失敗しました。');
+    } catch (error) {
+      setStatusLine(getErrorMessage(error, '最新レポートの取得に失敗しました。'));
     }
   }
 
@@ -782,7 +809,7 @@ export default function App() {
       });
       setStatusLine(`${result.report_path.split('/').pop() || 'レポート'} を生成しました。`);
     } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : 'レポート生成に失敗しました。');
+      setStatusLine(getErrorMessage(error, 'レポート生成に失敗しました。'));
     } finally {
       setBusy(false);
     }
@@ -823,6 +850,7 @@ export default function App() {
     setBusy(true);
     setIsAwaitingResponse(true);
     setSubmissionStage(selectedCase ? 'running-workflow' : 'creating-case');
+    setConversationError(null);
     setStatusLine('回答を生成しています。');
 
     try {
@@ -915,7 +943,9 @@ export default function App() {
       setQueuedFiles([]);
       setStatusLine(describeRun(result));
     } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : '送信中にエラーが発生しました。');
+      const message = getErrorMessage(error, '送信中にエラーが発生しました。');
+      setConversationError(message);
+      setStatusLine(message);
     } finally {
       setIsAwaitingResponse(false);
       setSubmissionStage('running-workflow');
@@ -1231,6 +1261,16 @@ export default function App() {
         </div>
 
         <div className="messages">
+          {conversationError ? (
+            <article className="message error" role="alert" aria-live="assertive">
+              <div className="message-header">
+                <div className="message-role">Error</div>
+              </div>
+              <div className="message-body">
+                <p>{conversationError}</p>
+              </div>
+            </article>
+          ) : null}
           {messages.length === 0 ? (
             <div className="empty-state">
               <h3>AIチャットの開始準備ができています。</h3>

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 import mimetypes
 import os
 import tempfile
 from pathlib import Path
+from typing import Any, cast
 
 from fastapi import Depends
 from fastapi import FastAPI
@@ -16,9 +19,12 @@ from fastapi import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
 import uvicorn
 import yaml
 
+from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime import RuntimeService, build_runtime_context
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.conversation_messages import extract_serialized_messages_from_history
@@ -45,12 +51,61 @@ from .schemas import (
 
 DEFAULT_API_HOST = "0.0.0.0"
 DEFAULT_API_PORT = 8000
+STARTUP_LLM_PROBE_TIMEOUT_SECONDS = 15
+
+
+def _build_startup_probe_model(config: AppConfig) -> ChatOpenAI:
+    chat_openai = cast(Any, ChatOpenAI)
+    return chat_openai(
+        model=config.llm.model,
+        api_key=cast(Any, config.llm.api_key),
+        base_url=config.llm.base_url,
+        temperature=0,
+    )
+
+
+def _stringify_probe_response(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        if parts:
+            return "\n".join(parts).strip()
+    return str(content).strip()
+
+
+async def _probe_llm_backend(config: AppConfig) -> None:
+    model = _build_startup_probe_model(config)
+    try:
+        response = await asyncio.wait_for(
+            model.ainvoke([HumanMessage(content="Reply with a short readiness confirmation.")]),
+            timeout=STARTUP_LLM_PROBE_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        raise RuntimeError("LLM startup probe failed.") from exc
+
+    if not _stringify_probe_response(response.content):
+        raise RuntimeError("LLM startup probe failed: empty response.")
 
 
 def create_app(config_path: str = "config.yml", cases_root: str | None = None) -> FastAPI:
     context = build_runtime_context(config_path)
     service = RuntimeService(context)
-    app = FastAPI(title="support-ope-agents API", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        await _probe_llm_backend(context.config)
+        yield
+
+    app = FastAPI(title="support-ope-agents API", version="0.1.0", lifespan=lifespan)
     base_dir = Path(config_path).resolve().parent
     default_cases_root = Path(cases_root).expanduser().resolve() if cases_root else base_dir / "work" / "cases"
 
@@ -323,29 +378,35 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
 
     @app.post("/action", response_model=RuntimeEnvelope)
     def action(request: ActionRequest, _: None = Depends(require_auth)) -> RuntimeEnvelope:
-        result = service.action(
-            prompt=request.prompt,
-            case_id=request.case_id,
-            workspace_path=request.workspace_path,
-            trace_id=request.trace_id,
-            execution_plan=request.execution_plan,
-            external_ticket_id=request.external_ticket_id,
-            internal_ticket_id=request.internal_ticket_id,
-            conversation_messages=[message.model_dump() for message in request.conversation_messages],
-        )
+        try:
+            result = service.action(
+                prompt=request.prompt,
+                case_id=request.case_id,
+                workspace_path=request.workspace_path,
+                trace_id=request.trace_id,
+                execution_plan=request.execution_plan,
+                external_ticket_id=request.external_ticket_id,
+                internal_ticket_id=request.internal_ticket_id,
+                conversation_messages=[message.model_dump() for message in request.conversation_messages],
+            )
+        except Exception as exc:
+            raise map_error(exc) from exc
         return RuntimeEnvelope.model_validate(result)
 
     @app.post("/resume-customer-input", response_model=RuntimeEnvelope)
     def resume_customer_input(request: ResumeCustomerInputRequest, _: None = Depends(require_auth)) -> RuntimeEnvelope:
-        result = service.resume_customer_input(
-            case_id=request.case_id,
-            trace_id=request.trace_id,
-            workspace_path=request.workspace_path,
-            additional_input=request.additional_input,
-            answer_key=request.answer_key,
-            external_ticket_id=request.external_ticket_id,
-            internal_ticket_id=request.internal_ticket_id,
-        )
+        try:
+            result = service.resume_customer_input(
+                case_id=request.case_id,
+                trace_id=request.trace_id,
+                workspace_path=request.workspace_path,
+                additional_input=request.additional_input,
+                answer_key=request.answer_key,
+                external_ticket_id=request.external_ticket_id,
+                internal_ticket_id=request.internal_ticket_id,
+            )
+        except Exception as exc:
+            raise map_error(exc) from exc
         return RuntimeEnvelope.model_validate(result)
 
     frontend_dist = base_dir / "frontend" / "dist"

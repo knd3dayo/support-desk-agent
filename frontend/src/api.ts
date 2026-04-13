@@ -65,11 +65,33 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
   });
 
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await readErrorDetail(response);
     throw new Error(detail || `HTTP ${response.status}`);
   }
 
   return (await response.json()) as T;
+}
+
+async function readErrorDetail(response: Response): Promise<string> {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try {
+      const payload = (await response.json()) as { detail?: unknown; message?: unknown };
+      const detail = typeof payload.detail === 'string' ? payload.detail.trim() : '';
+      if (detail) {
+        return detail;
+      }
+      const message = typeof payload.message === 'string' ? payload.message.trim() : '';
+      if (message) {
+        return message;
+      }
+    } catch {
+      return `HTTP ${response.status}`;
+    }
+  }
+
+  const text = (await response.text()).trim();
+  return text;
 }
 
 export function listCases(): Promise<CaseSummary[]> {
@@ -130,7 +152,7 @@ export async function loadRawFileBlob(caseId: string, workspacePath: string, pat
   });
 
   if (!response.ok) {
-    throw new Error((await response.text()) || `HTTP ${response.status}`);
+    throw new Error((await readErrorDetail(response)) || `HTTP ${response.status}`);
   }
 
   return await response.blob();
@@ -154,7 +176,7 @@ export async function uploadWorkspaceFile(
   });
 
   if (!response.ok) {
-    throw new Error((await response.text()) || `HTTP ${response.status}`);
+    throw new Error((await readErrorDetail(response)) || `HTTP ${response.status}`);
   }
 
   return (await response.json()) as WorkspaceUploadResponse;
