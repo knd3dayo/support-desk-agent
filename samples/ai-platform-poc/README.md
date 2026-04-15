@@ -13,7 +13,7 @@
 
 ## 2. 想定するナレッジ
 
-この sample では次を KnowledgeRetrieverAgent の document source として扱います。
+この sample では次を InvestigateAgent の document source として扱います。
 
 - ai-platform-poc の技術検証資料: /home/user/source/repos/ai-platform-poc
 - ai-chat-util のソース: /home/user/source/repos/ai-chat-util
@@ -78,7 +78,7 @@ python -m support_ope_agents.cli action \
   --config /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/config.yml
 ```
 
-ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、KnowledgeRetrieverAgent は external / internal ticket の実参照をスキップします。実チケットを引きたい場合は `--external-ticket-id` と `--internal-ticket-id` を明示指定してください。
+ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、InvestigateAgent は external / internal ticket の実参照をスキップします。実チケットを引きたい場合は `--external-ticket-id` と `--internal-ticket-id` を明示指定してください。
 
 ## 4. 補足
 
@@ -86,4 +86,4 @@ ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRAC
 - ai-chat-util 側に MCP manifest がある場合は、sample config の `tools.mcp_manifest_path` と `tools.logical_tools.*` を環境に合わせて有効化してください
 - LangChain ドキュメントの path は `/home/user/oss/langchain-ai/langchain` を前提にしています
 - sample config は `constraint_mode: default` を既定にしています。`instruction_only` は instruction 側の制御だけが残るため、sample では回答や再調査の誘導が強く見えることがあります。
-- `KnowledgeRetrieverAgent.extraction_mode: raw_backend` は取得 payload の詳細度を上げる設定です。制約の強さを変えたい場合は `constraint_mode` を agent ごとに調整してください。
+- `InvestigateAgent.result_mode: raw_backend` は取得 payload の詳細度を上げる設定です。制約の強さを変えたい場合は `constraint_mode` を agent ごとに調整してください。

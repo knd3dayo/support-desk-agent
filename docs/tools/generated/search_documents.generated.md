@@ -6,7 +6,7 @@
 - description: Search configured manuals and knowledge documents via DeepAgents backend
 
 ## 利用エージェント
-- KnowledgeRetrieverAgent: provider=builtin, target=configured-document-sources, status=implemented, override=allowed
+- InvestigateAgent: provider=builtin, target=configured-document-sources, status=implemented, override=allowed
 
 ## 手編集メモ
 - ここに入出力例、運用上の注意、MCP 接続前提などを追記する。

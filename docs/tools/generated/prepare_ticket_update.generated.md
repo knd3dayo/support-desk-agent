@@ -1,12 +1,12 @@
-# spawn_compliance_reviewer_agent ツール下書き
+# prepare_ticket_update ツール下書き
 
 このファイルは ToolRegistry から半自動生成した下書きです。
 
 ## 概要
-- description: Delegate compliance review
+- description: Prepare external ticket update payload
 
 ## 利用エージェント
-- SuperVisorAgent: provider=local, target=n/a, status=planned, override=allowed
+- TicketUpdateAgent: provider=local, target=n/a, status=planned, override=allowed
 
 ## 手編集メモ
 - ここに入出力例、運用上の注意、MCP 接続前提などを追記する。

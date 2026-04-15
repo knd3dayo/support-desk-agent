@@ -6,7 +6,7 @@
 - description: Write draft response
 
 ## 利用エージェント
-- DraftWriterAgent: provider=builtin, target=default-draft-writer, status=implemented, override=allowed
+- InvestigateAgent: provider=builtin, target=default-draft-writer, status=implemented, override=allowed
 - BackSupportInquiryWriterAgent: provider=builtin, target=default-draft-writer, status=implemented, override=allowed
 
 ## 手編集メモ

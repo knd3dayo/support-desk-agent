@@ -1,12 +1,12 @@
-# run_python_analysis ツール下書き
+# record_approval_decision ツール下書き
 
 このファイルは ToolRegistry から半自動生成した下書きです。
 
 ## 概要
-- description: Run code-based log analysis
+- description: Record approval or rejection decisions
 
 ## 利用エージェント
-- InvestigateAgent: provider=local, target=n/a, status=planned, override=allowed
+- ApprovalAgent: provider=local, target=n/a, status=planned, override=allowed
 
 ## 手編集メモ
 - ここに入出力例、運用上の注意、MCP 接続前提などを追記する。

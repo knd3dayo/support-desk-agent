@@ -6,7 +6,7 @@
 - description: Read attached log file
 
 ## 利用エージェント
-- LogAnalyzerAgent: provider=local, target=n/a, status=planned, override=allowed
+- InvestigateAgent: provider=local, target=n/a, status=planned, override=allowed
 
 ## 手編集メモ
 - ここに入出力例、運用上の注意、MCP 接続前提などを追記する。

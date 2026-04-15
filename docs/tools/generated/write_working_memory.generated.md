@@ -6,8 +6,8 @@
 - description: Write agent working memory
 
 ## 利用エージェント
-- LogAnalyzerAgent: provider=builtin, target=default-working-memory-writer, status=implemented, override=allowed
-- KnowledgeRetrieverAgent: provider=builtin, target=default-working-memory-writer, status=implemented, override=allowed
+- SuperVisorAgent: provider=builtin, target=default-working-memory-writer, status=implemented, override=allowed
+- InvestigateAgent: provider=builtin, target=default-working-memory-writer, status=implemented, override=allowed
 
 ## 手編集メモ
 - ここに入出力例、運用上の注意、MCP 接続前提などを追記する。

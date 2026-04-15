@@ -7,7 +7,7 @@
 ## 2. 利用エージェント
 
 - IntakeAgent
-- KnowledgeRetrieverAgent
+- InvestigateAgent
 
 ## 3. 既定実装 / 接続点
 
@@ -15,7 +15,7 @@
 - 既定では未接続で、[config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools.external_ticket で構成する
 - ToolRegistry 定義: [src/support_ope_agents/tools/registry.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/registry.py)
 - IntakeAgent では、明示 external_ticket_id が与えられた場合の初期 hydration に使う
-- KnowledgeRetrieverAgent では、workspace 取り込み済み情報で不足する場合の再取得に使う
+- InvestigateAgent では、workspace 取り込み済み情報で不足する場合の再取得に使う
 
 ## 4. MCP 契約
 

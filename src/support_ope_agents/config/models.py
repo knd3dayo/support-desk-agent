@@ -178,23 +178,6 @@ class InvestigateAgentSettings(KnowledgeRetrieverAgentSettings):
     pass
 
 
-class ComplianceReviewerAgentSettings(AgentSettings):
-    document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
-    ignore_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DOCUMENT_IGNORE_PATTERNS.copy())
-    ignore_patterns_file: Path | None = None
-    policy_keywords: list[str] = Field(default_factory=lambda: DEFAULT_POLICY_SEARCH_KEYWORDS.copy())
-    policy_keyword_expansion_enabled: bool = False
-    policy_keyword_expansion_count: int = 12
-    max_evidence_count: int = 3
-    candidate_path_limit: int = 5
-    backend_read_char_limit: int | None = 8000
-    summary_max_chars: int | None = 600
-    extraction_mode: Literal["limited", "relaxed", "raw_backend"] = "limited"
-    raw_backend_max_matches: int | None = 50
-    notice: ComplianceNoticeSettings = Field(default_factory=ComplianceNoticeSettings)
-    max_review_loops: int = 3
-
-
 class SupervisorAgentSettings(AgentSettings):
     auto_generate_report: bool = False
     max_investigation_loops: int = Field(default=1, ge=0, le=5)
@@ -230,7 +213,6 @@ class AgentCatalogSettings(StrictConfigModel):
     LogAnalyzerAgent: AgentSettings = Field(default_factory=AgentSettings)
     KnowledgeRetrieverAgent: KnowledgeRetrieverAgentSettings = Field(default_factory=KnowledgeRetrieverAgentSettings)
     DraftWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
-    ComplianceReviewerAgent: ComplianceReviewerAgentSettings = Field(default_factory=ComplianceReviewerAgentSettings)
     BackSupportEscalationAgent: BackSupportEscalationAgentSettings = Field(default_factory=BackSupportEscalationAgentSettings)
     BackSupportInquiryWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
     ApprovalAgent: AgentSettings = Field(default_factory=AgentSettings)
@@ -238,7 +220,7 @@ class AgentCatalogSettings(StrictConfigModel):
 
     def get(
         self, role: str
-    ) -> AgentSettings | IntakeAgentSettings | InvestigateAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | ObjectiveEvaluationAgentSettings | None:
+    ) -> AgentSettings | IntakeAgentSettings | InvestigateAgentSettings | KnowledgeRetrieverAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | ObjectiveEvaluationAgentSettings | None:
         return getattr(self, role, None)
 
     @model_validator(mode="after")

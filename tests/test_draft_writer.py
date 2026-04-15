@@ -73,14 +73,7 @@ class DraftWriterTests(unittest.TestCase):
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
-                    "agents": {
-                        "ComplianceReviewerAgent": {
-                            "notice": {
-                                "required": True,
-                                "required_phrases": ["この回答は生成AI補助を含み、誤りの可能性があります"],
-                            }
-                        }
-                    },
+                    "agents": {},
                 }
             )
             executor = DraftWriterPhaseExecutor(
@@ -132,14 +125,7 @@ class DraftWriterTests(unittest.TestCase):
                     "config_paths": {},
                     "data_paths": {},
                     "interfaces": {},
-                    "agents": {
-                        "ComplianceReviewerAgent": {
-                            "notice": {
-                                "required": True,
-                                "required_phrases": ["生成AIは誤った回答をすることがあります"],
-                            }
-                        }
-                    },
+                    "agents": {},
                 }
             )
             executor = DraftWriterPhaseExecutor(

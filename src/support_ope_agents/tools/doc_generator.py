@@ -7,6 +7,14 @@ from support_ope_agents.config import load_config
 from support_ope_agents.tools.registry import ToolRegistry, ToolSpec
 
 
+_LEGACY_ROLE_ALIASES = {
+    "LogAnalyzerAgent": "InvestigateAgent",
+    "KnowledgeRetrieverAgent": "InvestigateAgent",
+    "DraftWriterAgent": "InvestigateAgent",
+    "ComplianceReviewerAgent": "InvestigateAgent",
+}
+
+
 def _implementation_status(tool: ToolSpec) -> str:
     if tool.provider == "builtin":
         return "implemented"
@@ -23,9 +31,15 @@ def _tool_doc_filename(tool_name: str) -> str:
 
 def _collect_tools_by_name(registry: ToolRegistry) -> dict[str, list[tuple[str, ToolSpec]]]:
     tools_by_name: dict[str, list[tuple[str, ToolSpec]]] = defaultdict(list)
+    seen_bindings: dict[str, set[tuple[str, str, str | None]]] = defaultdict(set)
     for role in registry.list_roles():
         for tool in registry.get_tools(role):
-            tools_by_name[tool.name].append((role, tool))
+            normalized_role = _LEGACY_ROLE_ALIASES.get(role, role)
+            binding_key = (normalized_role, tool.provider, tool.target)
+            if binding_key in seen_bindings[tool.name]:
+                continue
+            seen_bindings[tool.name].add(binding_key)
+            tools_by_name[tool.name].append((normalized_role, tool))
     return dict(sorted(tools_by_name.items()))
 
 

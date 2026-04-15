@@ -6,8 +6,7 @@ agent 個別の working.md へ作業メモや比較結果を記録する。
 
 ## 2. 利用エージェント
 
-- LogAnalyzerAgent
-- KnowledgeRetrieverAgent
+- InvestigateAgent
 
 ## 3. 既定実装 / 接続点
 

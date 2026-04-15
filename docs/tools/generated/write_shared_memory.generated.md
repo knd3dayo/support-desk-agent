@@ -8,6 +8,7 @@
 ## 利用エージェント
 - SuperVisorAgent: provider=builtin, target=default-case-memory-writer, status=implemented, override=allowed
 - IntakeAgent: provider=builtin, target=default-case-memory-writer, status=implemented, override=allowed
+- InvestigateAgent: provider=builtin, target=default-case-memory-writer, status=implemented, override=allowed
 - BackSupportEscalationAgent: provider=builtin, target=default-case-memory-writer, status=implemented, override=allowed
 - BackSupportInquiryWriterAgent: provider=builtin, target=default-case-memory-writer, status=implemented, override=allowed
 

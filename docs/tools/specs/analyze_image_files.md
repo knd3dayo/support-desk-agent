@@ -6,7 +6,7 @@
 
 ## 2. 利用エージェント
 
-- LogAnalyzerAgent
+- InvestigateAgent
 
 ## 3. 既定実装 / 接続点
 

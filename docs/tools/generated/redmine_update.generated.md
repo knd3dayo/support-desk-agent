@@ -1,12 +1,12 @@
-# request_revision ツール下書き
+# redmine_update ツール下書き
 
 このファイルは ToolRegistry から半自動生成した下書きです。
 
 ## 概要
-- description: Request draft revision
+- description: Update internal ticket in Redmine
 
 ## 利用エージェント
-- ComplianceReviewerAgent: provider=local, target=n/a, status=planned, override=allowed
+- TicketUpdateAgent: provider=local, target=n/a, status=planned, override=allowed
 
 ## 手編集メモ
 - ここに入出力例、運用上の注意、MCP 接続前提などを追記する。

@@ -1,12 +1,12 @@
-# check_policy ツール下書き
+# spawn_investigate_agent ツール下書き
 
 このファイルは ToolRegistry から半自動生成した下書きです。
 
 ## 概要
-- description: Check compliance policy
+- description: Delegate investigation and draft creation
 
 ## 利用エージェント
-- ComplianceReviewerAgent: provider=local, target=n/a, status=planned, override=allowed
+- SuperVisorAgent: provider=local, target=n/a, status=planned, override=allowed
 
 ## 手編集メモ
 - ここに入出力例、運用上の注意、MCP 接続前提などを追記する。

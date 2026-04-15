@@ -72,15 +72,6 @@ class CaseState(TypedDict, total=False):
     compressed_summary: str
     draft_response: str
     review_focus: str
-    compliance_review_summary: str
-    compliance_review_results: list[dict[str, object]]
-    compliance_review_adopted_sources: list[str]
-    compliance_review_issues: list[str]
-    compliance_notice_present: bool
-    compliance_notice_matched_phrase: str
-    compliance_revision_request: str
-    compliance_review_passed: bool
-    compliance_review_history: list[dict[str, object]]
     draft_review_iterations: int
     draft_review_max_loops: int
     ticket_update_payload: str
