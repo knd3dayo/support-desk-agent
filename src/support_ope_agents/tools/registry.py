@@ -7,9 +7,9 @@ from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
     BACK_SUPPORT_ESCALATION_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
-    COMPLIANCE_REVIEWER_AGENT,
     DEFAULT_AGENT_ROLES,
     DRAFT_WRITER_AGENT,
+    INVESTIGATE_AGENT,
     INTAKE_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,
     LOG_ANALYZER_AGENT,
@@ -20,10 +20,8 @@ from support_ope_agents.config.models import AppConfig, McpToolBinding
 
 from .builtin_tools import build_builtin_tools
 from .default_classify_ticket import build_default_classify_ticket_tool
-from .default_check_policy import build_default_check_policy_tool
 from .default_pii_mask import build_default_pii_mask_tool
 from .default_read_shared_memory import build_default_read_shared_memory_tool
-from .default_request_revision import build_default_request_revision_tool
 from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
 from .default_write_shared_memory import build_default_write_shared_memory_tool
@@ -103,7 +101,7 @@ class ToolRegistry:
                 ToolSpec("spawn_log_analyzer_agent", "Delegate to log analyzer agent", _not_implemented_tool("spawn_log_analyzer_agent")),
                 ToolSpec("spawn_knowledge_retriever_agent", "Delegate to knowledge retriever agent", _not_implemented_tool("spawn_knowledge_retriever_agent")),
                 ToolSpec("spawn_draft_writer_agent", "Delegate draft creation", _not_implemented_tool("spawn_draft_writer_agent")),
-                ToolSpec("spawn_compliance_reviewer_agent", "Delegate compliance review", _not_implemented_tool("spawn_compliance_reviewer_agent")),
+                ToolSpec("spawn_investigate_agent", "Delegate investigation and draft creation", _not_implemented_tool("spawn_investigate_agent")),
                 ToolSpec("spawn_back_support_escalation_agent", "Delegate escalation material preparation", _not_implemented_tool("spawn_back_support_escalation_agent")),
                 ToolSpec("spawn_back_support_inquiry_writer_agent", "Delegate escalation inquiry drafting", _not_implemented_tool("spawn_back_support_inquiry_writer_agent")),
                 ToolSpec(
@@ -156,6 +154,57 @@ class ToolRegistry:
                     build_default_write_shared_memory_tool(self._config),
                     provider="builtin",
                     target="default-case-memory-writer",
+                ),
+            ],
+            INVESTIGATE_AGENT: [
+                ToolSpec(
+                    "detect_log_format",
+                    "Detect log format and generate regex-based search results",
+                    self._builtin_tools["detect_log_format_and_search"].handler,
+                    provider="builtin",
+                    target="detect_log_format_and_search",
+                ),
+                ToolSpec(
+                    "search_documents",
+                    "Search configured manuals and knowledge documents via DeepAgents backend",
+                    build_default_search_documents_tool(self._config),
+                    provider="builtin",
+                    target="configured-document-sources",
+                ),
+                ToolSpec(
+                    "external_ticket",
+                    "Fetch customer-facing external ticket information",
+                    _unavailable_tool(
+                        "external_ticket tool is not configured. Configure tools.logical_tools.external_ticket in config.yml."
+                    ),
+                ),
+                ToolSpec(
+                    "internal_ticket",
+                    "Fetch internal management ticket information",
+                    _unavailable_tool(
+                        "internal_ticket tool is not configured. Configure tools.logical_tools.internal_ticket in config.yml."
+                    ),
+                ),
+                ToolSpec(
+                    "write_shared_memory",
+                    "Write shared context/progress/summary files for a case workspace",
+                    build_default_write_shared_memory_tool(self._config),
+                    provider="builtin",
+                    target="default-case-memory-writer",
+                ),
+                ToolSpec(
+                    "write_working_memory",
+                    "Write agent working memory",
+                    build_default_write_working_memory_tool(self._config, INVESTIGATE_AGENT),
+                    provider="builtin",
+                    target="default-working-memory-writer",
+                ),
+                ToolSpec(
+                    "write_draft",
+                    "Write draft response",
+                    build_default_write_draft_tool(self._config, "customer_response_draft"),
+                    provider="builtin",
+                    target="default-draft-writer",
                 ),
             ],
             LOG_ANALYZER_AGENT: [
@@ -220,29 +269,6 @@ class ToolRegistry:
                     build_default_write_draft_tool(self._config, "customer_response_draft"),
                     provider="builtin",
                     target="default-draft-writer",
-                ),
-            ],
-            COMPLIANCE_REVIEWER_AGENT: [
-                ToolSpec(
-                    "check_policy",
-                    "Check draft against configured policies and required notices",
-                    build_default_check_policy_tool(self._config),
-                    provider="builtin",
-                    target="configured-policy-document-sources",
-                ),
-                ToolSpec(
-                    "request_revision",
-                    "Summarize revision points for the draft writer",
-                    build_default_request_revision_tool(),
-                    provider="builtin",
-                    target="default-revision-request",
-                ),
-                ToolSpec(
-                    "write_working_memory",
-                    "Write agent working memory",
-                    build_default_write_working_memory_tool(self._config, COMPLIANCE_REVIEWER_AGENT),
-                    provider="builtin",
-                    target="default-working-memory-writer",
                 ),
             ],
             BACK_SUPPORT_ESCALATION_AGENT: [

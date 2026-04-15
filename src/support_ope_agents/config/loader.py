@@ -49,22 +49,16 @@ def load_config(config_path: str | Path) -> AppConfig:
     resolved["data_paths"] = resolved.get("data_paths", {})
 
     agents = resolved.get("agents", {})
+    investigate = agents.get("InvestigateAgent", {})
     knowledge_retriever = agents.get("KnowledgeRetrieverAgent", {})
-    document_sources = knowledge_retriever.get("document_sources", [])
+    if not investigate and knowledge_retriever:
+        investigate = dict(knowledge_retriever)
+    document_sources = investigate.get("document_sources", [])
     for source in document_sources:
         if isinstance(source, dict) and source.get("path"):
             source["path"] = _resolve_path(base_dir, source["path"])
+    agents["InvestigateAgent"] = investigate
     agents["KnowledgeRetrieverAgent"] = knowledge_retriever
-
-    compliance_reviewer = agents.get("ComplianceReviewerAgent", {})
-    compliance_document_sources = compliance_reviewer.get("document_sources", [])
-    for source in compliance_document_sources:
-        if isinstance(source, dict) and source.get("path"):
-            source["path"] = _resolve_path(base_dir, source["path"])
-    compliance_ignore_patterns_file = compliance_reviewer.get("ignore_patterns_file")
-    if compliance_ignore_patterns_file:
-        compliance_reviewer["ignore_patterns_file"] = _resolve_path(base_dir, compliance_ignore_patterns_file)
-    agents["ComplianceReviewerAgent"] = compliance_reviewer
     resolved["agents"] = agents
 
     tools = resolved.get("tools", {})

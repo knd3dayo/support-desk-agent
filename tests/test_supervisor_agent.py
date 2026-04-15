@@ -5,19 +5,13 @@ import tempfile
 import unittest
 from asyncio import run
 from pathlib import Path
-from unittest.mock import patch
-
-from langchain_core.messages import AIMessage
 
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
-from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
 from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
 from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
-from support_ope_agents.tools.default_check_policy import build_default_check_policy_tool
-from support_ope_agents.tools.default_request_revision import build_default_request_revision_tool
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
 from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
 
@@ -92,16 +86,6 @@ class _FakeMissingLogsAnalyzerExecutor:
         }
 
 
-class _FakeDraftModel:
-    async def ainvoke(self, _messages):
-        return AIMessage(content="生成AIは誤った回答をすることがあります。現時点では仕様上の動作と判断します。")
-
-
-class _FakeComplianceModel:
-    async def ainvoke(self, _messages):
-        return AIMessage(content='{"summary":"mocked compliance review","issues":[]}')
-
-
 class _FakeLogAnalyzerExecutor:
     @staticmethod
     def execute(_state: dict[str, object]) -> dict[str, object]:
@@ -115,26 +99,6 @@ class _FakeLogAnalyzerExecutor:
         }
 
 
-class _FakePolicyUnavailableComplianceExecutor:
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def execute(self, _state: dict[str, object]) -> dict[str, object]:
-        self.calls += 1
-        return {
-            "compliance_review_summary": "ドラフトはポリシー照合で修正が必要です。",
-            "compliance_review_results": [],
-            "compliance_review_adopted_sources": [],
-            "compliance_review_issues": [
-                "確認根拠となるポリシー文書を取得できませんでした。document_sources の設定と配置を確認してください。"
-            ],
-            "compliance_notice_present": False,
-            "compliance_notice_matched_phrase": "",
-            "compliance_revision_request": "確認根拠となるポリシー文書を取得できませんでした。document_sources の設定と配置を確認してください。",
-            "compliance_review_passed": False,
-        }
-
-
 class _FakeSequentialDraftWriterExecutor:
     def __init__(self, drafts: list[str]) -> None:
         self._drafts = drafts
@@ -144,17 +108,6 @@ class _FakeSequentialDraftWriterExecutor:
         index = min(self.calls, len(self._drafts) - 1)
         self.calls += 1
         return {"draft_response": self._drafts[index]}
-
-
-class _FakeSequentialComplianceExecutor:
-    def __init__(self, responses: list[dict[str, object]]) -> None:
-        self._responses = responses
-        self.calls = 0
-
-    def execute(self, _state: dict[str, object]) -> dict[str, object]:
-        index = min(self.calls, len(self._responses) - 1)
-        self.calls += 1
-        return dict(self._responses[index])
 
 
 class _FakeFollowupLogAnalyzerExecutor:
@@ -218,15 +171,7 @@ class _FakeFollowupKnowledgeRetrieverExecutor:
 
 
 class SupervisorAgentTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self._compliance_model_patcher = patch(
-            "support_ope_agents.tools.default_check_policy._get_chat_model",
-            return_value=_FakeComplianceModel(),
-        )
-        self._compliance_model_patcher.start()
-
-    def tearDown(self) -> None:
-        self._compliance_model_patcher.stop()
+    pass
 
     def test_supervisor_instruction_only_and_bypass_disable_runtime_constraints(self) -> None:
         for constraint_mode in ("instruction_only", "bypass"):
@@ -237,22 +182,6 @@ class SupervisorAgentTests(unittest.TestCase):
             )
 
             self.assertFalse(supervisor._runtime_constraints_enabled())
-
-    def test_compliance_reviewer_instruction_only_and_bypass_skip_runtime_review(self) -> None:
-        for constraint_mode in ("instruction_only", "bypass"):
-            reviewer = ComplianceReviewerPhaseExecutor(
-                check_policy_tool=lambda **_kwargs: '{"status":"passed"}',
-                request_revision_tool=lambda **_kwargs: '{"status":"no_revision"}',
-                constraint_mode=constraint_mode,
-            )
-
-            result = reviewer.execute({"draft_response": "draft", "review_focus": "focus"})
-
-            self.assertEqual(
-                str(result.get("compliance_review_summary") or ""),
-                "constraint_mode により ComplianceReviewerAgent の runtime review を省略しました。",
-            )
-            self.assertTrue(bool(result.get("compliance_review_passed")))
 
     def test_supervisor_uses_back_support_escalation_settings(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -571,258 +500,6 @@ class SupervisorAgentTests(unittest.TestCase):
             self.assertIn("L12:", summary)
             self.assertIn("調査結果を回答ドラフトへ反映します。", summary)
             self.assertIn("Primary source: log analysis", summary)
-
-    def test_supervisor_stops_on_policy_unavailable_feedback(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = AppConfig.model_validate(
-                {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
-                    "config_paths": {},
-                    "data_paths": {},
-                    "interfaces": {},
-                    "agents": {},
-                }
-            )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
-            compliance_executor = _FakePolicyUnavailableComplianceExecutor()
-
-            supervisor = SupervisorPhaseExecutor(
-                read_shared_memory_tool=read_shared_memory,
-                write_shared_memory_tool=write_shared_memory,
-                draft_writer_executor=DraftWriterPhaseExecutor(
-                    config=config,
-                    write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
-                ),
-                compliance_reviewer_executor=compliance_executor,
-                compliance_max_review_loops=3,
-            )
-
-            result = supervisor.execute_draft_review(
-                {
-                    "case_id": "CASE-TEST-POLICY-001",
-                    "workspace_path": str(Path(tmpdir)),
-                    "execution_mode": "action",
-                    "workflow_kind": "incident_investigation",
-                    "intake_category": "incident_investigation",
-                    "intake_urgency": "medium",
-                    "investigation_summary": "vdp.log を確認し、タイムアウト系の異常を整理しました。",
-                    "draft_response": "お問い合わせありがとうございます。vdp.log を確認したところ、タイムアウトに関するエラーを確認しました。",
-                }
-            )
-
-            self.assertTrue(bool(result.get("compliance_review_passed")))
-            self.assertEqual(int(result.get("draft_review_iterations") or 0), 1)
-            self.assertEqual(compliance_executor.calls, 1)
-            self.assertEqual(result.get("next_action"), "ApprovalAgent へドラフトを回付する")
-
-    def test_supervisor_records_compliance_review_history(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = AppConfig.model_validate(
-                {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
-                    "config_paths": {},
-                    "data_paths": {},
-                    "interfaces": {},
-                    "agents": {},
-                }
-            )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
-            draft_executor = _FakeSequentialDraftWriterExecutor(
-                [
-                    "初回ドラフトです。復旧を約束します。",
-                    "修正版ドラフトです。現時点で確認できた範囲をご案内します。",
-                ]
-            )
-            compliance_executor = _FakeSequentialComplianceExecutor(
-                [
-                    {
-                        "compliance_review_summary": "断定表現の修正が必要です。",
-                        "compliance_review_results": [],
-                        "compliance_review_adopted_sources": ["answer_policy"],
-                        "compliance_review_issues": ["復旧を断定しているため表現を弱めてください。"],
-                        "compliance_notice_present": True,
-                        "compliance_notice_matched_phrase": "生成AIは誤った回答をすることがあります。",
-                        "compliance_revision_request": "復旧を断定せず、現時点で確認できた範囲に表現を修正してください。",
-                        "compliance_review_passed": False,
-                    },
-                    {
-                        "compliance_review_summary": "修正内容を確認し、レビューを通過しました。",
-                        "compliance_review_results": [],
-                        "compliance_review_adopted_sources": ["answer_policy"],
-                        "compliance_review_issues": [],
-                        "compliance_notice_present": True,
-                        "compliance_notice_matched_phrase": "生成AIは誤った回答をすることがあります。",
-                        "compliance_revision_request": "",
-                        "compliance_review_passed": True,
-                    },
-                ]
-            )
-
-            supervisor = SupervisorPhaseExecutor(
-                read_shared_memory_tool=read_shared_memory,
-                write_shared_memory_tool=write_shared_memory,
-                draft_writer_executor=draft_executor,
-                compliance_reviewer_executor=compliance_executor,
-                compliance_max_review_loops=3,
-            )
-
-            result = supervisor.execute_draft_review(
-                {
-                    "case_id": "CASE-TEST-HISTORY-001",
-                    "workspace_path": str(Path(tmpdir)),
-                    "execution_mode": "action",
-                    "workflow_kind": "incident_investigation",
-                    "intake_category": "incident_investigation",
-                    "intake_urgency": "medium",
-                    "investigation_summary": "vdp.log からタイムアウト系エラーを確認しました。",
-                }
-            )
-
-            history = result.get("compliance_review_history") or []
-            self.assertEqual(len(history), 2)
-            self.assertEqual(history[0]["iteration"], 1)
-            self.assertEqual(history[0]["addressed_revision_request"], "")
-            self.assertIn("復旧を断定せず", str(history[0]["compliance_revision_request"]))
-            self.assertEqual(history[1]["iteration"], 2)
-            self.assertIn("復旧を断定せず", str(history[1]["addressed_revision_request"]))
-            self.assertTrue(bool(history[1]["passed"]))
-            self.assertIn("修正版ドラフト", str(history[1]["draft_response"]))
-
-    def test_supervisor_draft_review_records_compliance_result(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace_path = Path(tmpdir)
-            policy_root = workspace_path / "policy"
-            policy_root.mkdir()
-            (policy_root / "guideline.md").write_text(
-                "# 回答ポリシー\n\n生成AIを利用した回答には注意文を含め、断定表現を避ける。",
-                encoding="utf-8",
-            )
-            config = AppConfig.model_validate(
-                {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
-                    "config_paths": {},
-                    "data_paths": {},
-                    "interfaces": {},
-                    "agents": {
-                        "ComplianceReviewerAgent": {
-                            "notice": {"required": True},
-                            "document_sources": [
-                                {
-                                    "name": "answer_policy",
-                                    "description": "回答ポリシー",
-                                    "path": str(policy_root),
-                                }
-                            ]
-                        }
-                    },
-                }
-            )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
-            compliance_executor = ComplianceReviewerPhaseExecutor(
-                check_policy_tool=build_default_check_policy_tool(config),
-                request_revision_tool=build_default_request_revision_tool(),
-            )
-            draft_writer_executor = DraftWriterPhaseExecutor(
-                config=config,
-                write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
-            )
-
-            supervisor = SupervisorPhaseExecutor(
-                read_shared_memory_tool=read_shared_memory,
-                write_shared_memory_tool=write_shared_memory,
-                draft_writer_executor=draft_writer_executor,
-                compliance_reviewer_executor=compliance_executor,
-            )
-
-            result = supervisor.execute_draft_review(
-                {
-                    "case_id": "CASE-TEST-006",
-                    "workspace_path": str(workspace_path),
-                    "execution_mode": "action",
-                    "workflow_kind": "specification_inquiry",
-                    "intake_category": "specification_inquiry",
-                    "intake_urgency": "medium",
-                    "draft_response": "生成AIは誤った回答をすることがあります。現時点では仕様上の動作と判断します。",
-                }
-            )
-
-            self.assertTrue(bool(result.get("compliance_review_passed")))
-            self.assertTrue(bool(result.get("compliance_notice_present")))
-            self.assertEqual(result.get("next_action"), "ApprovalAgent へドラフトを回付する")
-            self.assertEqual(result.get("compliance_review_adopted_sources") or [], ["answer_policy"])
-            self.assertEqual(result.get("draft_review_iterations"), 1)
-
-    def test_supervisor_retries_draft_until_compliance_passes(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            workspace_path = Path(tmpdir)
-            policy_root = workspace_path / "policy"
-            policy_root.mkdir()
-            (policy_root / "guideline.md").write_text(
-                "# 回答ポリシー\n\n生成AIを利用した回答には注意文を含め、断定表現を避ける。",
-                encoding="utf-8",
-            )
-            config = AppConfig.model_validate(
-                {
-                    "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
-                    "config_paths": {},
-                    "data_paths": {},
-                    "interfaces": {},
-                    "agents": {
-                        "ComplianceReviewerAgent": {
-                            "max_review_loops": 3,
-                            "notice": {"required": True},
-                            "document_sources": [
-                                {
-                                    "name": "answer_policy",
-                                    "description": "回答ポリシー",
-                                    "path": str(policy_root),
-                                }
-                            ]
-                        }
-                    },
-                }
-            )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
-            compliance_executor = ComplianceReviewerPhaseExecutor(
-                check_policy_tool=build_default_check_policy_tool(config),
-                request_revision_tool=build_default_request_revision_tool(),
-            )
-            draft_writer_executor = DraftWriterPhaseExecutor(
-                config=config,
-                write_draft_tool=build_default_write_draft_tool(config, "customer_response_draft"),
-            )
-
-            supervisor = SupervisorPhaseExecutor(
-                read_shared_memory_tool=read_shared_memory,
-                write_shared_memory_tool=write_shared_memory,
-                draft_writer_executor=draft_writer_executor,
-                compliance_reviewer_executor=compliance_executor,
-                compliance_max_review_loops=3,
-            )
-
-            with patch("support_ope_agents.agents.draft_writer_agent._get_chat_model", return_value=_FakeDraftModel()):
-                result = supervisor.execute_draft_review(
-                    {
-                        "case_id": "CASE-TEST-007",
-                        "workspace_path": str(workspace_path),
-                        "execution_mode": "action",
-                        "workflow_kind": "incident_investigation",
-                        "intake_category": "incident_investigation",
-                        "intake_urgency": "high",
-                        "investigation_summary": "現時点では再現条件を確認中であり、仕様逸脱は断定していません。",
-                        "draft_response": "必ず復旧します。",
-                    }
-                )
-
-            self.assertTrue(bool(result.get("compliance_review_passed")))
-            self.assertGreaterEqual(int(result.get("draft_review_iterations") or 0), 1)
-            self.assertEqual(result.get("draft_review_max_loops"), 3)
-            self.assertIn("生成AIは誤った回答をすることがあります", str(result.get("draft_response") or ""))
-
 
 if __name__ == "__main__":
     unittest.main()

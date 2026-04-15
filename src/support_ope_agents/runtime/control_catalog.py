@@ -419,18 +419,6 @@ def _build_control_points(config: AppConfig, instructions: dict[str, object]) ->
             code_refs=["src/support_ope_agents/config/models.py", "src/support_ope_agents/agents/intake_agent.py"],
         ),
         _control_point(
-            control_point_id="agent.compliance.max_review_loops",
-            category="configuration",
-            owner="ComplianceReviewerAgent",
-            origin="config.agents.ComplianceReviewerAgent.max_review_loops",
-            condition="draft review loop",
-            effect=f"maximum automatic review loops = {config.agents.ComplianceReviewerAgent.max_review_loops}",
-            overrideable=True,
-            config_key="agents.ComplianceReviewerAgent.max_review_loops",
-            docs_refs=["docs/configuration.md", "docs/agents/compliance-reviewer-agent.md"],
-            code_refs=["src/support_ope_agents/config/models.py", "src/support_ope_agents/agents/supervisor_agent.py"],
-        ),
-        _control_point(
             control_point_id="agent.escalation.rules",
             category="configuration",
             owner="BackSupportEscalationAgent",
@@ -554,10 +542,7 @@ def _agent_doc_path(role: str) -> str:
         "SuperVisorAgent": "docs/agents/supervisor-agent.md",
         "ObjectiveEvaluationAgent": "docs/agents/objective-evaluation-agent.md",
         "IntakeAgent": "docs/agents/intake-agent.md",
-        "LogAnalyzerAgent": "docs/agents/log-analyzer-agent.md",
-        "KnowledgeRetrieverAgent": "docs/agents/knowledge-retriever-agent.md",
-        "DraftWriterAgent": "docs/agents/draft-writer-agent.md",
-        "ComplianceReviewerAgent": "docs/agents/compliance-reviewer-agent.md",
+        "InvestigateAgent": "docs/agents/common.md",
         "BackSupportEscalationAgent": "docs/agents/back-support-escalation-agent.md",
         "BackSupportInquiryWriterAgent": "docs/agents/back-support-inquiry-writer-agent.md",
         "ApprovalAgent": "docs/agents/approval-agent.md",
@@ -593,14 +578,12 @@ def _resolve_used_roles(workflow_path: list[str], workflow_kind: str) -> list[st
     ordered_roles: list[str] = ["IntakeAgent", "SuperVisorAgent"]
     if "wait_for_customer_input" in workflow_path:
         return ordered_roles
-    if "investigation" in workflow_path and workflow_kind in {"incident_investigation", "ambiguous_case"}:
-        ordered_roles.append("LogAnalyzerAgent")
     if "investigation" in workflow_path:
-        ordered_roles.append("KnowledgeRetrieverAgent")
+        ordered_roles.append("InvestigateAgent")
     if "escalation_review" in workflow_path:
         ordered_roles.extend(["BackSupportEscalationAgent", "BackSupportInquiryWriterAgent", "ApprovalAgent"])
     elif "draft_review" in workflow_path:
-        ordered_roles.extend(["DraftWriterAgent", "ComplianceReviewerAgent", "ApprovalAgent"])
+        ordered_roles.append("ApprovalAgent")
     if "ticket_update_execute" in workflow_path:
         ordered_roles.append("TicketUpdateAgent")
     return ordered_roles
@@ -672,15 +655,6 @@ def _build_runtime_decision_log(
                 "detail": "調査結果から draft_review へ進みました。",
             }
         )
-        decisions.append(
-            {
-                "control_point_id": "agent.compliance.max_review_loops",
-                "category": "configuration",
-                "outcome": f"{_coerce_int(state.get('draft_review_iterations'), default=0)}/{config.agents.ComplianceReviewerAgent.max_review_loops}",
-                "detail": "レビュー周回数と最大自動レビュー回数の比較です。",
-            }
-        )
-
     if "wait_for_approval" in workflow_path:
         approval_route = _approval_route(state)
         decisions.append(
@@ -698,7 +672,7 @@ def _build_runtime_decision_log(
 def _result_label(state: CaseState) -> str:
     if bool(state.get("escalation_required")):
         return "エスカレーションが必要だった"
-    if bool(state.get("compliance_review_passed")):
+    if str(state.get("draft_response") or "").strip():
         return "確実な回答が得られた"
     if str(state.get("status") or "") == "WAITING_CUSTOMER_INPUT":
         return "追加の顧客入力が必要"

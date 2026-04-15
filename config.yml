@@ -140,7 +140,7 @@ support_ope_agents:
   #
   #   # 論理ツールごとの有効化と供給元です。
   #   logical_tools:
-  #     # まず KnowledgeRetrieverAgent で使う文書検索を有効化します。
+  #     # まず InvestigateAgent で使う文書検索を有効化します。
   #     search_documents:
   #       enabled: true
   #       provider: builtin
@@ -159,16 +159,8 @@ support_ope_agents:
   #       server: support-ticket-mcp
   #       tool: get_internal_ticket
   #
-  #     # LogAnalyzerAgent で builtin を使う場合です。
+  #     # InvestigateAgent が内部で使うログ解析を builtin で有効化する場合です。
   #     run_python_analysis:
-  #       enabled: true
-  #       provider: builtin
-  #
-  #     # ComplianceReviewerAgent でポリシー確認を有効化する場合です。
-  #     check_policy:
-  #       enabled: true
-  #       provider: builtin
-  #     request_revision:
   #       enabled: true
   #       provider: builtin
   #
@@ -211,7 +203,7 @@ support_ope_agents:
   #     enabled: true
   #     auto_compress: true
   #     constraint_mode: default
-  #     # LogAnalyzerAgent / KnowledgeRetrieverAgent への追加調査ループ回数です。
+  #     # InvestigateAgent への追加調査ループ回数です。
   #     # 新しい事実が見つかったときだけ再指示します。0 で無効化します。
   #     max_investigation_loops: 1
   #     # true の場合、指定トリガで改善レポートを自動生成します。
@@ -231,14 +223,9 @@ support_ope_agents:
   #       # true の場合のみ Intake で PII マスキングを実行します。
   #       enabled: false
   #
-  #   # ログ解析 Agent の設定です。
-  #   LogAnalyzerAgent:
-  #     enabled: true
-  #     auto_compress: true
-  #     constraint_mode: default
-  #
-  #   # ナレッジ検索 Agent の設定です。
-  #   KnowledgeRetrieverAgent:
+  #   # 調査統合 Agent の設定です。
+  #   # 仕様確認、ログ解析、ドラフト作成を 1 つの Agent に集約します。
+  #   InvestigateAgent:
   #     enabled: true
   #     auto_compress: true
   #     constraint_mode: default
@@ -264,10 +251,10 @@ support_ope_agents:
   #     # source ごとに候補として保持する Markdown パス数の上限です。
   #     candidate_path_limit: 5
   #
-  #     # true の場合、KnowledgeRetrieverAgent 配下に raw search snapshot を JSON で保存します。
+  #     # true の場合、InvestigateAgent 配下に raw search snapshot を JSON で保存します。
   #     persist_raw_search_snapshot: false
   #
-  #     # KnowledgeRetrieverAgent が参照する文書群です。
+  #     # InvestigateAgent が参照する文書群です。
   #     document_sources:
   #       - name: python312_manual
   #         description: Python 3.12 の公式仕様・標準ライブラリ資料
@@ -282,74 +269,8 @@ support_ope_agents:
   #         description: 生成AI基盤のアーキテクチャ検討資料
   #         path: /home/user/source/repos/ai-platform-poc
   #     # DeepAgents backend では各 source を /knowledge/<name>/ 配下へ mount または route して参照します。
-  #
-  #   # ドラフト作成 Agent の設定です。
-  #   DraftWriterAgent:
-  #     enabled: true
-  #     auto_compress: true
-  #     constraint_mode: default
-  #     # ComplianceReviewerAgent の差戻し観点を反映しながら再生成されます。
-  #     # 注意文は DraftWriterAgent 個別設定には重複定義せず、
-  #     # ComplianceReviewerAgent.notice.required / required_phrases を参照して先に埋め込みます。
-  #
-  #   # コンプライアンス確認 Agent の設定です。
-  #   ComplianceReviewerAgent:
-  #     enabled: true
-  #     auto_compress: true
-  #     constraint_mode: default
-  #     # constraint_mode は制約の適用方針です。
-  #     # extraction_mode はポリシー文書取得の詳細度で、別の意味を持ちます。
-  #     # 文書抽出の挙動です。limited / relaxed / raw_backend を指定できます。
-  #     extraction_mode: limited
-  #     # ポリシー検索で追加検索に使う固定キーワードです。
-  #     policy_keywords:
-  #       - 規定
-  #       - ガイドライン
-  #       - 法令
-  #     # true の場合、review_focus と draft_response から追加検索語を LLM で生成します。
-  #     policy_keyword_expansion_enabled: false
-  #     # 生成する追加検索語の最大件数です。
-  #     policy_keyword_expansion_count: 12
-  #     # 収集する evidence の最大件数です。
-  #     max_evidence_count: 3
-  #     # 候補に残す Markdown パス数の上限です。
-  #     candidate_path_limit: 5
-  #     # backend.read の結果をさらに切り詰める最大文字数です。null で無制限です。
-  #     backend_read_char_limit: 8000
-  #     # summary に使う抜粋の最大文字数です。null で無制限です。
-  #     summary_max_chars: 600
-  #     # raw_backend の grep / glob payload に残す最大件数です。null で無制限です。
-  #     raw_backend_max_matches: 50
-  #     # DraftWriterAgent への差戻しを最大何回まで自動で回すかです。
-  #     # 既定値は 3 です。
-  #     max_review_loops: 3
-  #     # ポリシー確認時に除外する既定 glob パターンです。
-  #     ignore_patterns:
-  #       - .*
-  #       - '**/.*'
-  #       - node_modules/**
-  #       - '**/node_modules/**'
-  #
-  #     # 追加の除外パターンを書いたテキストファイルです。
-  #     ignore_patterns_file: ./.support-ope-policy-ignore
-  #
-  #     # ComplianceReviewerAgent が参照する社内規定・法令・ガイドラインです。
-  #     document_sources:
-  #       - name: internal_policy
-  #         description: 社内回答ポリシー
-  #         path: ./docsources/internal_policy
-  #       - name: government_guidelines
-  #         description: 政府ガイドライン
-  #         path: ./docsources/government_guidelines
-  #       - name: laws
-  #         description: 関連法令集
-  #         path: ./docsources/laws
-  #     # DeepAgents backend では各 source を /policy/<name>/ 配下へ mount または route して参照します。
-  #     notice:
-  #       # true の場合、ドラフトに注意文を必須とします。
-  #       required: true
-  #       # いずれか 1 つ以上を含めば通過と判定します。
-  #       required_phrases:
+  #     # shared memory への context / progress / summary 転記も、この Agent が毎回担当します。
+  #     # 回答表現の制約や書き分けは runtime ではなく instruction 側で管理します。
   #         - 生成AIは誤った回答をすることがあります
   #         - 生成AIは誤った回答を含む可能性があります
   #

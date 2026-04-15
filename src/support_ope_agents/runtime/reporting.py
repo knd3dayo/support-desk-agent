@@ -173,7 +173,6 @@ def build_support_improvement_report(
         "## 結果と評価",
         *_report_item("結果", _result_label(state), "最終的に確定した対応方針を示します。"),
         *_report_item("調査要約", str(state.get("investigation_summary") or "n/a"), "ログ解析やナレッジ確認を踏まえた調査結果の要約です。"),
-        *_report_item("コンプライアンス要約", str(state.get("compliance_review_summary") or "n/a"), "回答案に対するレビュー観点と判定結果の要約です。"),
         *_report_item("エスカレーション理由", str(state.get("escalation_reason") or "n/a"), "追加確認や上位支援が必要と判断した根拠です。"),
         "",
         "## 制御サマリー",
@@ -195,10 +194,6 @@ def build_support_improvement_report(
         "## ランタイム制約影響評価",
         "今回の trace から deterministic に評価できる runtime 制約の影響です。",
         *runtime_policy_effects_section,
-        "",
-        "## コンプライアンスレビュー履歴",
-        "各レビュー周回での指摘内容と、その時点の対応内容を時系列で示します。",
-        *_render_compliance_review_history(cast(list[dict[str, object]], state.get("compliance_review_history") or [])),
         "",
         "## Evaluator 評価観点一覧",
         "ObjectiveEvaluationAgent が instruction に基づいて出力した評価観点一覧と、その結果です。",
@@ -479,8 +474,6 @@ def _build_objective_evaluation_evidence(
         "raw_issue": str(state.get("raw_issue") or ""),
         "draft_response": str(state.get("draft_response") or ""),
         "investigation_summary": str(state.get("investigation_summary") or ""),
-        "compliance_review_summary": str(state.get("compliance_review_summary") or ""),
-        "compliance_review_history": list(state.get("compliance_review_history") or []),
         "escalation_reason": str(state.get("escalation_reason") or ""),
         "escalation_summary": str(state.get("escalation_summary") or ""),
         "escalation_draft": str(state.get("escalation_draft") or ""),
@@ -586,7 +579,7 @@ def _build_objective_evaluation(
 def _result_label(state: CaseState) -> str:
     if bool(state.get("escalation_required")):
         return "エスカレーションが必要だった"
-    if bool(state.get("compliance_review_passed")):
+    if str(state.get("draft_response") or "").strip():
         return "確実な回答が得られた"
     return "回答ドラフトは作成されたが追加確認が必要"
 
@@ -623,12 +616,9 @@ def _build_sequence_diagram(
         lines.append("    Intake-->>User: 追加情報を依頼")
         return "\n".join(lines)
 
-    if _has_participant(participants, "LogAnalyzer"):
-        lines.append("    Supervisor->>LogAnalyzer: ログ解析を依頼")
-        lines.append("    LogAnalyzer-->>Supervisor: ログ解析結果を返却")
-    if _has_participant(participants, "Knowledge"):
-        lines.append("    Supervisor->>Knowledge: ナレッジ検索を依頼")
-        lines.append("    Knowledge-->>Supervisor: 検索結果を返却")
+    if _has_participant(participants, "Investigate"):
+        lines.append("    Supervisor->>Investigate: 調査と回答ドラフト作成を依頼")
+        lines.append("    Investigate-->>Supervisor: 調査要約とドラフトを返却")
 
     if "escalation_review" in path:
         lines.append("    Supervisor->>Escalation: エスカレーション判断と要約を依頼")
@@ -645,18 +635,17 @@ def _build_sequence_diagram(
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
     elif "draft_review" in path:
-        lines.append("    Supervisor->>DraftWriter: 回答ドラフト作成を依頼")
         review_iterations = sum(1 for node in path if node == "draft_review")
+        if not _has_participant(participants, "Investigate"):
+            lines.append("    Supervisor->>Investigate: 調査と回答ドラフト作成を依頼")
         for _ in range(max(1, review_iterations)):
-            lines.append("    DraftWriter-->>Supervisor: ドラフトを返却")
-            lines.append("    Supervisor->>Compliance: コンプライアンス確認を依頼")
-            lines.append("    Compliance-->>Supervisor: レビュー結果を返却")
+            lines.append("    Investigate-->>Supervisor: 調査要約とドラフトを返却")
         lines.append("    Supervisor->>Approval: 承認依頼を送信")
         if approval_route == "investigation":
             lines.append("    Approval->>Supervisor: 再調査を依頼")
         elif approval_route == "draft_review":
             lines.append("    Approval->>Supervisor: 差戻しを依頼")
-            lines.append("    Supervisor->>DraftWriter: 修正版ドラフト作成を依頼")
+            lines.append("    Supervisor->>Investigate: 修正版ドラフト作成を依頼")
         elif approval_route == "ticket_update_prepare":
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
@@ -696,10 +685,7 @@ def _sequence_participants(
         ("User", "User"),
         ("Intake", "IntakeAgent"),
         ("Supervisor", "SuperVisorAgent"),
-        ("LogAnalyzer", "LogAnalyzerAgent"),
-        ("Knowledge", "KnowledgeRetrieverAgent"),
-        ("DraftWriter", "DraftWriterAgent"),
-        ("Compliance", "ComplianceReviewerAgent"),
+        ("Investigate", "InvestigateAgent"),
         ("Approval", "ApprovalAgent"),
         ("TicketUpdate", "TicketUpdateAgent"),
         ("Escalation", "BackSupportEscalationAgent"),
@@ -719,9 +705,7 @@ def _sequence_participants(
             included.append((alias, label))
         elif alias == "Supervisor" and any(node in {"investigation", "draft_review", "escalation_review", "wait_for_approval", "ticket_update_prepare"} for node in workflow_path):
             included.append((alias, label))
-        elif alias == "DraftWriter" and "draft_review" in workflow_path:
-            included.append((alias, label))
-        elif alias == "Compliance" and "draft_review" in workflow_path:
+        elif alias == "Investigate" and "investigation" in workflow_path:
             included.append((alias, label))
         elif alias == "Approval" and "wait_for_approval" in workflow_path:
             included.append((alias, label))
@@ -779,19 +763,18 @@ def _build_subgraph_sequence_diagrams(
         review_lines = [
             "sequenceDiagram",
             "    participant Supervisor as SuperVisorAgent",
-            "    participant DraftWriter as DraftWriterAgent",
-            "    participant Compliance as ComplianceReviewerAgent",
+            "    participant Investigate as InvestigateAgent",
             "    participant Approval as ApprovalAgent",
-            "    Supervisor->>DraftWriter: 回答ドラフト作成を依頼",
+            "    Supervisor->>Investigate: 調査結果を踏まえた回答ドラフト作成を依頼",
         ]
         for index in range(max(1, review_iterations)):
-            review_lines.append(f"    DraftWriter-->>Supervisor: ドラフトを返却 ({index + 1})")
-            review_lines.append(f"    Supervisor->>Compliance: レビュー依頼 ({index + 1})")
-            review_lines.append(f"    Compliance-->>Supervisor: レビュー結果を返却 ({index + 1})")
+            review_lines.append(f"    Investigate-->>Supervisor: 調査要約とドラフトを返却 ({index + 1})")
         if approval_route == "draft_review":
             review_lines.append("    Approval->>Supervisor: 差戻し判断を返却")
+            review_lines.append("    Supervisor->>Investigate: 修正版ドラフトを依頼")
         elif approval_route == "investigation":
             review_lines.append("    Approval->>Supervisor: 再調査判断を返却")
+            review_lines.append("    Supervisor->>Investigate: 追加調査を依頼")
         diagrams.append(
             SubgraphSequenceDiagram(
                 title="Draft Review ループ",
@@ -1252,85 +1235,6 @@ def _is_similar_improvement_point(left: str, right: str) -> bool:
     return common_prefix >= 24
 
 
-def _render_compliance_review_history(history: list[dict[str, object]]) -> list[str]:
-    normalized = [item for item in history if isinstance(item, dict)]
-    if not normalized:
-        return ["- なし"]
-
-    lines: list[str] = []
-    for entry in normalized:
-        iteration = str(entry.get("iteration") or "?")
-        passed = bool(entry.get("passed"))
-        raw_issues = entry.get("compliance_review_issues")
-        issues_source = raw_issues if isinstance(raw_issues, list) else []
-        issues = [str(item).strip() for item in issues_source if str(item).strip()]
-        addressed_revision_request = str(entry.get("addressed_revision_request") or "").strip()
-        revision_request = str(entry.get("compliance_revision_request") or "").strip()
-        review_focus = str(entry.get("review_focus") or "").strip()
-        draft_excerpt = str(entry.get("draft_excerpt") or "").strip()
-        review_summary = str(entry.get("compliance_review_summary") or "").strip()
-        raw_adopted_sources = entry.get("adopted_sources")
-        adopted_source_values = raw_adopted_sources if isinstance(raw_adopted_sources, list) else []
-        adopted_sources = [str(item).strip() for item in adopted_source_values if str(item).strip()]
-        response_summary = _summarize_compliance_response(
-            addressed_revision_request=addressed_revision_request,
-            draft_excerpt=draft_excerpt,
-            passed=passed,
-            review_summary=review_summary,
-        )
-        lines.extend(
-            [
-                f"### Review Iteration {iteration}",
-                f"- 判定: {'passed' if passed else 'revision required'}",
-                f"- Review focus: {review_focus or 'n/a'}",
-                f"- 対応対象の指摘: {addressed_revision_request or '初回ドラフトのレビュー'}",
-                f"- 指摘内容: {' | '.join(issues) if issues else 'なし'}",
-                f"- 修正依頼: {revision_request or 'なし'}",
-                f"- 対応内容: {response_summary}",
-                f"- レビュー要約: {review_summary or 'なし'}",
-                f"- 採用した根拠ソース: {', '.join(adopted_sources) if adopted_sources else 'なし'}",
-                "",
-            ]
-        )
-    if lines and not lines[-1].strip():
-        lines.pop()
-    return lines
-
-
-def _summarize_compliance_response(
-    *,
-    addressed_revision_request: str,
-    draft_excerpt: str,
-    passed: bool,
-    review_summary: str,
-) -> str:
-    normalized_request = re.sub(r"\s+", " ", addressed_revision_request.strip())
-    normalized_draft = re.sub(r"\s+", " ", draft_excerpt.strip())
-    normalized_review_summary = re.sub(r"\s+", " ", review_summary.strip())
-
-    if not normalized_request and "継続可能と判断" in normalized_review_summary:
-        audience = "サポート担当者向け回答"
-        if "顧客向けの直接回答" in normalized_review_summary:
-            audience = "顧客向けの直接回答"
-        result = f"具体的な文面修正は行わず、レビュー結果を踏まえて{audience}として継続可能と判断しました。"
-        if normalized_draft:
-            result += f" 対象ドラフト: 「{normalized_draft}」"
-        return result
-
-    if normalized_request and normalized_draft:
-        result = f"前回の修正依頼「{normalized_request}」に対応し、ドラフトを「{normalized_draft}」へ更新しました。"
-    elif normalized_request:
-        result = f"前回の修正依頼「{normalized_request}」に対応して再レビューしました。"
-    elif normalized_draft:
-        result = f"初回ドラフトとして「{normalized_draft}」を作成しました。"
-    else:
-        result = "対応内容の記録はありません。"
-
-    if passed and normalized_review_summary:
-        result += f" 最終的に {normalized_review_summary}"
-    return result
-
-
 def _format_agent_evaluation(evaluation: AgentEvaluation) -> str:
     evidence_suffix = f" | 根拠: {' / '.join(evaluation.evidence[:2])}" if evaluation.evidence else ""
     return (
@@ -1432,17 +1336,16 @@ def _build_memory_expectations(state: CaseState) -> list[tuple[str, str, str, tu
     expectations: list[tuple[str, str, str, tuple[str, ...], tuple[str, ...]]] = [
         ("IntakeAgent", "問い合わせ分類", str(state.get("intake_category") or ""), ("intake category",), ("category:", "intake category:")),
         ("IntakeAgent", "緊急度", str(state.get("intake_urgency") or ""), ("intake urgency",), ("urgency:", "intake urgency:")),
-        ("KnowledgeRetrieverAgent", "採用ナレッジ", ", ".join(list(state.get("knowledge_retrieval_adopted_sources") or [])), ("採用した根拠ソース",), ("adopted sources:",)),
+        ("InvestigateAgent", "採用ナレッジ", ", ".join(list(state.get("knowledge_retrieval_adopted_sources") or [])), ("採用した根拠ソース",), ("adopted sources:",)),
     ]
     workflow_kind = _effective_workflow_kind(state)
     if workflow_kind in {"incident_investigation", "ambiguous_case"}:
-        expectations.append(("LogAnalyzerAgent", "ログ解析要約", str(state.get("log_analysis_summary") or ""), ("ログ解析結果",), ("summary:", "file:")))
+        expectations.append(("InvestigateAgent", "ログ解析要約", str(state.get("log_analysis_summary") or ""), ("ログ解析結果",), ("summary:", "file:")))
     if bool(state.get("escalation_required")):
         expectations.append(("BackSupportEscalationAgent", "エスカレーション要約", str(state.get("escalation_summary") or ""), ("エスカレーション理由", "調査要約"), tuple()))
         expectations.append(("BackSupportInquiryWriterAgent", "バックサポート向け問い合わせ文案", str(state.get("escalation_draft") or ""), tuple(), tuple()))
     else:
-        expectations.append(("ComplianceReviewerAgent", "コンプライアンス要約", str(state.get("compliance_review_summary") or ""), ("コンプライアンス",), tuple()))
-        expectations.append(("DraftWriterAgent", "回答ドラフト", str(state.get("draft_response") or ""), tuple(), tuple()))
+        expectations.append(("InvestigateAgent", "回答ドラフト", str(state.get("draft_response") or ""), tuple(), tuple()))
     return expectations
 
 

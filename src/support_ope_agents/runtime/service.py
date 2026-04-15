@@ -11,11 +11,12 @@ from uuid import uuid4
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from support_ope_agents.agents.catalog import build_default_agent_definitions
 from support_ope_agents.agents.approval_agent import ApprovalAgent
 from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
 from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
-from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
 from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
+from support_ope_agents.agents.investigate_agent import InvestigatePhaseExecutor
 from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
@@ -23,15 +24,15 @@ from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.ticket_update_agent import TicketUpdateAgent
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
-from support_ope_agents.agents.roles import COMPLIANCE_REVIEWER_AGENT
 from support_ope_agents.agents.roles import DRAFT_WRITER_AGENT
+from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
+from support_ope_agents.agents.roles import INVESTIGATE_AGENT
 from support_ope_agents.agents.roles import APPROVAL_AGENT
 from support_ope_agents.agents.roles import INTAKE_AGENT
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.agents.roles import TICKET_UPDATE_AGENT
-from support_ope_agents.agents.deep_agent_factory import DeepAgentFactory
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
@@ -44,8 +45,6 @@ from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessMan
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
-from support_ope_agents.tools.default_check_policy import build_default_check_policy_tool
-from support_ope_agents.tools.default_request_revision import build_default_request_revision_tool
 from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
@@ -57,15 +56,22 @@ from support_ope_agents.workflow import (
 from support_ope_agents.workflow.state import CaseState, WorkflowKind
 
 
-@dataclass(slots=True)
 class RuntimeContext:
-    config: AppConfig
-    memory_store: CaseMemoryStore
-    runtime_harness_manager: RuntimeHarnessManager
-    instruction_loader: InstructionLoader
-    tool_registry: ToolRegistry
-    agent_factory: DeepAgentFactory
-    case_id_resolver_service: CaseIdResolverService
+    def __init__(
+        self,
+        config: AppConfig,
+        memory_store: CaseMemoryStore,
+        runtime_harness_manager: RuntimeHarnessManager,
+        instruction_loader: InstructionLoader,
+        tool_registry: ToolRegistry,
+        case_id_resolver_service: CaseIdResolverService,
+    ):
+        self.config = config
+        self.memory_store = memory_store
+        self.runtime_harness_manager = runtime_harness_manager
+        self.instruction_loader = instruction_loader
+        self.tool_registry = tool_registry
+        self.case_id_resolver_service = case_id_resolver_service
 
 
 def build_runtime_context(config_path: str) -> RuntimeContext:
@@ -79,15 +85,13 @@ def build_runtime_context(config_path: str) -> RuntimeContext:
         else None
     )
     tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
-    agent_factory = DeepAgentFactory(config, instruction_loader, tool_registry, memory_store, runtime_harness_manager)
     return RuntimeContext(
-        config=config,
-        memory_store=memory_store,
-        runtime_harness_manager=runtime_harness_manager,
-        instruction_loader=instruction_loader,
-        tool_registry=tool_registry,
-        agent_factory=agent_factory,
-        case_id_resolver_service=CaseIdResolverService(),
+        config,
+        memory_store,
+        runtime_harness_manager,
+        instruction_loader,
+        tool_registry,
+        CaseIdResolverService(),
     )
 
 
@@ -107,9 +111,7 @@ class RuntimeService:
             tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_INQUIRY_WRITER_AGENT)
         }
         draft_writer_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(DRAFT_WRITER_AGENT)}
-        compliance_reviewer_tools = {
-            tool.name: tool.handler for tool in context.tool_registry.get_tools(COMPLIANCE_REVIEWER_AGENT)
-        }
+        investigate_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INVESTIGATE_AGENT)}
         approval_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(APPROVAL_AGENT)}
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
         ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
@@ -139,20 +141,20 @@ class RuntimeService:
             external_ticket_tool=knowledge_retriever_tools["external_ticket"],
             internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
             config=context.config,
-            document_sources=list(context.config.agents.KnowledgeRetrieverAgent.document_sources),
+            document_sources=list(context.config.agents.InvestigateAgent.document_sources),
             write_shared_memory_tool=knowledge_retriever_tools.get("write_shared_memory"),
             write_working_memory_tool=knowledge_retriever_tools["write_working_memory"],
-            constraint_mode=context.runtime_harness_manager.resolve(KNOWLEDGE_RETRIEVER_AGENT),
+            constraint_mode=context.runtime_harness_manager.resolve(INVESTIGATE_AGENT),
             highlight_max_chars=context.runtime_harness_manager.get_optional_int_policy_value(
                 "knowledge.highlight_max_chars",
-                role=KNOWLEDGE_RETRIEVER_AGENT,
+                role=INVESTIGATE_AGENT,
             ),
-            search_strategy=context.config.agents.KnowledgeRetrieverAgent.search_strategy,
-            result_mode=context.config.agents.KnowledgeRetrieverAgent.result_mode,
-            backend_read_char_limit=context.config.agents.KnowledgeRetrieverAgent.backend_read_char_limit,
-            max_evidence_count=context.config.agents.KnowledgeRetrieverAgent.max_evidence_count,
-            candidate_path_limit=context.config.agents.KnowledgeRetrieverAgent.candidate_path_limit,
-            persist_raw_search_snapshot=context.config.agents.KnowledgeRetrieverAgent.persist_raw_search_snapshot,
+            search_strategy=context.config.agents.InvestigateAgent.search_strategy,
+            result_mode=context.config.agents.InvestigateAgent.result_mode,
+            backend_read_char_limit=context.config.agents.InvestigateAgent.backend_read_char_limit,
+            max_evidence_count=context.config.agents.InvestigateAgent.max_evidence_count,
+            candidate_path_limit=context.config.agents.InvestigateAgent.candidate_path_limit,
+            persist_raw_search_snapshot=context.config.agents.InvestigateAgent.persist_raw_search_snapshot,
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
@@ -167,34 +169,31 @@ class RuntimeService:
             write_draft_tool=draft_writer_tools.get("write_draft") or back_support_inquiry_writer_tools["write_draft"],
             runtime_harness_manager=context.runtime_harness_manager,
         )
-        self._compliance_reviewer_executor = ComplianceReviewerPhaseExecutor(
-            check_policy_tool=compliance_reviewer_tools.get("check_policy") or build_default_check_policy_tool(context.config),
-            request_revision_tool=compliance_reviewer_tools.get("request_revision") or build_default_request_revision_tool(),
-            write_working_memory_tool=compliance_reviewer_tools.get("write_working_memory"),
-            constraint_mode=context.runtime_harness_manager.resolve(COMPLIANCE_REVIEWER_AGENT),
-        )
-        self._supervisor_executor = SupervisorPhaseExecutor(
-            read_shared_memory_tool=supervisor_tools["read_shared_memory"],
-            write_shared_memory_tool=supervisor_tools["write_shared_memory"],
-            draft_writer_executor=self._draft_writer_executor,
+        self._investigate_executor = InvestigatePhaseExecutor(
+            read_shared_memory_tool=investigate_tools.get("read_shared_memory") or supervisor_tools.get("read_shared_memory"),
+            write_shared_memory_tool=investigate_tools.get("write_shared_memory") or supervisor_tools.get("write_shared_memory"),
             log_analyzer_executor=self._log_analyzer_executor,
             knowledge_retriever_executor=self._knowledge_retriever_executor,
-            compliance_reviewer_executor=self._compliance_reviewer_executor,
-            back_support_escalation_executor=self._back_support_escalation_executor,
-            back_support_inquiry_writer_executor=self._back_support_inquiry_writer_executor,
-            escalation_settings=context.config.agents.BackSupportEscalationAgent.escalation,
-            compliance_max_review_loops=context.runtime_harness_manager.get_int_policy_value(
-                "supervisor.compliance_max_review_loops",
-                role=SUPERVISOR_AGENT,
-                default=context.config.agents.ComplianceReviewerAgent.max_review_loops,
-            ),
-            constraint_mode=context.runtime_harness_manager.resolve(SUPERVISOR_AGENT),
-            max_investigation_loops=context.runtime_harness_manager.get_int_policy_value(
+            draft_writer_executor=self._draft_writer_executor,
+        )
+        self._supervisor_executor = SupervisorPhaseExecutor(
+            supervisor_tools["read_shared_memory"],
+            supervisor_tools["write_shared_memory"],
+            self._investigate_executor,
+            self._draft_writer_executor,
+            self._log_analyzer_executor,
+            self._knowledge_retriever_executor,
+            self._back_support_escalation_executor,
+            self._back_support_inquiry_writer_executor,
+            context.config.agents.BackSupportEscalationAgent.escalation,
+            3,
+            context.runtime_harness_manager.resolve(SUPERVISOR_AGENT),
+            context.runtime_harness_manager.get_int_policy_value(
                 "supervisor.max_investigation_loops",
                 role=SUPERVISOR_AGENT,
                 default=context.config.agents.SuperVisorAgent.max_investigation_loops,
             ),
-            review_excerpt_max_chars=context.runtime_harness_manager.get_optional_int_policy_value(
+            context.runtime_harness_manager.get_optional_int_policy_value(
                 "supervisor.review_excerpt_max_chars",
                 role=SUPERVISOR_AGENT,
             ),
@@ -226,8 +225,8 @@ class RuntimeService:
 
     def initialize_case(self, case_id: str, workspace_path: str) -> Path:
         case_paths = self._context.memory_store.initialize_case(case_id, workspace_path=workspace_path)
-        for definition in self._context.agent_factory.build_default_definitions():
-            self._context.memory_store.ensure_agent_working_memory(case_id, definition.role, workspace_path=workspace_path)
+        for role in DEFAULT_AGENT_ROLES:
+            self._context.memory_store.ensure_agent_working_memory(case_id, role, workspace_path=workspace_path)
         return case_paths.root
 
     @staticmethod
@@ -256,28 +255,25 @@ class RuntimeService:
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:
         agents: list[dict[str, object]] = []
-        for definition in self._context.agent_factory.build_default_definitions():
-            agent = self._context.agent_factory.build_agent(case_id, definition)
-            if isinstance(agent, dict):
-                settings = self._context.agent_factory.get_agent_settings(definition.role)
-                agent["config"] = settings.model_dump() if settings is not None else {}
-                agents.append(agent)
-            else:
-                agents.append(
-                    {
-                        "role": definition.role,
-                        "description": definition.description,
-                        "kind": definition.kind,
-                        "parent_role": definition.parent_role,
-                    }
-                )
+        for definition in build_default_agent_definitions():
+            settings = self._context.config.agents.get(definition.role)
+            agents.append(
+                {
+                    "role": definition.role,
+                    "description": definition.description,
+                    "kind": definition.kind,
+                    "parent_role": definition.parent_role,
+                    "config": settings.model_dump() if settings is not None else {},
+                    "case_id": case_id,
+                }
+            )
         return agents
 
     def describe_control_catalog(self) -> dict[str, object]:
         return build_control_catalog(
             config=self._context.config,
             tool_registry=self._context.tool_registry,
-            agent_definitions=self._context.agent_factory.build_default_definitions(),
+            agent_definitions=build_default_agent_definitions(),
             runtime_harness_manager=self._context.runtime_harness_manager,
         )
 

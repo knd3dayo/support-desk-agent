@@ -133,13 +133,13 @@ def _invoke_deepagents_search(
 
 
 def build_default_search_documents_tool(config: AppConfig):
-    settings = config.agents.KnowledgeRetrieverAgent
+    settings = config.agents.InvestigateAgent
 
     def _search_documents(*, query: str = "", conversation_messages: list[dict[str, object]] | None = None) -> str:
         if not settings.document_sources:
             payload = {
                 "status": "unavailable",
-                "message": "参照可能なドキュメントがないので回答できません。agents.KnowledgeRetrieverAgent.document_sources を設定してください。",
+                "message": "参照可能なドキュメントがないので回答できません。agents.InvestigateAgent.document_sources を設定してください。",
                 "query": query,
                 "results": [],
             }
@@ -148,7 +148,7 @@ def build_default_search_documents_tool(config: AppConfig):
         backend = build_document_source_backend(document_sources=settings.document_sources, route_base="knowledge")
         if backend is None:
             raise RuntimeError(
-                "Knowledge document backend could not be initialized. Check agents.KnowledgeRetrieverAgent.document_sources."
+                "Knowledge document backend could not be initialized. Check agents.InvestigateAgent.document_sources."
             )
         if create_deep_agent is None:
             raise RuntimeError("DeepAgents search is unavailable because deepagents could not be imported.")

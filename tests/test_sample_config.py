@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from support_ope_agents.agents.roles import COMPLIANCE_REVIEWER_AGENT, DRAFT_WRITER_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AgentCatalogSettings
 
 
@@ -17,8 +17,7 @@ class SampleConfigTests(unittest.TestCase):
         settings = AgentCatalogSettings.model_validate(raw["support_ope_agents"]["agents"])
 
         self.assertEqual(settings.default_constraint_mode, "default")
-        self.assertEqual(settings.resolve_constraint_mode(DRAFT_WRITER_AGENT), "default")
-        self.assertEqual(settings.resolve_constraint_mode(COMPLIANCE_REVIEWER_AGENT), "default")
+        self.assertEqual(settings.resolve_constraint_mode(INVESTIGATE_AGENT), "default")
         self.assertEqual(settings.resolve_constraint_mode(SUPERVISOR_AGENT), "default")
 
 

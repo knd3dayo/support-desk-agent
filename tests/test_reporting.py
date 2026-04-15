@@ -6,7 +6,7 @@ import unittest
 from pydantic import ValidationError
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_compliance_review_history
+from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria
 from support_ope_agents.workflow.state import CaseState
 
 
@@ -45,7 +45,7 @@ class ReportingEvaluationTests(unittest.TestCase):
 
         diagram = _build_sequence_diagram(state)
 
-        self.assertEqual(diagram.count("DraftWriter-->>Supervisor: ドラフトを返却"), 2)
+        self.assertEqual(diagram.count("Investigate-->>Supervisor: 調査要約とドラフトを返却"), 3)
         self.assertIn("Approval->>Supervisor: 再調査を依頼", diagram)
         self.assertNotIn("Approval->>TicketUpdate", diagram)
 
@@ -90,16 +90,13 @@ class ReportingEvaluationTests(unittest.TestCase):
                 "used_roles": [
                     "IntakeAgent",
                     "SuperVisorAgent",
-                    "KnowledgeRetrieverAgent",
-                    "DraftWriterAgent",
-                    "ComplianceReviewerAgent",
+                    "InvestigateAgent",
                     "ApprovalAgent",
                 ],
             },
         )
 
-        self.assertIn("participant Knowledge as KnowledgeRetrieverAgent", diagram)
-        self.assertNotIn("participant LogAnalyzer as LogAnalyzerAgent", diagram)
+        self.assertIn("participant Investigate as InvestigateAgent", diagram)
         self.assertNotIn("participant TicketUpdate as TicketUpdateAgent", diagram)
         self.assertNotIn("participant Escalation as BackSupportEscalationAgent", diagram)
         self.assertNotIn("Supervisor->>LogAnalyzer: ログ解析を依頼", diagram)
@@ -152,7 +149,7 @@ class ReportingEvaluationTests(unittest.TestCase):
         diagrams = _build_subgraph_sequence_diagrams(state)
         draft_diagram = next(item for item in diagrams if item.title == "Draft Review ループ")
 
-        self.assertEqual(draft_diagram.diagram.count("ドラフトを返却"), 2)
+        self.assertEqual(draft_diagram.diagram.count("調査要約とドラフトを返却"), 2)
         self.assertIn("participant Approval as ApprovalAgent", draft_diagram.diagram)
         self.assertIn("Approval->>Supervisor: 差戻し判断を返却", draft_diagram.diagram)
 
@@ -184,7 +181,7 @@ class ReportingEvaluationTests(unittest.TestCase):
         )
         draft_diagram = next(item for item in diagrams if item.title == "Draft Review ループ")
 
-        self.assertEqual(draft_diagram.diagram.count("ドラフトを返却"), 2)
+        self.assertEqual(draft_diagram.diagram.count("調査要約とドラフトを返却"), 2)
         self.assertIn("Approval->>Supervisor: 再調査判断を返却", draft_diagram.diagram)
 
     def test_subgraph_sequence_diagrams_reflect_escalation_reject_via_supervisor(self) -> None:
@@ -201,60 +198,6 @@ class ReportingEvaluationTests(unittest.TestCase):
         self.assertIn("Approval->>Supervisor: 文案差戻しを返却", escalation_diagram.diagram)
         self.assertIn("Supervisor->>Inquiry: 修正版問い合わせ文案を依頼", escalation_diagram.diagram)
         self.assertNotIn("Approval->>Inquiry: 文案差戻しを返却", escalation_diagram.diagram)
-
-    def test_render_compliance_review_history_lists_findings_and_responses(self) -> None:
-        lines = _render_compliance_review_history(
-            [
-                {
-                    "iteration": 1,
-                    "review_focus": "断定表現の確認",
-                    "addressed_revision_request": "",
-                    "draft_excerpt": "初回ドラフトです。復旧を約束します。",
-                    "compliance_review_summary": "断定表現の修正が必要です。",
-                    "compliance_review_issues": ["復旧を断定しているため表現を弱めてください。"],
-                    "compliance_revision_request": "復旧を断定せず、現時点で確認できた範囲に表現を修正してください。",
-                    "passed": False,
-                    "adopted_sources": ["answer_policy"],
-                },
-                {
-                    "iteration": 2,
-                    "review_focus": "断定表現の確認",
-                    "addressed_revision_request": "復旧を断定せず、現時点で確認できた範囲に表現を修正してください。",
-                    "draft_excerpt": "修正版ドラフトです。現時点で確認できた範囲をご案内します。",
-                    "compliance_review_summary": "修正内容を確認し、レビューを通過しました。",
-                    "compliance_review_issues": [],
-                    "compliance_revision_request": "",
-                    "passed": True,
-                    "adopted_sources": ["answer_policy"],
-                },
-            ]
-        )
-
-        rendered = "\n".join(lines)
-        self.assertIn("Review Iteration 1", rendered)
-        self.assertIn("指摘内容: 復旧を断定しているため表現を弱めてください。", rendered)
-        self.assertIn("対応内容: 前回の修正依頼「復旧を断定せず、現時点で確認できた範囲に表現を修正してください。」に対応し、ドラフトを「修正版ドラフトです。現時点で確認できた範囲をご案内します。」へ更新しました。 最終的に 修正内容を確認し、レビューを通過しました。", rendered)
-        self.assertIn("採用した根拠ソース: answer_policy", rendered)
-
-    def test_render_compliance_review_history_summarizes_non_actionable_pass(self) -> None:
-        lines = _render_compliance_review_history(
-            [
-                {
-                    "iteration": 1,
-                    "review_focus": "障害原因の断定過剰や不要な復旧約束がないかを重点確認する",
-                    "addressed_revision_request": "",
-                    "draft_excerpt": "お客様各位 現在、システムのログを解析した結果、いくつかの例外が検出されました。",
-                    "compliance_review_summary": "ドラフトはポリシー照合で修正が必要です。 ポリシー根拠の取得は未完了ですが、顧客向けの直接回答としては継続可能と判断しました。",
-                    "compliance_review_issues": ["確認根拠となるポリシー文書を取得できませんでした。"],
-                    "compliance_revision_request": "確認根拠となるポリシー文書を取得できませんでした。",
-                    "passed": True,
-                    "adopted_sources": [],
-                }
-            ]
-        )
-
-        rendered = "\n".join(lines)
-        self.assertIn("具体的な文面修正は行わず、レビュー結果を踏まえて顧客向けの直接回答として継続可能と判断しました。", rendered)
 
     def test_build_objective_evaluation_filters_false_positive_improvement_points(self) -> None:
         structured_evaluation = SimpleNamespace(

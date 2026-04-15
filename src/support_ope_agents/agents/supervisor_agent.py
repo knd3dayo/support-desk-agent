@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
-from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import EscalationSettings
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState, WorkflowKind
     from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
     from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
-    from support_ope_agents.agents.compliance_reviewer_agent import ComplianceReviewerPhaseExecutor
+    from support_ope_agents.agents.investigate_agent import InvestigatePhaseExecutor
     from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
     from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
     from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
@@ -28,10 +28,10 @@ if TYPE_CHECKING:
 class SupervisorPhaseExecutor:
     read_shared_memory_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
+    investigate_executor: "InvestigatePhaseExecutor | None" = None
     draft_writer_executor: "DraftWriterPhaseExecutor | None" = None
     log_analyzer_executor: "LogAnalyzerPhaseExecutor | None" = None
     knowledge_retriever_executor: "KnowledgeRetrieverPhaseExecutor | None" = None
-    compliance_reviewer_executor: "ComplianceReviewerPhaseExecutor | None" = None
     back_support_escalation_executor: "BackSupportEscalationPhaseExecutor | None" = None
     back_support_inquiry_writer_executor: "BackSupportInquiryWriterPhaseExecutor | None" = None
     escalation_settings: EscalationSettings = field(default_factory=EscalationSettings)
@@ -531,18 +531,6 @@ class SupervisorPhaseExecutor:
         return "問い合わせ内容に関連する資料とログを確認し、回答に必要な情報を整理しました。"
 
     @staticmethod
-    def _is_non_actionable_compliance_feedback(
-        summary: str,
-        issues: list[str],
-        revision_request: str,
-    ) -> bool:
-        combined = "\n".join([summary, *issues, revision_request]).lower()
-        if not combined.strip():
-            return False
-        blocking_markers = ["ポリシー文書を取得できませんでした", "document_sources", "確認根拠となるポリシー文書"]
-        return any(marker.lower() in combined for marker in blocking_markers)
-
-    @staticmethod
     def _summarize_text(text: str, limit: int | None = None) -> str:
         normalized = re.sub(r"\s+", " ", str(text or "").strip())
         if limit is None or limit <= 0:
@@ -550,62 +538,6 @@ class SupervisorPhaseExecutor:
         if len(normalized) <= limit:
             return normalized
         return normalized[: limit - 1].rstrip() + "…"
-
-    @classmethod
-    def _append_compliance_review_history(
-        cls,
-        state: "CaseState",
-        *,
-        iteration: int,
-        review_focus: str,
-        addressed_revision_request: str,
-        draft_response: str,
-        compliance_review_summary: str,
-        compliance_review_issues: list[str],
-        compliance_revision_request: str,
-        compliance_review_passed: bool,
-        compliance_review_adopted_sources: list[str],
-        compliance_notice_present: bool,
-        excerpt_limit: int | None = None,
-    ) -> None:
-        history = [item for item in cast(list[dict[str, object]], state.get("compliance_review_history") or []) if isinstance(item, dict)]
-        history.append(
-            {
-                "iteration": iteration,
-                "review_focus": review_focus,
-                "addressed_revision_request": addressed_revision_request,
-                "draft_response": draft_response,
-                "draft_excerpt": cls._summarize_text(draft_response, limit=excerpt_limit),
-                "compliance_review_summary": compliance_review_summary,
-                "compliance_review_issues": list(compliance_review_issues),
-                "compliance_revision_request": compliance_revision_request,
-                "passed": compliance_review_passed,
-                "adopted_sources": list(compliance_review_adopted_sources),
-                "notice_present": compliance_notice_present,
-            }
-        )
-        state["compliance_review_history"] = history
-
-    @classmethod
-    def _latest_compliance_history_bullets(cls, state: "CaseState", excerpt_limit: int | None = None) -> list[str]:
-        history = [item for item in cast(list[dict[str, object]], state.get("compliance_review_history") or []) if isinstance(item, dict)]
-        if not history:
-            return []
-        latest = history[-1]
-        issues = [str(item).strip() for item in cast(list[object], latest.get("compliance_review_issues") or []) if str(item).strip()]
-        latest_revision_request = str(latest.get("compliance_revision_request") or "").strip()
-        addressed_revision_request = str(latest.get("addressed_revision_request") or "").strip()
-        draft_excerpt = str(latest.get("draft_excerpt") or "").strip()
-        bullets = [f"Compliance review history entries: {len(history)}"]
-        if addressed_revision_request:
-            bullets.append(f"Latest compliance addressed request: {cls._summarize_text(addressed_revision_request, limit=excerpt_limit)}")
-        if issues:
-            bullets.append(f"Latest compliance issues: {' | '.join(issues)}")
-        if latest_revision_request:
-            bullets.append(f"Latest compliance revision request: {cls._summarize_text(latest_revision_request, limit=excerpt_limit)}")
-        if draft_excerpt:
-            bullets.append(f"Latest compliance response draft: {draft_excerpt}")
-        return bullets
 
     @staticmethod
     def _normalize_query_text(text: str) -> str:
@@ -660,7 +592,7 @@ class SupervisorPhaseExecutor:
         intake_category = IntakeAgent.resolve_intake_category(update, memory_snapshot)
         intake_urgency = IntakeAgent.resolve_intake_urgency(update, memory_snapshot)
         effective_workflow_kind = IntakeAgent.resolve_effective_workflow_kind(update, memory_snapshot)
-        planned_child_agents = self._planned_child_agents(effective_workflow_kind)
+        planned_child_agents = [INVESTIGATE_AGENT] if self.investigate_executor is not None else self._planned_child_agents(effective_workflow_kind)
         log_analysis_summary = ""
         log_analysis_file = ""
         knowledge_retrieval_summary = ""
@@ -668,7 +600,20 @@ class SupervisorPhaseExecutor:
         knowledge_retrieval_adopted_sources: list[str] = []
         knowledge_retrieval_final_adopted_source = ""
         followup_notes: list[str] = []
-        if self.log_analyzer_executor is not None and "LogAnalyzerAgent" in planned_child_agents:
+        if self.investigate_executor is not None:
+            investigated = self.investigate_executor.execute(update)
+            update.update(cast("CaseState", investigated))
+            log_analysis_summary = str(update.get("log_analysis_summary") or "")
+            log_analysis_file = str(update.get("log_analysis_file") or "")
+            knowledge_retrieval_summary = str(update.get("knowledge_retrieval_summary") or "")
+            knowledge_retrieval_results = [
+                item for item in cast(list[object], update.get("knowledge_retrieval_results") or []) if isinstance(item, dict)
+            ]
+            knowledge_retrieval_adopted_sources = [
+                str(item) for item in cast(list[object], update.get("knowledge_retrieval_adopted_sources") or []) if str(item).strip()
+            ]
+            knowledge_retrieval_final_adopted_source = str(update.get("knowledge_retrieval_final_adopted_source") or "")
+        elif self.log_analyzer_executor is not None and "LogAnalyzerAgent" in planned_child_agents:
             log_analysis = self.log_analyzer_executor.execute(update)
             log_analysis_summary = str(log_analysis.get("summary") or "")
             log_analysis_file = str(log_analysis.get("file") or "")
@@ -697,6 +642,8 @@ class SupervisorPhaseExecutor:
             update["knowledge_retrieval_final_adopted_source"] = knowledge_retrieval_final_adopted_source
 
         for _ in range(max(self.max_investigation_loops, 0)):
+            if self.investigate_executor is not None:
+                break
             followup_clues = self._extract_followup_clues(
                 raw_issue=str(update.get("raw_issue") or ""),
                 log_analysis_summary=log_analysis_summary,
@@ -912,7 +859,6 @@ class SupervisorPhaseExecutor:
         update = cast("CaseState", dict(state))
         update["status"] = "DRAFT_READY"
         update["current_agent"] = SUPERVISOR_AGENT
-        update.setdefault("compliance_review_history", [])
 
         case_id = str(update.get("case_id") or "").strip()
         workspace_path = str(update.get("workspace_path") or "").strip()
@@ -933,115 +879,18 @@ class SupervisorPhaseExecutor:
 
         if update.get("execution_mode") == "plan":
             update["draft_response"] = (
-                "plan モードでは SuperVisorAgent がドラフト作成とレビュー方針のみを返却し、"
-                f"レビューでは「{review_focus}」を重視して action モードへ進みます。"
+                "plan モードでは InvestigateAgent が調査とドラフト作成を行い、"
+                f"SuperVisorAgent は「{review_focus}」を確認して action モードへ進みます。"
             )
         else:
-            max_review_loops = max(1, int(self.compliance_max_review_loops))
-            update["draft_review_max_loops"] = max_review_loops
-            update["draft_review_iterations"] = 0
-            if self.draft_writer_executor is not None:
-                pending_revision_request = str(update.get("compliance_revision_request") or "").strip()
-                for attempt in range(1, max_review_loops + 1):
-                    update["draft_review_iterations"] = attempt
-                    addressed_revision_request = pending_revision_request
-                    draft_result = self.draft_writer_executor.execute(cast(dict[str, object], update))
-                    update["draft_response"] = str(draft_result.get("draft_response") or update.get("draft_response") or "")
-
-                    if self.compliance_reviewer_executor is None:
-                        update["compliance_review_passed"] = True
-                        self._append_compliance_review_history(
-                            update,
-                            iteration=attempt,
-                            review_focus=review_focus,
-                            addressed_revision_request=addressed_revision_request,
-                            draft_response=str(update.get("draft_response") or ""),
-                            compliance_review_summary="コンプライアンスレビューは未実施です。",
-                            compliance_review_issues=[],
-                            compliance_revision_request="",
-                            compliance_review_passed=True,
-                            compliance_review_adopted_sources=[],
-                            compliance_notice_present=bool(update.get("compliance_notice_present")),
-                            excerpt_limit=self.review_excerpt_max_chars,
-                        )
-                        update["next_action"] = "ApprovalAgent へドラフトを回付する"
-                        break
-
-                    compliance_review = self.compliance_reviewer_executor.execute(cast(dict[str, object], update))
-                    update["compliance_review_summary"] = str(compliance_review.get("compliance_review_summary") or "")
-                    update["compliance_review_results"] = cast(list[dict[str, object]], compliance_review.get("compliance_review_results") or [])
-                    update["compliance_review_adopted_sources"] = cast(list[str], compliance_review.get("compliance_review_adopted_sources") or [])
-                    update["compliance_review_issues"] = cast(list[str], compliance_review.get("compliance_review_issues") or [])
-                    update["compliance_notice_present"] = bool(compliance_review.get("compliance_notice_present"))
-                    update["compliance_notice_matched_phrase"] = str(compliance_review.get("compliance_notice_matched_phrase") or "")
-                    update["compliance_revision_request"] = str(compliance_review.get("compliance_revision_request") or "")
-                    update["compliance_review_passed"] = bool(compliance_review.get("compliance_review_passed"))
-                    if (
-                        not bool(update.get("compliance_review_passed"))
-                        and self._is_non_actionable_compliance_feedback(
-                            str(update.get("compliance_review_summary") or ""),
-                            cast(list[str], update.get("compliance_review_issues") or []),
-                            str(update.get("compliance_revision_request") or ""),
-                        )
-                        and str(update.get("draft_response") or "").strip()
-                    ):
-                        update["compliance_review_passed"] = True
-                        update["compliance_review_summary"] = (
-                            str(update.get("compliance_review_summary") or "")
-                            + " ポリシー根拠の取得は未完了ですが、サポート担当者向けの調査回答としては継続可能と判断しました。"
-                        ).strip()
-                    self._append_compliance_review_history(
-                        update,
-                        iteration=attempt,
-                        review_focus=review_focus,
-                        addressed_revision_request=addressed_revision_request,
-                        draft_response=str(update.get("draft_response") or ""),
-                        compliance_review_summary=str(update.get("compliance_review_summary") or ""),
-                        compliance_review_issues=cast(list[str], update.get("compliance_review_issues") or []),
-                        compliance_revision_request=str(update.get("compliance_revision_request") or ""),
-                        compliance_review_passed=bool(update.get("compliance_review_passed")),
-                        compliance_review_adopted_sources=cast(list[str], update.get("compliance_review_adopted_sources") or []),
-                        compliance_notice_present=bool(update.get("compliance_notice_present")),
-                        excerpt_limit=self.review_excerpt_max_chars,
-                    )
-                    pending_revision_request = str(update.get("compliance_revision_request") or "").strip()
-                    if (
-                        bool(update.get("compliance_review_passed"))
-                        and self._is_non_actionable_compliance_feedback(
-                            str(update.get("compliance_review_summary") or ""),
-                            cast(list[str], update.get("compliance_review_issues") or []),
-                            str(update.get("compliance_revision_request") or ""),
-                        )
-                    ):
-                        update["next_action"] = "ApprovalAgent へドラフトを回付する"
-                        break
-                    if bool(update.get("compliance_review_passed")):
-                        update["next_action"] = "ApprovalAgent へドラフトを回付する"
-                        break
-                if not bool(update.get("compliance_review_passed")):
-                    update["next_action"] = "最大レビュー回数に達しました。差戻し論点を確認して人手でドラフト修正要否を判断してください。"
-            else:
-                update.setdefault(
-                    "draft_response",
-                    f"action モードで SuperVisorAgent 配下のドラフト作成とレビューを開始します。レビュー重点: {review_focus}",
-                )
+            update["draft_review_max_loops"] = 1
+            update["draft_review_iterations"] = 1
+            if not str(update.get("draft_response") or "").strip() and self.draft_writer_executor is not None:
+                draft_result = self.draft_writer_executor.execute(cast(dict[str, object], update))
+                update["draft_response"] = str(draft_result.get("draft_response") or "")
+            update["next_action"] = "ApprovalAgent へドラフトを回付する"
 
         update["review_focus"] = review_focus
-
-        if update.get("execution_mode") == "plan" and self.compliance_reviewer_executor is not None:
-            compliance_review = self.compliance_reviewer_executor.execute(cast(dict[str, object], update))
-            update["compliance_review_summary"] = str(compliance_review.get("compliance_review_summary") or "")
-            update["compliance_review_results"] = cast(list[dict[str, object]], compliance_review.get("compliance_review_results") or [])
-            update["compliance_review_adopted_sources"] = cast(list[str], compliance_review.get("compliance_review_adopted_sources") or [])
-            update["compliance_review_issues"] = cast(list[str], compliance_review.get("compliance_review_issues") or [])
-            update["compliance_notice_present"] = bool(compliance_review.get("compliance_notice_present"))
-            update["compliance_notice_matched_phrase"] = str(compliance_review.get("compliance_notice_matched_phrase") or "")
-            update["compliance_revision_request"] = str(compliance_review.get("compliance_revision_request") or "")
-            update["compliance_review_passed"] = bool(compliance_review.get("compliance_review_passed"))
-            if not bool(update.get("compliance_review_passed")):
-                update["next_action"] = "DraftWriterAgent が修正観点を反映してドラフトを更新する"
-            else:
-                update["next_action"] = "ApprovalAgent へドラフトを回付する"
 
         if case_id and workspace_path:
             context_payload: SharedMemoryDocumentPayload = {
@@ -1052,13 +901,10 @@ class SupervisorPhaseExecutor:
                     f"Intake urgency: {intake_urgency}",
                     f"Effective workflow kind: {effective_workflow_kind}",
                     f"Review focus: {review_focus}",
-                    f"Draft review loops: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or self.compliance_max_review_loops)}",
+                    f"Draft review loops: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or 1)}",
                     f"Draft response readiness: {str(update.get('draft_response') or '')}",
-                    f"Compliance review summary: {str(update.get('compliance_review_summary') or 'n/a')}",
-                    f"Compliance notice present: {'yes' if bool(update.get('compliance_notice_present')) else 'no'}",
-                    f"Compliance adopted sources: {', '.join(cast(list[str], update.get('compliance_review_adopted_sources') or [])) or 'n/a'}",
-                    "Managed child agents: DraftWriterAgent, ComplianceReviewerAgent",
-                    *self._latest_compliance_history_bullets(update, excerpt_limit=self.review_excerpt_max_chars),
+                    "Review status: InvestigateAgent generated the draft and Supervisor prepared it for approval.",
+                    "Managed child agents: InvestigateAgent",
                 ],
             }
             progress_payload: SharedMemoryDocumentPayload = {
@@ -1067,26 +913,11 @@ class SupervisorPhaseExecutor:
                 "bullets": [
                     "Current phase: DRAFT_READY",
                     "Review loop owner: SuperVisorAgent",
-                    f"Review loop count: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or self.compliance_max_review_loops)}",
-                    f"Compliance review passed: {'yes' if bool(update.get('compliance_review_passed')) else 'no'}",
+                    f"Review loop count: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or 1)}",
+                    "Review readiness: yes",
                     f"Next transition: {str(update.get('next_action') or 'wait_for_approval')}",
-                    *self._latest_compliance_history_bullets(update, excerpt_limit=self.review_excerpt_max_chars),
                 ],
             }
-            compliance_review_issues = [
-                str(item).strip() for item in cast(list[str], update.get('compliance_review_issues') or []) if str(item).strip()
-            ]
-            if compliance_review_issues:
-                context_payload["bullets"].append(
-                    f"Compliance review issues: {' | '.join(compliance_review_issues)}"
-                )
-                progress_payload["bullets"].append(
-                    f"Compliance review issues: {' | '.join(compliance_review_issues)}"
-                )
-            compliance_revision_request = str(update.get('compliance_revision_request') or '').strip()
-            if compliance_revision_request:
-                context_payload["bullets"].append(f"Compliance revision request: {compliance_revision_request}")
-                progress_payload["bullets"].append(f"Compliance revision request: {compliance_revision_request}")
             self._invoke_tool(
                 self.write_shared_memory_tool,
                 case_id,

@@ -55,12 +55,7 @@ support_ope_agents:
       pii_mask:
         enabled: false
     
-    LogAnalyzerAgent:
-      enabled: true
-      auto_compress: true
-      # constraint_mode: default
-    
-    KnowledgeRetrieverAgent:
+    InvestigateAgent:
       enabled: true
       auto_compress: true
       # constraint_mode: default
@@ -76,14 +71,6 @@ support_ope_agents:
         - name: langchain-docs
           description: LangChain関連のローカルドキュメント
           path: /home/user/oss/langchain-ai
-    DraftWriterAgent:
-      enabled: true
-      auto_compress: true
-      # constraint_mode: default
-    ComplianceReviewerAgent:
-      enabled: true
-      auto_compress: true
-      # constraint_mode: default
     BackSupportEscalationAgent:
       enabled: true
       auto_compress: true

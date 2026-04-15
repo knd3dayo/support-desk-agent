@@ -188,11 +188,7 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             auth_required=interfaces.auth_required,
             knowledge_sources=[
                 UiConfigResponse.DocumentSourceRoute(name=source.name, path=str(source.path))
-                for source in context.config.agents.KnowledgeRetrieverAgent.document_sources
-            ],
-            policy_sources=[
-                UiConfigResponse.DocumentSourceRoute(name=source.name, path=str(source.path))
-                for source in context.config.agents.ComplianceReviewerAgent.document_sources
+                for source in context.config.agents.InvestigateAgent.document_sources
             ],
         )
 

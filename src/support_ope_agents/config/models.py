@@ -174,6 +174,10 @@ class KnowledgeRetrieverAgentSettings(AgentSettings):
     persist_raw_search_snapshot: bool = False
 
 
+class InvestigateAgentSettings(KnowledgeRetrieverAgentSettings):
+    pass
+
+
 class ComplianceReviewerAgentSettings(AgentSettings):
     document_sources: list[KnowledgeDocumentSource] = Field(default_factory=list)
     ignore_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DOCUMENT_IGNORE_PATTERNS.copy())
@@ -222,6 +226,7 @@ class AgentCatalogSettings(StrictConfigModel):
     SuperVisorAgent: SupervisorAgentSettings = Field(default_factory=SupervisorAgentSettings)
     ObjectiveEvaluationAgent: ObjectiveEvaluationAgentSettings = Field(default_factory=ObjectiveEvaluationAgentSettings)
     IntakeAgent: IntakeAgentSettings = Field(default_factory=IntakeAgentSettings)
+    InvestigateAgent: InvestigateAgentSettings = Field(default_factory=InvestigateAgentSettings)
     LogAnalyzerAgent: AgentSettings = Field(default_factory=AgentSettings)
     KnowledgeRetrieverAgent: KnowledgeRetrieverAgentSettings = Field(default_factory=KnowledgeRetrieverAgentSettings)
     DraftWriterAgent: AgentSettings = Field(default_factory=AgentSettings)
@@ -233,8 +238,19 @@ class AgentCatalogSettings(StrictConfigModel):
 
     def get(
         self, role: str
-    ) -> AgentSettings | IntakeAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | ObjectiveEvaluationAgentSettings | None:
+    ) -> AgentSettings | IntakeAgentSettings | InvestigateAgentSettings | KnowledgeRetrieverAgentSettings | ComplianceReviewerAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | ObjectiveEvaluationAgentSettings | None:
         return getattr(self, role, None)
+
+    @model_validator(mode="after")
+    def _backfill_investigate_settings(self) -> "AgentCatalogSettings":
+        if self.InvestigateAgent.document_sources:
+            return self
+        legacy = self.KnowledgeRetrieverAgent
+        has_legacy_override = bool(legacy.document_sources) or legacy.search_strategy != "hybrid" or legacy.result_mode != "relaxed"
+        if not has_legacy_override:
+            return self
+        self.InvestigateAgent = InvestigateAgentSettings.model_validate(legacy.model_dump())
+        return self
 
     def resolve_constraint_mode(self, role: str, *, fallback: ConstraintMode = "default") -> ConstraintMode:
         settings = self.get(role)

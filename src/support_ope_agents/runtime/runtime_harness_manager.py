@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from typing import Literal, Mapping, TypedDict
 
 from support_ope_agents.agents.roles import (
-    COMPLIANCE_REVIEWER_AGENT,
     DEFAULT_AGENT_ROLES,
     DRAFT_WRITER_AGENT,
     INTAKE_AGENT,
+    INVESTIGATE_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,
     SUPERVISOR_AGENT,
 )
@@ -158,7 +158,7 @@ class RuntimeHarnessManager:
         ]
 
     def get_role_policies(self, role: str) -> list[RuntimePolicyValue]:
-        if role == KNOWLEDGE_RETRIEVER_AGENT:
+        if role in {INVESTIGATE_AGENT, KNOWLEDGE_RETRIEVER_AGENT}:
             return [
                 self._policy(
                     "knowledge.highlight_max_chars",
@@ -192,45 +192,6 @@ class RuntimeHarnessManager:
                     effect_summary="at most 3 exception names are surfaced in the generated draft context",
                 ),
             ]
-        if role == COMPLIANCE_REVIEWER_AGENT:
-            settings = self.config.agents.ComplianceReviewerAgent
-            return [
-                self._policy(
-                    "compliance.max_evidence_count",
-                    settings.max_evidence_count,
-                    source="config.agents.ComplianceReviewerAgent.max_evidence_count",
-                    applies_when="policy evidence is collected from documents",
-                    effect_summary="the reviewer keeps at most this many evidence snippets per policy check",
-                ),
-                self._policy(
-                    "compliance.candidate_path_limit",
-                    settings.candidate_path_limit,
-                    source="config.agents.ComplianceReviewerAgent.candidate_path_limit",
-                    applies_when="candidate policy files are selected before extraction",
-                    effect_summary="the reviewer considers only this many candidate paths during policy lookup",
-                ),
-                self._policy(
-                    "compliance.backend_read_char_limit",
-                    settings.backend_read_char_limit,
-                    source="config.agents.ComplianceReviewerAgent.backend_read_char_limit",
-                    applies_when="policy source content is read from the backend",
-                    effect_summary="backend reads are clipped to this character limit when present",
-                ),
-                self._policy(
-                    "compliance.summary_max_chars",
-                    settings.summary_max_chars,
-                    source="config.agents.ComplianceReviewerAgent.summary_max_chars",
-                    applies_when="policy snippets are condensed for the reviewer output",
-                    effect_summary="policy summaries returned by the compliance backend are bounded by this character budget",
-                ),
-                self._policy(
-                    "compliance.max_review_loops",
-                    settings.max_review_loops,
-                    source="config.agents.ComplianceReviewerAgent.max_review_loops",
-                    applies_when="supervisor-driven draft review loop",
-                    effect_summary="automatic compliance review can request draft rewrites only up to this many iterations",
-                ),
-            ]
         if role == SUPERVISOR_AGENT:
             return [
                 self._policy(
@@ -239,13 +200,6 @@ class RuntimeHarnessManager:
                     source="config.agents.SuperVisorAgent.max_investigation_loops",
                     applies_when="investigation follow-up loop",
                     effect_summary="supervisor follow-up investigation runs are capped at this count",
-                ),
-                self._policy(
-                    "supervisor.compliance_max_review_loops",
-                    self.config.agents.ComplianceReviewerAgent.max_review_loops,
-                    source="config.agents.ComplianceReviewerAgent.max_review_loops",
-                    applies_when="draft review orchestration",
-                    effect_summary="supervisor review orchestration reuses the compliance loop limit for automatic retries",
                 ),
                 self._policy(
                     "supervisor.review_excerpt_max_chars",
@@ -312,10 +266,7 @@ class RuntimeHarnessManager:
                 impact_level = "configured"
                 observable_output = "trace does not record direct usage for this policy"
 
-                if policy["policy_id"] in {
-                    "compliance.max_review_loops",
-                    "supervisor.compliance_max_review_loops",
-                } and draft_review_max_loops:
+                if policy["policy_id"] == "supervisor.max_investigation_loops" and draft_review_max_loops:
                     impact_level = "observed"
                     observable_output = f"draft review iterations={draft_review_iterations}/{draft_review_max_loops}"
                 elif policy["value"] is None:

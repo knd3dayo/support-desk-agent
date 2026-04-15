@@ -23,8 +23,8 @@ from support_ope_agents.agents.roles import (
     APPROVAL_AGENT,
     BACK_SUPPORT_ESCALATION_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
-    COMPLIANCE_REVIEWER_AGENT,
     DRAFT_WRITER_AGENT,
+    INVESTIGATE_AGENT,
     INTAKE_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,
     LOG_ANALYZER_AGENT,
@@ -77,9 +77,7 @@ def _fake_objective_evaluation_result() -> ObjectiveEvaluationStructuredResult:
         ],
         agent_evaluations=[
             StructuredAgentEvaluation(agent_name="IntakeAgent", score=84, comment="分類と緊急度の整理はできています。"),
-            StructuredAgentEvaluation(agent_name="KnowledgeRetrieverAgent", score=78, comment="採用ナレッジはありますが、採用理由の要約をもう一段短くできます。"),
-            StructuredAgentEvaluation(agent_name="DraftWriterAgent", score=70, comment="回答本文は成立していますが、結論の先出しが弱いです。"),
-            StructuredAgentEvaluation(agent_name="ComplianceReviewerAgent", score=82, comment="レビュー判断は最終状態と整合しています。"),
+            StructuredAgentEvaluation(agent_name="InvestigateAgent", score=78, comment="採用ナレッジと回答ドラフトはありますが、結論の先出しをさらに強められます。"),
         ],
         overall_summary="自動実行は完了していますが、回答の結論提示と memory 連携の明示には改善余地があります。",
         improvement_points=[
@@ -131,12 +129,6 @@ class _FakeDraftModel:
         else:
             content = "お問い合わせありがとうございます。\n\n現時点の結論として、アーキテクチャ概要をご案内します。"
         return AIMessage(content=content)
-
-
-class _FakeComplianceModel:
-    async def ainvoke(self, _messages):
-        return AIMessage(content='{"summary":"mocked compliance review","issues":[]}')
-
 
 class _FakeToolRegistry:
     def __init__(self, config: AppConfig):
@@ -459,13 +451,9 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             "support_ope_agents.agents.draft_writer_agent._get_chat_model",
             return_value=_FakeDraftModel(),
         )
-        self._compliance_model_patcher = patch(
-            "support_ope_agents.tools.default_check_policy._get_chat_model",
-            return_value=_FakeComplianceModel(),
-        )
+        # Removed compliance model patcher as it is not needed
         self._classify_model_patcher.start()
         self._draft_model_patcher.start()
-        self._compliance_model_patcher.start()
         self._objective_eval_patcher = patch.object(
             ObjectiveEvaluationAgent,
             "_invoke_structured_evaluation",
@@ -489,7 +477,6 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         return RuntimeService(context)  # type: ignore[arg-type]
 
     def tearDown(self) -> None:
-        self._compliance_model_patcher.stop()
         self._draft_model_patcher.stop()
         self._classify_model_patcher.stop()
         self._objective_eval_patcher.stop()
@@ -910,8 +897,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(str(summary["workflow_kind"]), "specification_inquiry")
 
         used_roles = cast(list[str], audit["used_roles"])
-        self.assertIn(KNOWLEDGE_RETRIEVER_AGENT, used_roles)
-        self.assertIn(DRAFT_WRITER_AGENT, used_roles)
+        self.assertIn(INVESTIGATE_AGENT, used_roles)
 
         decision_log = cast(list[dict[str, object]], audit["decision_log"])
         self.assertTrue(any(str(item.get("control_point_id") or "") == "workflow.route_after_investigation.draft_review" for item in decision_log))
@@ -925,7 +911,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 "interfaces": {},
                 "agents": {
                     "default_constraint_mode": "bypass",
-                    "ComplianceReviewerAgent": {"constraint_mode": "default"},
+                    "InvestigateAgent": {"constraint_mode": "default"},
                 },
             }
         )
@@ -947,27 +933,21 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         runtime_constraints = cast(list[dict[str, object]], audit["runtime_constraints"])
         runtime_policies = cast(dict[str, object], audit["runtime_policies"])
         runtime_policy_effects = cast(list[dict[str, object]], audit["runtime_policy_effects"])
-        draft_entry = next(item for item in entries if str(item.get("role") or "") == DRAFT_WRITER_AGENT)
-        compliance_entry = next(item for item in entries if str(item.get("role") or "") == COMPLIANCE_REVIEWER_AGENT)
-        draft_constraint = next(item for item in runtime_constraints if str(item.get("role") or "") == DRAFT_WRITER_AGENT)
-        compliance_constraint = next(item for item in runtime_constraints if str(item.get("role") or "") == COMPLIANCE_REVIEWER_AGENT)
+        investigate_entry = next(item for item in entries if str(item.get("role") or "") == INVESTIGATE_AGENT)
+        investigate_constraint = next(item for item in runtime_constraints if str(item.get("role") or "") == INVESTIGATE_AGENT)
 
-        self.assertEqual(str(draft_entry.get("constraint_mode") or ""), "bypass")
-        self.assertEqual(cast(list[str], draft_entry.get("resolved_sources") or []), [])
-        self.assertEqual(str(draft_entry.get("instruction_excerpt") or ""), "")
-        self.assertEqual(str(compliance_entry.get("constraint_mode") or ""), "default")
-        self.assertTrue(bool(cast(list[str], compliance_entry.get("resolved_sources") or [])))
-        self.assertFalse(bool(draft_constraint.get("instruction_enabled")))
-        self.assertFalse(bool(draft_constraint.get("runtime_enabled")))
-        self.assertTrue(bool(compliance_constraint.get("instruction_enabled")))
-        self.assertTrue(bool(compliance_constraint.get("runtime_enabled")))
+        self.assertEqual(str(investigate_entry.get("constraint_mode") or ""), "default")
+        self.assertTrue(bool(cast(list[str], investigate_entry.get("resolved_sources") or [])))
+        self.assertTrue(bool(str(investigate_entry.get("instruction_excerpt") or "")))
+        self.assertTrue(bool(investigate_constraint.get("instruction_enabled")))
+        self.assertTrue(bool(investigate_constraint.get("runtime_enabled")))
         role_policies = cast(list[dict[str, object]], runtime_policies["role_policies"])
-        draft_policies = next(item for item in role_policies if str(item.get("role") or "") == DRAFT_WRITER_AGENT)
-        compliance_impacts = [
-            item for item in runtime_policy_effects if str(item.get("owner") or "") == COMPLIANCE_REVIEWER_AGENT
+        investigate_policies = next(item for item in role_policies if str(item.get("role") or "") == INVESTIGATE_AGENT)
+        investigate_impacts = [
+            item for item in runtime_policy_effects if str(item.get("owner") or "") == INVESTIGATE_AGENT
         ]
-        self.assertTrue(any(str(item.get("policy_id") or "") == "draft.summary_snippet_max_chars" for item in cast(list[dict[str, object]], draft_policies["policies"])))
-        self.assertTrue(any(str(item.get("policy_id") or "") == "compliance.max_review_loops" for item in compliance_impacts))
+        self.assertTrue(any(str(item.get("policy_id") or "") == "knowledge.highlight_max_chars" for item in cast(list[dict[str, object]], investigate_policies["policies"])))
+        self.assertTrue(any(str(item.get("policy_id") or "") == "knowledge.highlight_max_chars" for item in investigate_impacts))
 
     def test_generate_support_improvement_report_writes_report_folder(self) -> None:
         result = self.service.action(
@@ -996,11 +976,11 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("### 発火した制御", content)
         self.assertIn("共通 instruction 制約", content)
         self.assertIn("役割別の想定 instruction 制約", content)
-        self.assertIn("KnowledgeRetrieverAgent: mode=default, instruction=yes, runtime=yes, summary=yes", content)
-        self.assertIn("draft.summary_snippet_max_chars: value=1200", content)
+        self.assertIn("InvestigateAgent: mode=default, instruction=yes, runtime=yes, summary=yes", content)
+        self.assertIn("knowledge.highlight_max_chars: value=None", content)
         self.assertIn("global.runtime.workspace_preview_max_chars", content)
         self.assertIn("共有メモリを必ず確認し、既に判明している事実と矛盾しないように振る舞ってください。", content)
-        self.assertIn("問い合わせ文に製品名、機能名、モジュール名が明示されている場合は、その対象に直接対応する根拠ソースを優先してください。", content)
+        self.assertIn("問い合わせが特定製品や特定機能の説明を求めている場合は、その対象に直接対応する根拠ソースを優先してください。", content)
         self.assertIn("[defined] workflow.approval_node", content)
         self.assertIn("config_key: workflow.approval_node", content)
         self.assertIn("docs_refs: docs/configuration.md, docs/customer-support-deepagents-design.md", content)

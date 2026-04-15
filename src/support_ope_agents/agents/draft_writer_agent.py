@@ -116,7 +116,6 @@ class DraftWriterPhaseExecutor:
             "SuperVisorAgent": "今回の調査",
             "KnowledgeRetrieverAgent": "関連資料の確認",
             "LogAnalyzerAgent": "ログ解析",
-            "ComplianceReviewerAgent": "レビュー",
             "document_sources": "関連資料",
             "共有メモリ": "調査メモ",
             "ナレッジ照会結果": "関連資料の確認結果",
@@ -264,11 +263,6 @@ class DraftWriterPhaseExecutor:
         return "\n\n".join(lines)
 
     def _required_notice_phrase(self) -> str:
-        phrases = list(self.config.agents.ComplianceReviewerAgent.notice.required_phrases or [])
-        for phrase in phrases:
-            normalized = str(phrase).strip().rstrip("。")
-            if normalized:
-                return normalized + "。"
         return ""
 
     @staticmethod

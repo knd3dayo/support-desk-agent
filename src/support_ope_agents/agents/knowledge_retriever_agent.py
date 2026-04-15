@@ -73,7 +73,7 @@ class KnowledgeRetrieverPhaseExecutor:
         if self.document_sources:
             return self.document_sources
         if self.config is not None:
-            return list(self.config.agents.KnowledgeRetrieverAgent.document_sources)
+            return list(self.config.agents.InvestigateAgent.document_sources)
         return []
 
     @staticmethod
