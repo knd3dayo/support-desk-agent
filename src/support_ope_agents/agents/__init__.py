@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from .abstract_agent import AbstractAgent
 from .agent_definition import AgentDefinition
 from .roles import DEFAULT_AGENT_ROLES
 
-__all__ = ["AgentDefinition", "DEFAULT_AGENT_ROLES", "build_default_agent_definitions"]
+__all__ = ["AbstractAgent", "AgentDefinition", "DEFAULT_AGENT_ROLES", "build_default_agent_definitions"]
 
 
 def build_default_agent_definitions():

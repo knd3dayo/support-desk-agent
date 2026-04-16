@@ -16,7 +16,7 @@ from support_ope_agents.agents.approval_agent import ApprovalAgent
 from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
 from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
 from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
-from support_ope_agents.agents.investigate_agent import InvestigatePhaseExecutor
+from support_ope_agents.agents.investigate_agent import InvestigateAgent
 from support_ope_agents.agents.intake_agent import IntakeAgent
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
@@ -24,13 +24,10 @@ from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.ticket_update_agent import TicketUpdateAgent
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
-from support_ope_agents.agents.roles import DRAFT_WRITER_AGENT
 from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT
 from support_ope_agents.agents.roles import APPROVAL_AGENT
 from support_ope_agents.agents.roles import INTAKE_AGENT
-from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
-from support_ope_agents.agents.roles import LOG_ANALYZER_AGENT
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.agents.roles import TICKET_UPDATE_AGENT
 from support_ope_agents.config import AppConfig, load_config
@@ -100,17 +97,12 @@ class RuntimeService:
         self._context = context
         self._migrate_legacy_traces()
         intake_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INTAKE_AGENT)}
-        knowledge_retriever_tools = {
-            tool.name: tool.handler for tool in context.tool_registry.get_tools(KNOWLEDGE_RETRIEVER_AGENT)
-        }
-        log_analyzer_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(LOG_ANALYZER_AGENT)}
         back_support_escalation_tools = {
             tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)
         }
         back_support_inquiry_writer_tools = {
             tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_INQUIRY_WRITER_AGENT)
         }
-        draft_writer_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(DRAFT_WRITER_AGENT)}
         investigate_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INVESTIGATE_AGENT)}
         approval_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(APPROVAL_AGENT)}
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
@@ -134,16 +126,16 @@ class RuntimeService:
             redmine_update_tool=ticket_update_tools["redmine_update"],
         )
         self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
-            detect_log_format_tool=log_analyzer_tools["detect_log_format"],
-            write_working_memory_tool=log_analyzer_tools["write_working_memory"],
+            detect_log_format_tool=investigate_tools["detect_log_format"],
+            write_working_memory_tool=investigate_tools["write_working_memory"],
         )
         self._knowledge_retriever_executor = KnowledgeRetrieverPhaseExecutor(
-            external_ticket_tool=knowledge_retriever_tools["external_ticket"],
-            internal_ticket_tool=knowledge_retriever_tools["internal_ticket"],
+            external_ticket_tool=investigate_tools["external_ticket"],
+            internal_ticket_tool=investigate_tools["internal_ticket"],
             config=context.config,
             document_sources=list(context.config.agents.InvestigateAgent.document_sources),
-            write_shared_memory_tool=knowledge_retriever_tools.get("write_shared_memory"),
-            write_working_memory_tool=knowledge_retriever_tools["write_working_memory"],
+            write_shared_memory_tool=investigate_tools.get("write_shared_memory"),
+            write_working_memory_tool=investigate_tools["write_working_memory"],
             constraint_mode=context.runtime_harness_manager.resolve(INVESTIGATE_AGENT),
             highlight_max_chars=context.runtime_harness_manager.get_optional_int_policy_value(
                 "knowledge.highlight_max_chars",
@@ -166,10 +158,10 @@ class RuntimeService:
         )
         self._draft_writer_executor = DraftWriterPhaseExecutor(
             config=context.config,
-            write_draft_tool=draft_writer_tools.get("write_draft") or back_support_inquiry_writer_tools["write_draft"],
+            write_draft_tool=investigate_tools.get("write_draft") or back_support_inquiry_writer_tools["write_draft"],
             runtime_harness_manager=context.runtime_harness_manager,
         )
-        self._investigate_executor = InvestigatePhaseExecutor(
+        self._investigate_executor = InvestigateAgent(
             read_shared_memory_tool=investigate_tools.get("read_shared_memory") or supervisor_tools.get("read_shared_memory"),
             write_shared_memory_tool=investigate_tools.get("write_shared_memory") or supervisor_tools.get("write_shared_memory"),
             log_analyzer_executor=self._log_analyzer_executor,

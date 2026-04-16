@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
 from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
 
-from .document_source_backend import build_document_source_backend, read_backend_file_data
+from ..util.document.document_source_backend import build_document_source_backend, read_backend_file_data
 
 try:
     from deepagents import create_deep_agent

@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+import os
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
@@ -49,11 +50,6 @@ class _FakeDraftModel:
         return AIMessage(content="お問い合わせありがとうございます。\n\n現時点の結論として、アーキテクチャ概要をご案内します。")
 
 
-class _FakeComplianceModel:
-    async def ainvoke(self, _messages):
-        return AIMessage(content='{"summary":"mocked compliance review","issues":[]}')
-
-
 class ApiWorkspaceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._startup_probe_patcher = patch(
@@ -73,15 +69,10 @@ class ApiWorkspaceTests(unittest.TestCase):
             "support_ope_agents.agents.draft_writer_agent._get_chat_model",
             return_value=_FakeDraftModel(),
         )
-        self._compliance_model_patcher = patch(
-            "support_ope_agents.tools.default_check_policy._get_chat_model",
-            return_value=_FakeComplianceModel(),
-        )
         self._startup_probe_patcher.start()
         self._objective_eval_patcher.start()
         self._classify_model_patcher.start()
         self._draft_model_patcher.start()
-        self._compliance_model_patcher.start()
         self._tmpdir = tempfile.TemporaryDirectory()
         self.repo_root = Path(self._tmpdir.name)
         self.cases_root = self.repo_root / "work" / "cases"
@@ -131,11 +122,11 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.client.close()
         self.secure_client.close()
         self._startup_probe_patcher.stop()
-        self._compliance_model_patcher.stop()
         self._draft_model_patcher.stop()
         self._classify_model_patcher.stop()
         self._objective_eval_patcher.stop()
         self._tmpdir.cleanup()
+        os.environ.pop("SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE", None)
 
     def test_cases_endpoint_lists_workspace_cases(self) -> None:
         (self.case_path / ".support-ope-case.json").write_text(
@@ -194,6 +185,35 @@ class ApiWorkspaceTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "LLM startup probe failed"):
                 with TestClient(create_app(str(config_path))):
                     pass
+
+    def test_app_startup_can_skip_llm_probe_via_env(self) -> None:
+        config_path = self.repo_root / "startup-skip-config.yml"
+        config_path.write_text(
+                        "\n".join([
+                                "support_ope_agents:",
+                                "  llm:",
+                                "    provider: openai",
+                                "    model: gpt-4.1",
+                                "    api_key: sk-test-value",
+                                "  config_paths: {}",
+                                "  data_paths: {}",
+                                "  interfaces: {}",
+                                "  agents: {}",
+                        ])
+                        + "\n",
+            encoding="utf-8",
+        )
+
+        os.environ["SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE"] = "1"
+        with patch(
+            "support_ope_agents.interfaces.api._probe_llm_backend",
+            side_effect=RuntimeError("LLM startup probe failed."),
+        ):
+            with TestClient(create_app(str(config_path))) as client:
+                response = client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
 
     def test_create_case_endpoint_initializes_workspace_under_default_cases_root(self) -> None:
         response = self.client.post("/cases", json={"prompt": "CASE-API-NEW の調査を開始してください"})

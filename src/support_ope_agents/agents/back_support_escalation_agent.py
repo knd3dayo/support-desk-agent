@@ -8,7 +8,7 @@ from typing import Any, Callable, Mapping, cast
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
-from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
+from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
 
 @dataclass(slots=True)

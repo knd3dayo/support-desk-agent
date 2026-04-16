@@ -6,7 +6,7 @@ from typing import Any
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.tools.document_renderer import render_document_payload
-from support_ope_agents.tools.shared_memory_payload import MemoryWriteMode, SharedMemoryDocumentPayload, SharedMemorySectionPayload
+from support_ope_agents.util.shared_memory_payload import MemoryWriteMode, SharedMemoryDocumentPayload, SharedMemorySectionPayload
 
 
 def build_default_write_shared_memory_tool(config: AppConfig):

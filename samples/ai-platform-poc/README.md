@@ -40,7 +40,7 @@ API と React UI を使って試す場合は、このディレクトリに追加
 /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample-react.sh
 ```
 
-API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ個別に起動したい場合は `start-sample-react.sh` も引き続き使えます。API 起動スクリプトは `--workspace-root` または `SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT` を必須とし、指定したディレクトリをケース作成先として使ったうえで、内部的には `uv run -m support_ope_agents.interfaces.api` を呼び出します。React 起動スクリプトはリポジトリ直下の frontend を開発モードで起動し、`API_PORT` が指定されていればそのポートの API を proxy します。
+API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ個別に起動したい場合は `start-sample-react.sh` も引き続き使えます。API 起動スクリプトは `--workspace-root` または `SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT` を必須とし、指定したディレクトリをケース作成先として使ったうえで、内部的には `uv run -m support_ope_agents.interfaces.api` を呼び出します。sample API は UI テストを優先して、既定では起動時の LLM probe を skip します。実 backend の疎通確認も startup で行いたい場合は `SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE=0` を付けて起動してください。React 起動スクリプトはリポジトリ直下の frontend を開発モードで起動し、`API_PORT` が指定されていればそのポートの API を proxy します。
 
 sample config で MCP manifest が未設定の場合、API 起動スクリプトは UI テストを止めないために `external_ticket` と `internal_ticket` を一時的に無効化した設定を自動生成して起動します。実 MCP 連携を含めて試したい場合は、sample config の `tools.mcp_manifest_path` を有効化するか、起動時に `MCP_MANIFEST_PATH=/path/to/manifest.json` を渡してください。
 
@@ -87,3 +87,4 @@ ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRAC
 - LangChain ドキュメントの path は `/home/user/oss/langchain-ai/langchain` を前提にしています
 - sample config は `constraint_mode: default` を既定にしています。`instruction_only` は instruction 側の制御だけが残るため、sample では回答や再調査の誘導が強く見えることがあります。
 - `InvestigateAgent.result_mode: raw_backend` は取得 payload の詳細度を上げる設定です。制約の強さを変えたい場合は `constraint_mode` を agent ごとに調整してください。
+- sample config は既定で `model: poc-chat-model` と `base_url: http://localhost:4000` を使います。local LiteLLM を経由せず直接 OpenAI 互換 API を使いたい場合は、起動時に `SUPPORT_OPE_LLM_MODEL=gpt-4.1 SUPPORT_OPE_LLM_BASE_URL=` のように上書きできます。

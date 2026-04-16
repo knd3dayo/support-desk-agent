@@ -5,7 +5,7 @@ import json
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.tools.document_renderer import render_document_payload
-from support_ope_agents.tools.shared_memory_payload import MemoryWriteMode, SharedMemoryDocumentPayload
+from support_ope_agents.util.shared_memory_payload import MemoryWriteMode, SharedMemoryDocumentPayload
 
 
 def build_default_write_draft_tool(config: AppConfig, draft_name: str):

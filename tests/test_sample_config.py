@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.config import load_config
 from support_ope_agents.config.models import AgentCatalogSettings
 
 
@@ -19,6 +23,42 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(settings.default_constraint_mode, "default")
         self.assertEqual(settings.resolve_constraint_mode(INVESTIGATE_AGENT), "default")
         self.assertEqual(settings.resolve_constraint_mode(SUPERVISOR_AGENT), "default")
+
+    def test_load_config_allows_env_override_for_llm_model_and_base_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "support_ope_agents:",
+                        "  llm:",
+                        "    provider: openai",
+                        "    model: poc-chat-model",
+                        "    api_key: os.environ/LLM_API_KEY",
+                        "    base_url: http://localhost:4000",
+                        "  config_paths: {}",
+                        "  data_paths: {}",
+                        "  interfaces: {}",
+                        "  agents: {}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with patch.dict(
+                os.environ,
+                {
+                    "LLM_API_KEY": "sk-test-value",
+                    "SUPPORT_OPE_LLM_MODEL": "gpt-4.1",
+                    "SUPPORT_OPE_LLM_BASE_URL": "",
+                },
+                clear=False,
+            ):
+                loaded = load_config(config_path)
+
+        self.assertEqual(loaded.llm.model, "gpt-4.1")
+        self.assertIsNone(loaded.llm.base_url)
 
 
 if __name__ == "__main__":

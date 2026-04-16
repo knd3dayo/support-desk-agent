@@ -140,6 +140,7 @@ class _FakeToolRegistry:
         self._write_shared_memory = build_default_write_shared_memory_tool(config)
         self._write_intake_working_memory = build_default_write_working_memory_tool(config, INTAKE_AGENT)
         self._search_documents = build_default_search_documents_tool(config)
+        self._write_investigate_working_memory = build_default_write_working_memory_tool(config, INVESTIGATE_AGENT)
         self._write_log_working_memory = build_default_write_working_memory_tool(config, LOG_ANALYZER_AGENT)
         self._write_knowledge_working_memory = build_default_write_working_memory_tool(config, KNOWLEDGE_RETRIEVER_AGENT)
         self._write_back_support_draft = build_default_write_draft_tool(config, "back_support_inquiry_draft")
@@ -188,6 +189,46 @@ class _FakeToolRegistry:
                     self._write_log_working_memory,
                     provider="builtin",
                     target="default-working-memory-writer",
+                ),
+            ]
+        if role == INVESTIGATE_AGENT:
+            return [
+                ToolSpec(
+                    "detect_log_format",
+                    "Detect log format",
+                    self._detect_log_format,
+                    provider="builtin",
+                    target="test-detect-log-format",
+                ),
+                ToolSpec(
+                    "search_documents",
+                    "Search documents",
+                    self._search_documents,
+                    provider="builtin",
+                    target="configured-document-sources",
+                ),
+                ToolSpec("external_ticket", "External ticket", self._external_ticket, provider="builtin", target="test-external-ticket"),
+                ToolSpec("internal_ticket", "Internal ticket", self._internal_ticket, provider="builtin", target="test-internal-ticket"),
+                ToolSpec(
+                    "write_shared_memory",
+                    "Write shared memory",
+                    self._write_shared_memory,
+                    provider="builtin",
+                    target="default-case-memory-writer",
+                ),
+                ToolSpec(
+                    "write_working_memory",
+                    "Write working memory",
+                    self._write_investigate_working_memory,
+                    provider="builtin",
+                    target="default-working-memory-writer",
+                ),
+                ToolSpec(
+                    "write_draft",
+                    "Write customer draft",
+                    self._write_customer_draft,
+                    provider="builtin",
+                    target="default-draft-writer",
                 ),
             ]
         if role == KNOWLEDGE_RETRIEVER_AGENT:
@@ -986,7 +1027,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("docs_refs: docs/configuration.md, docs/customer-support-deepagents-design.md", content)
         self.assertIn("code_refs: src/support_ope_agents/config/models.py, src/support_ope_agents/workflow/case_workflow.py", content)
         self.assertIn("sequenceDiagram", content)
-        self.assertIn("KnowledgeRetrieverAgent", content)
+        self.assertIn("InvestigateAgent", content)
         self.assertIn("ユーザー指定チェックリスト", content)
         self.assertIn("説明: レポート対象のケースを一意に識別するIDです。", content)
         self.assertIn("## 回答内容", content)

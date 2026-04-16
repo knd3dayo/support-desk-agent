@@ -52,6 +52,7 @@ from .schemas import (
 DEFAULT_API_HOST = "0.0.0.0"
 DEFAULT_API_PORT = 8000
 STARTUP_LLM_PROBE_TIMEOUT_SECONDS = 15
+SKIP_STARTUP_LLM_PROBE_ENV = "SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE"
 
 
 def _build_startup_probe_model(config: AppConfig) -> ChatOpenAI:
@@ -96,13 +97,19 @@ async def _probe_llm_backend(config: AppConfig) -> None:
         raise RuntimeError("LLM startup probe failed: empty response.")
 
 
+def _should_skip_startup_llm_probe() -> bool:
+    value = os.getenv(SKIP_STARTUP_LLM_PROBE_ENV, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def create_app(config_path: str = "config.yml", cases_root: str | None = None) -> FastAPI:
     context = build_runtime_context(config_path)
     service = RuntimeService(context)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        await _probe_llm_backend(context.config)
+        if not _should_skip_startup_llm_probe():
+            await _probe_llm_backend(context.config)
         yield
 
     app = FastAPI(title="support-ope-agents API", version="0.1.0", lifespan=lifespan)

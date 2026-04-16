@@ -17,14 +17,27 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
+from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
+# IntakeAgentはケースの初期受け入れと分類を担当するエージェントで、
+# 問い合わせ内容のPIIマスキング、チケット情報の取得、分類と緊急度判定、品質ゲートによる検証、
+# 状態の最終化などの機能を提供します。
 if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState
 
 
 @dataclass(slots=True)
 class IntakeAgent:
+    """
+    サポート担当者からの問い合わせ内容を受け取り、初期分類や緊急度判定を行うエージェント。
+    create_node() で Intake フェーズの実装をLanggraph のノードとして提供します。
+    IntakeAgentは以下のSubGraphノードで構成されます:
+    prepare_state() でケース状態の初期化、
+    apply_pii_mask() で問い合わせ内容の PII マスキング、
+    classify_issue() で問い合わせ内容の分類と緊急度判定、
+    quality_gate() で分類結果の検証と不足情報の抽出、
+    finalize_state() で最終的な状態更新と共有コンテキストへの記録を行う。
+    """
     @dataclass(frozen=True, slots=True)
     class ValidationResult:
         category: str

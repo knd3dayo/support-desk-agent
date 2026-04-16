@@ -11,6 +11,8 @@ from .models import AppConfig
 
 ROOT_KEY = "support_ope_agents"
 ENV_REF_PREFIX = "os.environ/"
+LLM_MODEL_OVERRIDE_ENV = "SUPPORT_OPE_LLM_MODEL"
+LLM_BASE_URL_OVERRIDE_ENV = "SUPPORT_OPE_LLM_BASE_URL"
 
 
 def _resolve_env_refs(value: Any) -> Any:
@@ -40,6 +42,14 @@ def load_config(config_path: str | Path) -> AppConfig:
     section = raw.get(ROOT_KEY, {})
     resolved = _resolve_env_refs(section)
     base_dir = path.parent
+
+    llm = resolved.get("llm", {})
+    model_override = os.getenv(LLM_MODEL_OVERRIDE_ENV)
+    if model_override:
+        llm["model"] = model_override
+    if LLM_BASE_URL_OVERRIDE_ENV in os.environ:
+        llm["base_url"] = os.getenv(LLM_BASE_URL_OVERRIDE_ENV) or None
+    resolved["llm"] = llm
 
     config_paths = resolved.get("config_paths", {})
     if config_paths.get("instructions_path"):

@@ -54,11 +54,15 @@ export SUPPORT_OPE_SAMPLE_HOST="${HOST}"
 export SUPPORT_OPE_SAMPLE_PORT="${PORT}"
 export SUPPORT_OPE_SAMPLE_MCP_MANIFEST_PATH="${MCP_MANIFEST_PATH}"
 export SUPPORT_OPE_SAMPLE_CASES_ROOT="${CASES_ROOT}"
+export SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE="${SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE:-1}"
 
 echo "Starting sample API"
 echo "  config: ${CONFIG_PATH}"
 echo "  workspace root: ${CASES_ROOT}"
 echo "  url:    http://${HOST}:${PORT}"
+if [[ "${SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE}" == "1" ]]; then
+  echo "Skipping startup LLM probe for sample API. Requests that require the LLM may still fail until the backend becomes reachable."
+fi
 
 cd "${REPO_ROOT}"
 exec uv run -m support_ope_agents.interfaces.api

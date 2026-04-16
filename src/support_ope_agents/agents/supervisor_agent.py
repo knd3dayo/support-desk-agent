@@ -12,26 +12,19 @@ from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, I
 from support_ope_agents.config.models import EscalationSettings
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.tools.shared_memory_payload import SharedMemoryDocumentPayload
+from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState, WorkflowKind
     from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
     from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
-    from support_ope_agents.agents.investigate_agent import InvestigatePhaseExecutor
-    from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
-    from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
-    from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
-
+    from support_ope_agents.agents.investigate_agent import InvestigateAgent
 
 @dataclass(slots=True)
 class SupervisorPhaseExecutor:
     read_shared_memory_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
-    investigate_executor: "InvestigatePhaseExecutor | None" = None
-    draft_writer_executor: "DraftWriterPhaseExecutor | None" = None
-    log_analyzer_executor: "LogAnalyzerPhaseExecutor | None" = None
-    knowledge_retriever_executor: "KnowledgeRetrieverPhaseExecutor | None" = None
+    investigate_executor: "InvestigateAgent | None" = None
     back_support_escalation_executor: "BackSupportEscalationPhaseExecutor | None" = None
     back_support_inquiry_writer_executor: "BackSupportInquiryWriterPhaseExecutor | None" = None
     escalation_settings: EscalationSettings = field(default_factory=EscalationSettings)
@@ -613,33 +606,6 @@ class SupervisorPhaseExecutor:
                 str(item) for item in cast(list[object], update.get("knowledge_retrieval_adopted_sources") or []) if str(item).strip()
             ]
             knowledge_retrieval_final_adopted_source = str(update.get("knowledge_retrieval_final_adopted_source") or "")
-        elif self.log_analyzer_executor is not None and "LogAnalyzerAgent" in planned_child_agents:
-            log_analysis = self.log_analyzer_executor.execute(update)
-            log_analysis_summary = str(log_analysis.get("summary") or "")
-            log_analysis_file = str(log_analysis.get("file") or "")
-            if log_analysis_summary:
-                update["log_analysis_summary"] = log_analysis_summary
-            if log_analysis_file:
-                update["log_analysis_file"] = log_analysis_file
-        if self.knowledge_retriever_executor is not None and "KnowledgeRetrieverAgent" in planned_child_agents:
-            knowledge_result = self.knowledge_retriever_executor.execute(update)
-            knowledge_retrieval_summary = str(knowledge_result.get("knowledge_retrieval_summary") or "")
-            raw_results = knowledge_result.get("knowledge_retrieval_results")
-            if isinstance(raw_results, list):
-                knowledge_retrieval_results = [item for item in raw_results if isinstance(item, dict)]
-            raw_adopted_sources = knowledge_result.get("knowledge_retrieval_adopted_sources")
-            if isinstance(raw_adopted_sources, list):
-                knowledge_retrieval_adopted_sources = [str(item) for item in raw_adopted_sources if str(item).strip()]
-            knowledge_retrieval_final_adopted_source = self._select_final_knowledge_source(
-                knowledge_retrieval_results,
-                raw_issue=str(update.get("raw_issue") or ""),
-            )
-            if knowledge_retrieval_summary:
-                update["knowledge_retrieval_summary"] = knowledge_retrieval_summary
-            if knowledge_retrieval_results:
-                update["knowledge_retrieval_results"] = knowledge_retrieval_results
-            update["knowledge_retrieval_adopted_sources"] = knowledge_retrieval_adopted_sources
-            update["knowledge_retrieval_final_adopted_source"] = knowledge_retrieval_final_adopted_source
 
         for _ in range(max(self.max_investigation_loops, 0)):
             if self.investigate_executor is not None:
@@ -666,47 +632,6 @@ class SupervisorPhaseExecutor:
                 ]
                 if part
             )
-
-            if self.log_analyzer_executor is not None and "LogAnalyzerAgent" in planned_child_agents:
-                followup_log_analysis = self.log_analyzer_executor.execute(followup_state)
-                log_analysis_summary = self._merge_unique_lines(
-                    log_analysis_summary,
-                    str(followup_log_analysis.get("summary") or ""),
-                )
-                followup_file = str(followup_log_analysis.get("file") or "")
-                if followup_file:
-                    log_analysis_file = followup_file
-                if log_analysis_summary:
-                    update["log_analysis_summary"] = log_analysis_summary
-                if log_analysis_file:
-                    update["log_analysis_file"] = log_analysis_file
-
-            if self.knowledge_retriever_executor is not None and "KnowledgeRetrieverAgent" in planned_child_agents:
-                followup_knowledge_result = self.knowledge_retriever_executor.execute(followup_state)
-                followup_summary = str(followup_knowledge_result.get("knowledge_retrieval_summary") or "")
-                log_aware_summary = self._merge_unique_lines(knowledge_retrieval_summary, followup_summary)
-                if log_aware_summary:
-                    knowledge_retrieval_summary = log_aware_summary
-                    update["knowledge_retrieval_summary"] = knowledge_retrieval_summary
-
-                raw_followup_results = followup_knowledge_result.get("knowledge_retrieval_results")
-                followup_results = [item for item in raw_followup_results if isinstance(item, dict)] if isinstance(raw_followup_results, list) else []
-                if followup_results:
-                    knowledge_retrieval_results = self._merge_knowledge_results(knowledge_retrieval_results, followup_results)
-                    update["knowledge_retrieval_results"] = knowledge_retrieval_results
-
-                raw_followup_sources = followup_knowledge_result.get("knowledge_retrieval_adopted_sources")
-                followup_sources = [str(item) for item in raw_followup_sources if str(item).strip()] if isinstance(raw_followup_sources, list) else []
-                knowledge_retrieval_adopted_sources = self._merge_unique_items(
-                    knowledge_retrieval_adopted_sources,
-                    followup_sources,
-                )
-                update["knowledge_retrieval_adopted_sources"] = knowledge_retrieval_adopted_sources
-                knowledge_retrieval_final_adopted_source = self._select_final_knowledge_source(
-                    knowledge_retrieval_results,
-                    raw_issue=str(update.get("raw_issue") or ""),
-                )
-                update["knowledge_retrieval_final_adopted_source"] = knowledge_retrieval_final_adopted_source
 
         update["investigation_followup_loops"] = len(followup_notes)
         update["supervisor_followup_notes"] = followup_notes

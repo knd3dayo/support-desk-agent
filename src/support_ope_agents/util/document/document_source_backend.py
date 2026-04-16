@@ -3,7 +3,9 @@ from __future__ import annotations
 import fnmatch
 import re
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, Sequence
+
+from support_ope_agents.util.deep_agents_extension import FilteredFilesystemBackend
 
 try:
     from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
@@ -19,9 +21,41 @@ class DocumentSourceLike(Protocol):
     path: Path
 
 
+DEFAULT_DOCUMENT_IGNORE_PATTERNS: tuple[str, ...] = (
+    ".git",
+    ".git/**",
+    ".venv",
+    ".venv/**",
+    "**/.git",
+    "**/.git/**",
+    "**/.venv",
+    "**/.venv/**",
+    "__pycache__",
+    "__pycache__/**",
+    "**/__pycache__",
+    "**/__pycache__/**",
+    ".pytest_cache",
+    ".pytest_cache/**",
+    "**/.pytest_cache",
+    "**/.pytest_cache/**",
+    "site-packages",
+    "site-packages/**",
+    "**/site-packages",
+    "**/site-packages/**",
+    "node_modules",
+    "node_modules/**",
+    "**/node_modules",
+    "**/node_modules/**",
+)
+
+
+def default_document_ignore_patterns() -> tuple[str, ...]:
+    return DEFAULT_DOCUMENT_IGNORE_PATTERNS
+
+
 def build_document_source_backend(
     *,
-    document_sources: list[DocumentSourceLike],
+    document_sources: Sequence[DocumentSourceLike],
     route_base: str,
 ) -> Any | None:
     if CompositeBackend is None or FilesystemBackend is None or StateBackend is None:
@@ -40,9 +74,36 @@ def build_document_source_backend(
     return CompositeBackend(default=StateBackend(), routes=routes)
 
 
+def build_filtered_document_source_backend(
+    *,
+    document_sources: Sequence[DocumentSourceLike],
+    route_base: str,
+    ignore_patterns: Sequence[str] | None = None,
+) -> Any | None:
+    if CompositeBackend is None or StateBackend is None:
+        return None
+
+    effective_ignore_patterns = tuple(ignore_patterns or default_document_ignore_patterns())
+    routes: dict[str, Any] = {}
+    normalized_route_base = route_base.strip("/")
+    for source in document_sources:
+        source_path = Path(source.path).expanduser().resolve()
+        route_prefix = f"/{normalized_route_base}/{source.name}/"
+        routes[route_prefix] = FilteredFilesystemBackend(
+            root_dir=str(source_path),
+            virtual_mode=True,
+            ignore_patterns=effective_ignore_patterns,
+        )
+
+    if not routes:
+        return None
+
+    return CompositeBackend(default=StateBackend(), routes=routes)
+
+
 def describe_document_source_backend(
     *,
-    document_sources: list[DocumentSourceLike],
+    document_sources: Sequence[DocumentSourceLike],
     route_base: str,
 ) -> dict[str, object] | None:
     if not document_sources:
