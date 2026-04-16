@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
-from support_ope_agents.agents.intake_agent import IntakeAgent
+from support_ope_agents.agents.production.intake_agent import IntakeAgent
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
-from ..util.document.document_source_backend import build_document_source_backend
+from ...util.document.document_source_backend import build_document_source_backend
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
