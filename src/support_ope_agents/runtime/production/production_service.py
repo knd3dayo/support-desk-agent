@@ -893,47 +893,18 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             return {}
 
         with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
-            graph = ProductionCaseWorkflow().build_case_workflow(
-                checkpointer=checkpointer,
-                intake_executor=self._intake_executor,
-                approval_executor=self._approval_executor,
-                ticket_update_executor=self._ticket_update_executor,
-                supervisor_executor=self._supervisor_executor,
-            )
+            graph = self._build_case_workflow(checkpointer=checkpointer)
             snapshot = graph.get_state({"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}})
             return self._normalize_state_ids(cast(dict[str, object], snapshot.values), trace_id=trace_id)
 
+    def _build_case_workflow(self, *, checkpointer: object | None = None) -> Any:
+        return ProductionCaseWorkflow().build_case_workflow(
+            checkpointer=cast(Any, checkpointer),
+            intake_executor=self._intake_executor,
+            approval_executor=self._approval_executor,
+            ticket_update_executor=self._ticket_update_executor,
+            supervisor_executor=self._supervisor_executor,
+        )
+
     def _migrate_legacy_traces(self) -> None:
         return
-
-    def _invoke_workflow(self, state: CaseState, trace_id: str) -> CaseState:
-        case_id = str(state.get("case_id") or "").strip()
-        workspace_path = str(state.get("workspace_path") or "").strip()
-        workflow_config = {"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}}
-
-        with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
-            graph = ProductionCaseWorkflow().build_case_workflow(
-                checkpointer=checkpointer,
-                intake_executor=self._intake_executor,
-                approval_executor=self._approval_executor,
-                ticket_update_executor=self._ticket_update_executor,
-                supervisor_executor=self._supervisor_executor,
-            )
-            return cast(CaseState, graph.invoke(state, config=cast(Any, workflow_config)))
-
-    def _workflow_checkpointer(self, *, case_id: str, workspace_path: str):
-        if not case_id or not workspace_path:
-            raise ValueError("case_id and workspace_path are required to use the SQLite checkpointer")
-        checkpoint_db_path = self.checkpoint_db_path(case_id, workspace_path)
-        return SqliteSaver.from_conn_string(str(checkpoint_db_path))
-
-    def _normalize_state_ids(self, state: dict[str, object] | CaseState, *, trace_id: str | None = None) -> CaseState:
-        return normalize_state_ids(state, trace_id=trace_id)
-
-    @staticmethod
-    def _normalize_trace_id(value: str) -> str:
-        return normalize_trace_id(value)
-
-    @staticmethod
-    def _new_trace_id() -> str:
-        return new_trace_id()

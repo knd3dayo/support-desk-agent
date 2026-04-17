@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from support_ope_agents.config import load_config
-from support_ope_agents.runtime import RuntimeService, build_runtime_context
+from support_ope_agents.runtime import build_runtime_service
 
 
 class RuntimeModeSelectionTests(unittest.TestCase):
@@ -43,10 +43,9 @@ class RuntimeModeSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             config_path = self._write_config(root=root, mode="sample")
-            context = build_runtime_context(config_path)
-            service = RuntimeService(context)
+            service = build_runtime_service(config_path)
 
-            self.assertEqual(type(context).__module__, "support_ope_agents.runtime.sample.sample_service")
+            self.assertEqual(type(service).__module__, "support_ope_agents.runtime.sample.sample_service")
             self.assertEqual(
                 service.print_workflow_nodes(),
                 [
@@ -57,6 +56,27 @@ class RuntimeModeSelectionTests(unittest.TestCase):
                     "supervisor_subgraph",
                     "ticket_update_subgraph",
                     "wait_for_approval",
+                ],
+            )
+
+    def test_runtime_package_selects_production_runtime_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            config_path = self._write_config(root=root, mode=None)
+            service = build_runtime_service(config_path)
+
+            self.assertEqual(type(service).__module__, "support_ope_agents.runtime.production.production_service")
+            self.assertEqual(
+                service.print_workflow_nodes(),
+                [
+                    "__end__",
+                    "__start__",
+                    "intake_subgraph",
+                    "receive_case",
+                    "supervisor_subgraph",
+                    "ticket_update_subgraph",
+                    "wait_for_approval",
+                    "wait_for_customer_input",
                 ],
             )
 

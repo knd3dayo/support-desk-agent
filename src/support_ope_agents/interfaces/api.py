@@ -25,7 +25,7 @@ import uvicorn
 import yaml
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.runtime import RuntimeService, build_runtime_context
+from support_ope_agents.runtime import build_runtime_service
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.conversation_messages import extract_serialized_messages_from_history
 
@@ -103,8 +103,8 @@ def _should_skip_startup_llm_probe() -> bool:
 
 
 def create_app(config_path: str = "config.yml", cases_root: str | None = None) -> FastAPI:
-    context = build_runtime_context(config_path)
-    service = RuntimeService(context)
+    service = build_runtime_service(config_path)
+    context = service.context
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):

@@ -4,12 +4,12 @@ import argparse
 import json
 from typing import Any
 
-from support_ope_agents.runtime import RuntimeService, build_runtime_context
+from support_ope_agents.runtime import build_runtime_service
 from support_ope_agents.tools.doc_generator import export_tool_docs
 
 
-def _build_service(config_path: str) -> RuntimeService:
-    return RuntimeService(build_runtime_context(config_path))
+def _build_service(config_path: str):
+    return build_runtime_service(config_path)
 
 
 def _cmd_init_case(args: argparse.Namespace) -> int:

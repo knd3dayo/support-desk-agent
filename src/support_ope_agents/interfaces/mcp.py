@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from support_ope_agents.runtime import RuntimeService, build_runtime_context
+from support_ope_agents.runtime import build_runtime_service
 
 from .schemas import ActionRequest, GenerateReportRequest, PlanRequest
 
 
 class SupportOpeMcpAdapter:
     def __init__(self, config_path: str = "config.yml"):
-        self._service = RuntimeService(build_runtime_context(config_path))
+        self._service = build_runtime_service(config_path)
 
     def manifest(self) -> dict[str, Any]:
         return {
