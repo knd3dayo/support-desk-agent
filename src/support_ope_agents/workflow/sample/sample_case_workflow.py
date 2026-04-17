@@ -10,7 +10,7 @@ from support_ope_agents.agents.sample.sample_approval_agent import SampleApprova
 from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
-from support_ope_agents.workflow.state import CaseState
+from support_ope_agents.models.state import CaseState
 
 class CaseWorkflow:
 

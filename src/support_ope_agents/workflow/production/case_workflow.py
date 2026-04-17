@@ -7,13 +7,13 @@ from langgraph.graph import END, START, StateGraph
 
 from support_ope_agents.agents.production.approval_agent import ApprovalAgent
 from support_ope_agents.agents.production.intake_agent import IntakeAgent
-from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.production.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.production.ticket_update_agent import TicketUpdateAgent
 from support_ope_agents.agents.roles import (
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
     SUPERVISOR_AGENT,
 )
-from support_ope_agents.workflow.state import CaseState
+from support_ope_agents.models.state import CaseState
 
 class CaseWorkflow:
 

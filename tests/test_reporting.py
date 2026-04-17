@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria
-from support_ope_agents.workflow.state import CaseState
+from support_ope_agents.models.state import CaseState
 
 
 class ReportingEvaluationTests(unittest.TestCase):

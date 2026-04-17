@@ -11,7 +11,7 @@ from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.registry import ToolRegistry
 from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
-from support_ope_agents.workflow.state import CaseState
+from support_ope_agents.models.state import CaseState
 
 
 class _ReadablePath(Protocol):

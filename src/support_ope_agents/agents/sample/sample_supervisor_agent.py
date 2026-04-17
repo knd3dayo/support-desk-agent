@@ -14,7 +14,7 @@ from support_ope_agents.util.formatting import format_result
 if TYPE_CHECKING:
     from support_ope_agents.agents.sample.sample_back_support_escalation_agent import SampleBackSupportEscalationAgent
     from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
-    from support_ope_agents.workflow.state import CaseState
+    from support_ope_agents.models.state import CaseState
 
 
 @dataclass(slots=True)
@@ -121,7 +121,7 @@ class SampleSupervisorAgent(AbstractAgent):
         return update
 
     def create_node(self) -> Any:
-        from support_ope_agents.workflow.state import CaseState
+        from support_ope_agents.models.state import CaseState
 
         graph = StateGraph(CaseState)
         graph.add_node("supervisor_entry", lambda state: cast(CaseState, dict(cast(dict[str, Any], state))))

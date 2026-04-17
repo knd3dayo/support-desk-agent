@@ -16,7 +16,7 @@ from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessMan
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
-    from support_ope_agents.workflow.state import CaseState, WorkflowKind
+    from support_ope_agents.models.state import CaseState, WorkflowKind
     from support_ope_agents.agents.production.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
     from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
 
@@ -57,7 +57,7 @@ class SupervisorPhaseExecutor(AbstractAgent):
 
     def create_node(self):
         from langgraph.graph import END, START, StateGraph
-        from support_ope_agents.workflow.state import CaseState
+        from support_ope_agents.models.state import CaseState
 
         graph = StateGraph(CaseState)
         graph.add_node(

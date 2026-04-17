@@ -10,7 +10,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import APPROVAL_AGENT, SUPERVISOR_AGENT
 
 if TYPE_CHECKING:
-    from support_ope_agents.workflow.state import CaseState
+    from support_ope_agents.models.state import CaseState
 
 
 @dataclass(slots=True)
@@ -31,7 +31,7 @@ class ApprovalAgent(AbstractAgent):
         return cast("CaseState", update)
 
     def create_node(self):
-        from support_ope_agents.workflow.state import CaseState
+        from support_ope_agents.models.state import CaseState
 
         graph = StateGraph(CaseState)
         graph.add_node("wait_for_approval", self.wait_for_approval)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from support_ope_agents.workflow.state import WorkflowKind
+from support_ope_agents.models.state import WorkflowKind
 
 
 WORKFLOW_LABELS: dict[WorkflowKind, str] = {

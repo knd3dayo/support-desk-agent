@@ -11,7 +11,7 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
 from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
-from support_ope_agents.workflow.state import CaseState
+from support_ope_agents.models.state import CaseState
 
 
 @dataclass(slots=True)

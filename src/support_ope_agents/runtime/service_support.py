@@ -8,7 +8,7 @@ from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.conversation_messages import append_serialized_message
-from support_ope_agents.workflow.state import CaseState
+from support_ope_agents.models.state import CaseState
 
 
 def has_explicit_ticket_id(value: str | None) -> bool:

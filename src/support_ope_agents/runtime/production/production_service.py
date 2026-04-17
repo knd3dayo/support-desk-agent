@@ -14,7 +14,7 @@ from support_ope_agents.agents.production.approval_agent import ApprovalAgent
 from support_ope_agents.agents.production.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
 from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
 from support_ope_agents.agents.production.intake_agent import IntakeAgent
-from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.production.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.agents.production.ticket_update_agent import TicketUpdateAgent
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
 from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
@@ -58,7 +58,7 @@ from support_ope_agents.workflow import (
     route_workflow,
     summarize_plan,
 )
-from support_ope_agents.workflow.state import CaseState, WorkflowKind
+from support_ope_agents.models.state import CaseState, WorkflowKind
 
 
 class ProductionRuntimeContext(AbstractRuntimeContext):

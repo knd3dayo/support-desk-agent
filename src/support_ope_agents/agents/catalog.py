@@ -4,7 +4,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
 from support_ope_agents.agents.production.intake_agent import IntakeAgent
 from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluator
-from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.production.supervisor_agent import SupervisorPhaseExecutor
 
 
 def build_default_agent_definitions() -> list[AgentDefinition]:

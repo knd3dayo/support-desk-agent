@@ -37,8 +37,8 @@ from support_ope_agents.runtime.service_support import sync_case_title_from_stat
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.workflow import WORKFLOW_LABELS, build_plan_steps, route_workflow, summarize_plan
-from support_ope_agents.workflow.state import CaseState
-from support_ope_agents.workflow.state import WorkflowKind
+from support_ope_agents.models.state import CaseState
+from support_ope_agents.models.state import WorkflowKind
 
 
 class AbstractRuntimeContext(ABC):

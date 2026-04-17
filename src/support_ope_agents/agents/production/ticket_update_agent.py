@@ -10,7 +10,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT, TICKET_UPDATE_AGENT
 
 if TYPE_CHECKING:
-    from support_ope_agents.workflow.state import CaseState
+    from support_ope_agents.models.state import CaseState
 
 
 @dataclass(slots=True)
@@ -35,7 +35,7 @@ class TicketUpdateAgent(AbstractAgent):
         return cast("CaseState", update)
 
     def create_node(self):
-        from support_ope_agents.workflow.state import CaseState
+        from support_ope_agents.models.state import CaseState
 
         graph = StateGraph(CaseState)
         graph.add_node("ticket_update_prepare", self.prepare_update)

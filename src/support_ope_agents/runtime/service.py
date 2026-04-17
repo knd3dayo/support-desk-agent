@@ -5,63 +5,76 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+import re
 from typing import Any, cast
+from uuid import uuid4
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from support_ope_agents.agents.catalog import build_default_agent_definitions
-from support_ope_agents.agents.sample.sample_approval_agent import SampleApprovalAgent
-from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
-from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
-from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
-from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
+from support_ope_agents.agents.production.approval_agent import ApprovalAgent
+from support_ope_agents.agents.production.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
+from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
+from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
+from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
+from support_ope_agents.agents.production.intake_agent import IntakeAgent
+from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
+from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
+from support_ope_agents.agents.production.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.production.ticket_update_agent import TicketUpdateAgent
+from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
+from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
 from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
+from support_ope_agents.agents.roles import INVESTIGATE_AGENT
+from support_ope_agents.agents.roles import APPROVAL_AGENT
+from support_ope_agents.agents.roles import INTAKE_AGENT
+from support_ope_agents.agents.roles import SUPERVISOR_AGENT
+from support_ope_agents.agents.roles import TICKET_UPDATE_AGENT
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
-from support_ope_agents.runtime.abstract_service import AbstractRuntimeContext
-from support_ope_agents.runtime.abstract_service import AbstractRuntimeService
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.case_titles import derive_case_title
-from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages
+from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages, deserialize_langchain_messages, extract_serialized_messages_from_history
 from support_ope_agents.runtime.control_catalog import build_control_catalog, build_runtime_audit
-from support_ope_agents.runtime.followup_context import build_conversation_messages
-from support_ope_agents.runtime.followup_context import resolve_action_prompt
-from support_ope_agents.runtime.followup_context import resolve_saved_conversation_messages
 from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.runtime.service_support import append_chat_message
-from support_ope_agents.runtime.service_support import backfill_case_title
-from support_ope_agents.runtime.service_support import build_assistant_history_content
-from support_ope_agents.runtime.service_support import has_explicit_ticket_id
-from support_ope_agents.runtime.service_support import new_trace_id
-from support_ope_agents.runtime.service_support import normalize_state_ids
-from support_ope_agents.runtime.service_support import normalize_trace_id
-from support_ope_agents.runtime.service_support import persist_case_title
-from support_ope_agents.runtime.service_support import resolve_ticket_lookup_enabled
-from support_ope_agents.runtime.service_support import sync_case_title_from_state
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
 from support_ope_agents.workflow import (
+    ProductionCaseWorkflow,
     WORKFLOW_LABELS,
     build_plan_steps,
     route_workflow,
     summarize_plan,
 )
-from support_ope_agents.workflow.sample.sample_case_workflow import CaseWorkflow as SampleCaseWorkflow
 from support_ope_agents.models.state import CaseState, WorkflowKind
 
 
-class SampleRuntimeContext(AbstractRuntimeContext):
-    pass
+class RuntimeContext:
+    def __init__(
+        self,
+        config: AppConfig,
+        memory_store: CaseMemoryStore,
+        runtime_harness_manager: RuntimeHarnessManager,
+        instruction_loader: InstructionLoader,
+        tool_registry: ToolRegistry,
+        case_id_resolver_service: CaseIdResolverService,
+    ):
+        self.config = config
+        self.memory_store = memory_store
+        self.runtime_harness_manager = runtime_harness_manager
+        self.instruction_loader = instruction_loader
+        self.tool_registry = tool_registry
+        self.case_id_resolver_service = case_id_resolver_service
 
 
-def build_runtime_context(config_path: str) -> SampleRuntimeContext:
+def build_runtime_context(config_path: str) -> RuntimeContext:
     config = load_config(config_path)
     memory_store = CaseMemoryStore(config)
-    runtime_harness_manager = RuntimeHarnessManager(config)
+    runtime_harness_manager = RuntimeHarnessManager(config=config)
     instruction_loader = InstructionLoader(config, memory_store, runtime_harness_manager)
     mcp_override_resolver = (
         McpToolOverrideResolver.from_config(config)
@@ -69,7 +82,7 @@ def build_runtime_context(config_path: str) -> SampleRuntimeContext:
         else None
     )
     tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
-    return SampleRuntimeContext(
+    return RuntimeContext(
         config,
         memory_store,
         runtime_harness_manager,
@@ -79,18 +92,158 @@ def build_runtime_context(config_path: str) -> SampleRuntimeContext:
     )
 
 
-class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
-    def __init__(self, context: SampleRuntimeContext):
-        super().__init__(context)
+class RuntimeService:
+    def __init__(self, context: RuntimeContext):
+        self._context = context
         self._migrate_legacy_traces()
-        self._intake_executor = SampleIntakeAgent(config=context.config)
-        self._approval_executor = SampleApprovalAgent()
-        self._ticket_update_executor = SampleTicketUpdateAgent()
-        self._investigate_executor = SampleInvestigateAgent(config=context.config)
-        self._supervisor_executor = SampleSupervisorAgent(
-            investigate_executor=self._investigate_executor,
-            back_support_escalation_executor=None,
+        intake_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INTAKE_AGENT)}
+        back_support_escalation_tools = {
+            tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)
+        }
+        back_support_inquiry_writer_tools = {
+            tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_INQUIRY_WRITER_AGENT)
+        }
+        investigate_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INVESTIGATE_AGENT)}
+        approval_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(APPROVAL_AGENT)}
+        supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
+        ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
+        self._intake_executor = IntakeAgent(
+            config=context.config,
+            pii_mask_tool=intake_tools["pii_mask"],
+            external_ticket_tool=intake_tools["external_ticket"],
+            internal_ticket_tool=intake_tools["internal_ticket"],
+            classify_ticket_tool=intake_tools["classify_ticket"],
+            write_shared_memory_tool=intake_tools["write_shared_memory"],
+            write_working_memory_tool=intake_tools.get("write_working_memory"),
+            runtime_harness_manager=context.runtime_harness_manager,
         )
+        self._approval_executor = ApprovalAgent(
+            record_approval_decision_tool=approval_tools["record_approval_decision"],
+        )
+        self._ticket_update_executor = TicketUpdateAgent(
+            prepare_ticket_update_tool=ticket_update_tools["prepare_ticket_update"],
+            zendesk_reply_tool=ticket_update_tools["zendesk_reply"],
+            redmine_update_tool=ticket_update_tools["redmine_update"],
+        )
+        self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
+            detect_log_format_tool=investigate_tools["detect_log_format"],
+            write_working_memory_tool=investigate_tools["write_working_memory"],
+        )
+        self._knowledge_retriever_executor = KnowledgeRetrieverPhaseExecutor(
+            external_ticket_tool=investigate_tools["external_ticket"],
+            internal_ticket_tool=investigate_tools["internal_ticket"],
+            config=context.config,
+            document_sources=list(context.config.agents.InvestigateAgent.document_sources),
+            write_shared_memory_tool=investigate_tools.get("write_shared_memory"),
+            write_working_memory_tool=investigate_tools["write_working_memory"],
+            constraint_mode=context.runtime_harness_manager.resolve(INVESTIGATE_AGENT),
+            highlight_max_chars=context.runtime_harness_manager.get_optional_int_policy_value(
+                "knowledge.highlight_max_chars",
+                role=INVESTIGATE_AGENT,
+            ),
+            search_strategy=context.config.agents.InvestigateAgent.search_strategy,
+            result_mode=context.config.agents.InvestigateAgent.result_mode,
+            backend_read_char_limit=context.config.agents.InvestigateAgent.backend_read_char_limit,
+            max_evidence_count=context.config.agents.InvestigateAgent.max_evidence_count,
+            candidate_path_limit=context.config.agents.InvestigateAgent.candidate_path_limit,
+            persist_raw_search_snapshot=context.config.agents.InvestigateAgent.persist_raw_search_snapshot,
+        )
+        self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
+            read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
+            write_shared_memory_tool=back_support_escalation_tools["write_shared_memory"],
+        )
+        self._back_support_inquiry_writer_executor = BackSupportInquiryWriterPhaseExecutor(
+            write_shared_memory_tool=back_support_inquiry_writer_tools["write_shared_memory"],
+            write_draft_tool=back_support_inquiry_writer_tools["write_draft"],
+        )
+        self._draft_writer_executor = DraftWriterPhaseExecutor(
+            config=context.config,
+            write_draft_tool=investigate_tools.get("write_draft") or back_support_inquiry_writer_tools["write_draft"],
+            runtime_harness_manager=context.runtime_harness_manager,
+        )
+        self._investigate_executor = InvestigateAgent(
+            read_shared_memory_tool=investigate_tools.get("read_shared_memory") or supervisor_tools.get("read_shared_memory"),
+            write_shared_memory_tool=investigate_tools.get("write_shared_memory") or supervisor_tools.get("write_shared_memory"),
+            log_analyzer_executor=self._log_analyzer_executor,
+            knowledge_retriever_executor=self._knowledge_retriever_executor,
+            draft_writer_executor=self._draft_writer_executor,
+        )
+        self._supervisor_executor = SupervisorPhaseExecutor(
+            supervisor_tools["read_shared_memory"],
+            supervisor_tools["write_shared_memory"],
+            self._investigate_executor,
+            self._draft_writer_executor,
+            self._log_analyzer_executor,
+            self._knowledge_retriever_executor,
+            self._back_support_escalation_executor,
+            self._back_support_inquiry_writer_executor,
+            context.config.agents.BackSupportEscalationAgent.escalation,
+            3,
+            context.runtime_harness_manager.resolve(SUPERVISOR_AGENT),
+            context.runtime_harness_manager.get_int_policy_value(
+                "supervisor.max_investigation_loops",
+                role=SUPERVISOR_AGENT,
+                default=context.config.agents.SuperVisorAgent.max_investigation_loops,
+            ),
+            context.runtime_harness_manager.get_optional_int_policy_value(
+                "supervisor.review_excerpt_max_chars",
+                role=SUPERVISOR_AGENT,
+            ),
+        )
+
+    @property
+    def context(self) -> RuntimeContext:
+        return self._context
+
+    def resolve_case_id(
+        self,
+        *,
+        prompt: str | None = None,
+        case_id: str | None = None,
+        workspace_path: str | None = None,
+    ) -> str:
+        return self._context.case_id_resolver_service.resolve(
+            prompt or "",
+            explicit_case_id=case_id,
+            workspace_path=workspace_path,
+        )
+
+    @staticmethod
+    def _coerce_workflow_kind(value: object) -> WorkflowKind:
+        normalized = str(value or "").strip()
+        if normalized in WORKFLOW_LABELS:
+            return cast(WorkflowKind, normalized)
+        return "ambiguous_case"
+
+    def initialize_case(self, case_id: str, workspace_path: str) -> Path:
+        case_paths = self._context.memory_store.initialize_case(case_id, workspace_path=workspace_path)
+        for role in DEFAULT_AGENT_ROLES:
+            self._context.memory_store.ensure_agent_working_memory(case_id, role, workspace_path=workspace_path)
+        return case_paths.root
+
+    @staticmethod
+    def _has_explicit_ticket_id(value: str | None) -> bool:
+        return bool(value and value.strip())
+
+    def _resolve_ticket_lookup_enabled(
+        self,
+        *,
+        explicit_ticket_id: str | None,
+        saved_ticket_id: object,
+        saved_lookup_enabled: object,
+        ticket_kind: str,
+    ) -> bool:
+        if self._has_explicit_ticket_id(explicit_ticket_id):
+            return True
+        if isinstance(saved_lookup_enabled, bool):
+            return saved_lookup_enabled
+
+        normalized_saved_ticket_id = str(saved_ticket_id or "").strip()
+        if not normalized_saved_ticket_id:
+            return False
+        if ticket_kind == "external":
+            return not self._context.case_id_resolver_service.is_auto_generated_external_ticket_id(normalized_saved_ticket_id)
+        return not self._context.case_id_resolver_service.is_auto_generated_internal_ticket_id(normalized_saved_ticket_id)
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:
         agents: list[dict[str, object]] = []
@@ -173,29 +326,30 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return {"case_id": selected_case_id, "case_path": str(case_path), "case_title": case_title}
 
     def _persist_case_title(self, *, case_id: str, workspace_path: str, case_title: str | None) -> str:
-        return persist_case_title(
-            memory_store=self._context.memory_store,
-            case_id=case_id,
-            workspace_path=workspace_path,
-            case_title=case_title,
-        )
+        normalized = str(case_title or "").strip() or case_id
+        self._context.memory_store.update_case_metadata(workspace_path, case_id=case_id, case_title=normalized)
+        return normalized
 
     def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: CaseState, prompt: str) -> str:
-        return sync_case_title_from_state(
-            memory_store=self._context.memory_store,
-            case_id=case_id,
-            workspace_path=workspace_path,
-            state=state,
-            prompt=prompt,
-        )
+        existing_title = str(self._context.memory_store.read_case_metadata(workspace_path).get("case_title") or "").strip()
+        if existing_title:
+            return existing_title
+        case_title = str(state.get("case_title") or "").strip() or derive_case_title(prompt, fallback=case_id)
+        return self._persist_case_title(case_id=case_id, workspace_path=workspace_path, case_title=case_title)
 
     def _backfill_case_title(self, *, case_id: str, workspace_path: str, history: list[dict[str, object]]) -> str:
-        return backfill_case_title(
-            memory_store=self._context.memory_store,
-            case_id=case_id,
-            workspace_path=workspace_path,
-            history=history,
-        )
+        for message in history:
+            if str(message.get("role") or "") != "user":
+                continue
+            content = str(message.get("content") or "").strip()
+            if not content:
+                continue
+            return self._persist_case_title(
+                case_id=case_id,
+                workspace_path=workspace_path,
+                case_title=derive_case_title(content, fallback=case_id),
+            )
+        return self._persist_case_title(case_id=case_id, workspace_path=workspace_path, case_title=case_id)
 
     def get_chat_history(self, *, case_id: str, workspace_path: str) -> list[dict[str, object]]:
         return self._context.memory_store.read_chat_history(case_id, workspace_path)
@@ -300,15 +454,53 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         trace_id: str | None,
         event: str,
     ) -> None:
-        append_chat_message(
-            memory_store=self._context.memory_store,
+        normalized = content.strip()
+        if not normalized:
+            return
+        self._context.memory_store.append_chat_history(
+            case_id,
+            workspace_path,
+            {
+                "role": role,
+                "content": normalized,
+                "serialized_message": append_serialized_message([], role=role, content=normalized)[0],
+                "trace_id": trace_id,
+                "event": event,
+                "created_at": datetime.now(tz=UTC).isoformat(),
+            },
+        )
+
+    @staticmethod
+    def _is_context_dependent_followup(prompt: str) -> bool:
+        normalized = re.sub(r"\s+", " ", prompt).strip()
+        if not normalized or len(normalized) > 40:
+            return False
+        generic_patterns = (
+            "詳細を教えてください",
+            "詳しく教えてください",
+            "詳しくお願いします",
+            "詳細をお願いします",
+            "もっと詳しく",
+            "詳細は",
+        )
+        if any(pattern in normalized for pattern in generic_patterns):
+            return True
+        return normalized in {"詳細", "詳しく", "詳細に", "詳しく教えて", "続きを教えてください"}
+
+    def _resolve_followup_anchor_issue(self, *, case_id: str, workspace_path: str, saved_state: CaseState) -> str:
+        history = self._resolve_saved_conversation_messages(
             case_id=case_id,
             workspace_path=workspace_path,
-            role=role,
-            content=content,
-            trace_id=trace_id,
-            event=event,
+            saved_state=saved_state,
         )
+        for message in reversed(deserialize_langchain_messages(history)):
+            if message.type != "human":
+                continue
+            content = str(getattr(message, "text", message.content)).strip()
+            if not content or self._is_context_dependent_followup(content):
+                continue
+            return content
+        return str(saved_state.get("raw_issue") or "").strip()
 
     def _resolve_saved_conversation_messages(
         self,
@@ -317,10 +509,24 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         workspace_path: str,
         saved_state: CaseState,
     ) -> list[dict[str, object]]:
-        return resolve_saved_conversation_messages(
-            state_messages=saved_state.get("conversation_messages"),
-            history=self.get_chat_history(case_id=case_id, workspace_path=workspace_path),
-        )
+        state_messages = saved_state.get("conversation_messages")
+        if isinstance(state_messages, list) and state_messages:
+            return coerce_serialized_conversation_messages(state_messages)
+        return extract_serialized_messages_from_history(self.get_chat_history(case_id=case_id, workspace_path=workspace_path))
+
+    def _resolve_followup_anchor_from_messages(self, messages: list[dict[str, object]], current_prompt: str) -> str:
+        for message in reversed(deserialize_langchain_messages(messages)):
+            if message.type != "human":
+                continue
+            content = str(getattr(message, "text", message.content)).strip()
+            if not content:
+                continue
+            if content == current_prompt and self._is_context_dependent_followup(content):
+                continue
+            if self._is_context_dependent_followup(content):
+                continue
+            return content
+        return ""
 
     def _build_conversation_messages(
         self,
@@ -331,16 +537,16 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         prompt: str,
         conversation_messages: list[dict[str, object]] | None = None,
     ) -> list[dict[str, object]]:
+        request_messages = coerce_serialized_conversation_messages(conversation_messages)
+        if request_messages:
+            return append_serialized_message(request_messages, role="user", content=prompt)
+
         saved_messages = self._resolve_saved_conversation_messages(
             case_id=case_id,
             workspace_path=workspace_path,
             saved_state=saved_state,
         )
-        return build_conversation_messages(
-            prompt=prompt,
-            request_messages=conversation_messages,
-            saved_messages=saved_messages,
-        )
+        return append_serialized_message(saved_messages, role="user", content=prompt)
 
     def _resolve_action_prompt(
         self,
@@ -351,21 +557,36 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         saved_state: CaseState,
         conversation_messages: list[dict[str, object]] | None = None,
     ) -> str:
-        saved_messages = self._resolve_saved_conversation_messages(
-            case_id=case_id,
-            workspace_path=workspace_path,
-            saved_state=saved_state,
-        )
-        return resolve_action_prompt(
-            prompt=prompt,
-            request_messages=conversation_messages,
-            saved_messages=saved_messages,
-            fallback_raw_issue=saved_state.get("raw_issue"),
-        )
+        normalized_prompt = prompt.strip()
+        if not self._is_context_dependent_followup(normalized_prompt):
+            return normalized_prompt
+
+        request_messages = coerce_serialized_conversation_messages(conversation_messages)
+        anchor_issue = self._resolve_followup_anchor_from_messages(request_messages, normalized_prompt)
+        if not anchor_issue:
+            anchor_issue = self._resolve_followup_anchor_issue(
+                case_id=case_id,
+                workspace_path=workspace_path,
+                saved_state=saved_state,
+            )
+        if not anchor_issue or anchor_issue == normalized_prompt:
+            return normalized_prompt
+        return f"{anchor_issue}\n\n[Follow-up request]\n{normalized_prompt}"
 
     @staticmethod
     def _build_assistant_history_content(result: dict[str, object]) -> str:
-        return build_assistant_history_content(result)
+        state = cast(dict[str, object], result.get("state") or {})
+        candidates = [
+            str(state.get("customer_response_draft") or "").strip(),
+            str(state.get("draft_response") or "").strip(),
+            str(state.get("next_action") or "").strip(),
+            str(result.get("plan_summary") or "").strip(),
+        ]
+        for candidate in candidates:
+            if candidate:
+                return candidate
+        status = str(state.get("status") or "").strip()
+        return f"Workflow status: {status}" if status else "Workflow completed."
 
     def plan(
         self,
@@ -386,8 +607,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             explicit_ticket_id=internal_ticket_id,
             trace_id=trace_id,
         )
-        external_ticket_lookup_enabled = has_explicit_ticket_id(external_ticket_id)
-        internal_ticket_lookup_enabled = has_explicit_ticket_id(internal_ticket_id)
+        external_ticket_lookup_enabled = self._has_explicit_ticket_id(external_ticket_id)
+        internal_ticket_lookup_enabled = self._has_explicit_ticket_id(internal_ticket_id)
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
 
         workflow_kind = route_workflow(prompt)
@@ -711,7 +932,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return response
 
     def print_workflow_nodes(self) -> list[str]:
-        graph = SampleCaseWorkflow().build_case_workflow(
+        graph = ProductionCaseWorkflow().build_case_workflow(
             intake_executor=self._intake_executor,
             approval_executor=self._approval_executor,
             ticket_update_executor=self._ticket_update_executor,
@@ -839,18 +1060,59 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             return {}
 
         with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
-            graph = self._build_case_workflow(checkpointer=checkpointer)
+            graph = ProductionCaseWorkflow().build_case_workflow(
+                checkpointer=checkpointer,
+                intake_executor=self._intake_executor,
+                approval_executor=self._approval_executor,
+                ticket_update_executor=self._ticket_update_executor,
+                supervisor_executor=self._supervisor_executor,
+            )
             snapshot = graph.get_state({"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}})
             return self._normalize_state_ids(cast(dict[str, object], snapshot.values), trace_id=trace_id)
 
-    def _build_case_workflow(self, *, checkpointer: object | None = None) -> Any:
-        return SampleCaseWorkflow().build_case_workflow(
-            checkpointer=cast(Any, checkpointer),
-            intake_executor=self._intake_executor,
-            approval_executor=self._approval_executor,
-            ticket_update_executor=self._ticket_update_executor,
-            supervisor_executor=self._supervisor_executor,
-        )
-
     def _migrate_legacy_traces(self) -> None:
         return
+
+    def _invoke_workflow(self, state: CaseState, trace_id: str) -> CaseState:
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        workflow_config = {"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}}
+
+        with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
+            graph = ProductionCaseWorkflow().build_case_workflow(
+                checkpointer=checkpointer,
+                intake_executor=self._intake_executor,
+                approval_executor=self._approval_executor,
+                ticket_update_executor=self._ticket_update_executor,
+                supervisor_executor=self._supervisor_executor,
+            )
+            return cast(CaseState, graph.invoke(state, config=cast(Any, workflow_config)))
+
+    def _workflow_checkpointer(self, *, case_id: str, workspace_path: str):
+        if not case_id or not workspace_path:
+            raise ValueError("case_id and workspace_path are required to use the SQLite checkpointer")
+        checkpoint_db_path = self.checkpoint_db_path(case_id, workspace_path)
+        return SqliteSaver.from_conn_string(str(checkpoint_db_path))
+
+    def _normalize_state_ids(self, state: dict[str, object] | CaseState, *, trace_id: str | None = None) -> CaseState:
+        normalized_trace_id = self._normalize_trace_id(
+            str(trace_id or state.get("trace_id") or state.get("session_id") or self._new_trace_id())
+        )
+        normalized_state = cast(CaseState, dict(state))
+        normalized_state.pop("session_id", None)
+        normalized_state["trace_id"] = normalized_trace_id
+        normalized_state["thread_id"] = normalized_trace_id
+        normalized_state["workflow_run_id"] = normalized_trace_id
+        return normalized_state
+
+    @staticmethod
+    def _normalize_trace_id(value: str) -> str:
+        if value.startswith("SESSION-"):
+            return f"TRACE-{value.removeprefix('SESSION-')}"
+        if value.startswith("TRACE-"):
+            return value
+        return f"TRACE-{value}"
+
+    @staticmethod
+    def _new_trace_id() -> str:
+        return f"TRACE-{uuid4().hex}"

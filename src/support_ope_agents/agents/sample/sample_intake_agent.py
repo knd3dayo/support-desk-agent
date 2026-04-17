@@ -15,7 +15,7 @@ from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
-from support_ope_agents.workflow.state import CaseState
+from support_ope_agents.models.state import CaseState
 
 
 class SampleIntakeClassification(BaseModel):

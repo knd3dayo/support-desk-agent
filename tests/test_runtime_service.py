@@ -44,7 +44,7 @@ from support_ope_agents.tools.default_write_draft import build_default_write_dra
 from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
 from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
 from support_ope_agents.tools.registry import ToolSpec
-from support_ope_agents.workflow.state import CaseState
+from support_ope_agents.models.state import CaseState
 
 
 def _fake_objective_evaluation_result() -> ObjectiveEvaluatorStructuredResult:

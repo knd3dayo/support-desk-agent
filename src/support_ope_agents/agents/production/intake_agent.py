@@ -24,7 +24,7 @@ from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPa
 # 問い合わせ内容のPIIマスキング、チケット情報の取得、分類と緊急度判定、品質ゲートによる検証、
 # 状態の最終化などの機能を提供します。
 if TYPE_CHECKING:
-    from support_ope_agents.workflow.state import CaseState
+    from support_ope_agents.models.state import CaseState
 
 
 @dataclass(slots=True)
@@ -655,7 +655,7 @@ class IntakeAgent(AbstractAgent):
         return cast("CaseState", update)
 
     def create_node(self):
-        from support_ope_agents.workflow.state import CaseState
+        from support_ope_agents.models.state import CaseState
 
         graph = StateGraph(CaseState)
         graph.add_node("intake_prepare", lambda state: cast(CaseState, self.prepare_state(cast(CaseState, state))))
@@ -674,7 +674,7 @@ class IntakeAgent(AbstractAgent):
         return graph.compile()
 
     def create_wait_node(self):
-        from support_ope_agents.workflow.state import CaseState
+        from support_ope_agents.models.state import CaseState
 
         graph = StateGraph(CaseState)
         graph.add_node("wait_for_customer_input", self.wait_for_customer_input)

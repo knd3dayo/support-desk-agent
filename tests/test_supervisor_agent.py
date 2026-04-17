@@ -9,7 +9,7 @@ from pathlib import Path
 from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
 from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
 from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
-from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
+from support_ope_agents.agents.production.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool

@@ -15,7 +15,7 @@ from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
-    from support_ope_agents.workflow.state import CaseState
+    from support_ope_agents.models.state import CaseState
 
 
 @dataclass(slots=True)
@@ -104,7 +104,7 @@ class BackSupportEscalationPhaseExecutor(AbstractAgent):
         }
 
     def create_node(self):
-        from support_ope_agents.workflow.state import CaseState
+        from support_ope_agents.models.state import CaseState
 
         graph = StateGraph(CaseState)
         graph.add_node(
