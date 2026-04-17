@@ -1,4 +1,6 @@
 support_ope_agents:
+  # このファイルは sample 実装をこの repository 単体で試すための実行用 config です。
+  # 利用時は config.yml としてコピーして使う想定です。
   llm:
     provider: openai
     model: poc-chat-model
@@ -10,6 +12,9 @@ support_ope_agents:
 
   tools:
     logical_tools:
+      search_documents:
+        enabled: true
+        provider: builtin
       run_python_analysis:
         enabled: true
         provider: builtin
@@ -65,15 +70,15 @@ support_ope_agents:
       search_strategy: hybrid
       result_mode: relaxed
       document_sources:
-        - name: ai-platform-poc
-          description: ai-platform-poc の技術検証資料と設計資料
-          path: /home/user/source/repos/ai-platform-poc
-        - name: ai-chat-util
-          description: ai-chat-util のソースコードと関連実装
-          path: /home/user/source/repos/ai-chat-util
-        - name: langchain-docs
-          description: LangChain関連のローカルドキュメント
-          path: /home/user/oss/langchain-ai
+        - name: support-ope-agents-docs
+          description: support-ope-agents の設計資料と運用ドキュメント
+          path: /home/user/source/repos/support-ope-agents/docs
+        - name: ai-platform-poc-sample
+          description: ai-platform-poc sample の README と設定例
+          path: /home/user/source/repos/support-ope-agents/samples/ai-platform-poc
+        - name: ai-platform-poc-workspace-template
+          description: sample workspace の証跡例と調査素材
+          path: /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/workspace-template
     BackSupportEscalationAgent:
       enabled: true
       auto_compress: true

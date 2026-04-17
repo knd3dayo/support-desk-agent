@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Literal, Mapping, TypedDict
 
 from support_ope_agents.agents.roles import (
@@ -48,10 +47,7 @@ class RuntimePolicyImpact(TypedDict):
     observable_output: str
 
 
-@dataclass(slots=True)
 class RuntimeHarnessManager:
-    config: AppConfig
-
     _WORKSPACE_PREVIEW_MAX_CHARS = 16000
     _CONTROL_CATALOG_INSTRUCTION_EXCERPT_MAX_CHARS = 160
     _KNOWLEDGE_HIGHLIGHT_MAX_CHARS: int | None = None
@@ -59,6 +55,9 @@ class RuntimeHarnessManager:
     _DRAFT_FEATURE_BULLET_MAX_ITEMS = 5
     _DRAFT_EXCEPTION_NAME_MAX_ITEMS = 3
     _SUPERVISOR_REVIEW_EXCERPT_MAX_CHARS: int | None = None
+
+    def __init__(self, config: AppConfig):
+        self.config = config
 
     @staticmethod
     def _coerce_int(value: object, default: int = 0) -> int:

@@ -3,16 +3,40 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-CONFIG_PATH="${SCRIPT_DIR}/config.yml"
+DEFAULT_CONFIG_PATH="${SCRIPT_DIR}/config.yml"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 MCP_MANIFEST_PATH="${MCP_MANIFEST_PATH:-}"
 WORKSPACE_ROOT_ARG=""
+CONFIG_ARG=""
 
 usage() {
-  echo "Usage: $0 --workspace-root <dir>" >&2
-  echo "   or: SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT=<dir> $0" >&2
-  echo "   or: WORKSPACE_ROOT=<dir> $0" >&2
+  echo "Usage: $0 --workspace-root <dir> [--config <path>]" >&2
+  echo "   or: SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT=<dir> SUPPORT_OPE_SAMPLE_CONFIG=<path> $0" >&2
+  echo "   or: WORKSPACE_ROOT=<dir> SUPPORT_OPE_SAMPLE_CONFIG=<path> $0" >&2
+}
+
+resolve_config_path() {
+  local raw_value="$1"
+  if [[ -z "${raw_value}" ]]; then
+    echo "${DEFAULT_CONFIG_PATH}"
+    return 0
+  fi
+
+  case "${raw_value}" in
+    sample)
+      echo "${SCRIPT_DIR}/config-sample.yml"
+      ;;
+    production|prod)
+      echo "${SCRIPT_DIR}/config-prodction.yml"
+      ;;
+    config.yml|config-sample.yml|config-prodction.yml)
+      echo "${SCRIPT_DIR}/${raw_value}"
+      ;;
+    *)
+      echo "${raw_value}"
+      ;;
+  esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -26,6 +50,15 @@ while [[ $# -gt 0 ]]; do
       WORKSPACE_ROOT_ARG="$2"
       shift 2
       ;;
+    --config)
+      if [[ $# -lt 2 ]]; then
+        echo "--config には設定ファイルを指定してください。" >&2
+        usage
+        exit 1
+      fi
+      CONFIG_ARG="$2"
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -37,6 +70,13 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+RAW_CONFIG_PATH="${CONFIG_ARG:-${SUPPORT_OPE_SAMPLE_CONFIG:-}}"
+CONFIG_PATH="$(resolve_config_path "${RAW_CONFIG_PATH}")"
+if [[ ! -f "${CONFIG_PATH}" ]]; then
+  echo "設定ファイルが見つかりません: ${CONFIG_PATH}" >&2
+  exit 1
+fi
 
 RAW_WORKSPACE_ROOT="${WORKSPACE_ROOT_ARG:-${SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT:-${WORKSPACE_ROOT:-}}}"
 if [[ -z "${RAW_WORKSPACE_ROOT}" ]]; then
