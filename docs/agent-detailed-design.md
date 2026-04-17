@@ -6,7 +6,7 @@
 
 - 共通事項: [docs/agents/common.md](/home/user/source/repos/support-ope-agents/docs/agents/common.md)
 - SuperVisorAgent: [docs/agents/supervisor-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/supervisor-agent.md)
-- ObjectiveEvaluationAgent: [docs/agents/objective-evaluation-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/objective-evaluation-agent.md)
+- ObjectiveEvaluator: [docs/agents/objective-evaluator.md](/home/user/source/repos/support-ope-agents/docs/agents/objective-evaluator.md)
 - IntakeAgent: [docs/agents/intake-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/intake-agent.md)
 - InvestigateAgent: [docs/agents/investigate-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/investigate-agent.md)
 - BackSupportEscalationAgent: [docs/agents/back-support-escalation-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/back-support-escalation-agent.md)

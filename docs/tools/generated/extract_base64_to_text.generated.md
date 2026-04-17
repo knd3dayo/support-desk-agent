@@ -7,7 +7,7 @@
 
 ## 利用エージェント
 - SuperVisorAgent: provider=builtin, target=extract_base64_to_text, status=implemented, override=allowed
-- ObjectiveEvaluationAgent: provider=builtin, target=extract_base64_to_text, status=implemented, override=allowed
+- ObjectiveEvaluator: provider=builtin, target=extract_base64_to_text, status=implemented, override=allowed
 - IntakeAgent: provider=builtin, target=extract_base64_to_text, status=implemented, override=allowed
 - InvestigateAgent: provider=builtin, target=extract_base64_to_text, status=implemented, override=allowed
 - BackSupportEscalationAgent: provider=builtin, target=extract_base64_to_text, status=implemented, override=allowed

@@ -5,8 +5,8 @@ from pathlib import Path
 import re
 from typing import Any, cast
 
-from support_ope_agents.agents.objective_evaluation_agent import ObjectiveEvaluationAgent
-from support_ope_agents.agents.roles import OBJECTIVE_EVALUATION_AGENT
+from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluator
+from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
@@ -96,7 +96,7 @@ def build_support_improvement_report(
     summary_text = memory_store.read_text(case_paths.shared_summary)
     artifact_paths = [path.relative_to(case_paths.root).as_posix() for path in memory_store.list_artifacts(case_id, workspace_path)]
 
-    evaluator_instruction = instruction_loader.load(case_id, OBJECTIVE_EVALUATION_AGENT)
+    evaluator_instruction = instruction_loader.load(case_id, OBJECTIVE_EVALUATOR)
     shared_memory = {
         "context": context_text,
         "progress": progress_text,
@@ -108,7 +108,7 @@ def build_support_improvement_report(
     memory_findings = _audit_memory_consistency(state, shared_memory, agent_memories)
     normalized_checklist = _normalize_checklist(checklist or [])
     instruction_criteria = _extract_instruction_criteria(evaluator_instruction, normalized_checklist)
-    structured_evaluation = ObjectiveEvaluationAgent(config=config, instruction_text=evaluator_instruction).evaluate(
+    structured_evaluation = ObjectiveEvaluator(config=config, instruction_text=evaluator_instruction).evaluate(
         evidence=_build_objective_evaluation_evidence(
             case_id=case_id,
             trace_id=trace_id,
@@ -127,7 +127,7 @@ def build_support_improvement_report(
         shared_memory=shared_memory,
         memory_findings=memory_findings,
         structured_evaluation=structured_evaluation,
-        pass_score=config.agents.ObjectiveEvaluationAgent.pass_score,
+        pass_score=config.agents.ObjectiveEvaluator.pass_score,
         checklist=normalized_checklist,
         checklist_assessments=_assess_checklist_items(
             normalized_checklist,
@@ -196,12 +196,12 @@ def build_support_improvement_report(
         *runtime_policy_effects_section,
         "",
         "## Evaluator 評価観点一覧",
-        "ObjectiveEvaluationAgent が instruction に基づいて出力した評価観点一覧と、その結果です。",
+        "ObjectiveEvaluator が instruction に基づいて出力した評価観点一覧と、その結果です。",
         *_render_criterion_evaluations(evaluation.criterion_evaluations),
         "",
         "## 総合評価",
         "### 総評",
-        "ケース全体を通した自動対応品質の総括です。ObjectiveEvaluationAgent が instruction と structured output で判定しています。",
+        "ケース全体を通した自動対応品質の総括です。ObjectiveEvaluator が instruction と structured output で判定しています。",
         evaluation.overall_summary,
         "",
         "### 要改善点",
@@ -556,7 +556,7 @@ def _build_objective_evaluation(
         memory_findings=memory_findings,
     )
     return ObjectiveEvaluation(
-        evaluator_name=OBJECTIVE_EVALUATION_AGENT,
+        evaluator_name=OBJECTIVE_EVALUATOR,
         instruction_excerpt=_instruction_excerpt(instruction_text),
         sequence_diagram=_build_sequence_diagram(state, runtime_audit=runtime_audit, control_catalog=control_catalog),
         subgraph_sequence_diagrams=_build_subgraph_sequence_diagrams(

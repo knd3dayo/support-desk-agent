@@ -195,7 +195,7 @@ class BackSupportEscalationAgentSettings(AgentSettings):
     escalation: EscalationSettings = Field(default_factory=EscalationSettings)
 
 
-class ObjectiveEvaluationAgentSettings(AgentSettings):
+class ObjectiveEvaluatorSettings(AgentSettings):
     pass_score: int = 80
     missing_shared_memory_penalty: int = 12
     missing_agent_memory_penalty: int = 8
@@ -207,7 +207,7 @@ class ObjectiveEvaluationAgentSettings(AgentSettings):
 class AgentCatalogSettings(StrictConfigModel):
     default_constraint_mode: ConstraintMode | None = None
     SuperVisorAgent: SupervisorAgentSettings = Field(default_factory=SupervisorAgentSettings)
-    ObjectiveEvaluationAgent: ObjectiveEvaluationAgentSettings = Field(default_factory=ObjectiveEvaluationAgentSettings)
+    ObjectiveEvaluator: ObjectiveEvaluatorSettings = Field(default_factory=ObjectiveEvaluatorSettings)
     IntakeAgent: IntakeAgentSettings = Field(default_factory=IntakeAgentSettings)
     InvestigateAgent: InvestigateAgentSettings = Field(default_factory=InvestigateAgentSettings)
     LogAnalyzerAgent: AgentSettings = Field(default_factory=AgentSettings)
@@ -220,7 +220,7 @@ class AgentCatalogSettings(StrictConfigModel):
 
     def get(
         self, role: str
-    ) -> AgentSettings | IntakeAgentSettings | InvestigateAgentSettings | KnowledgeRetrieverAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | ObjectiveEvaluationAgentSettings | None:
+    ) -> AgentSettings | IntakeAgentSettings | InvestigateAgentSettings | KnowledgeRetrieverAgentSettings | SupervisorAgentSettings | BackSupportEscalationAgentSettings | ObjectiveEvaluatorSettings | None:
         return getattr(self, role, None)
 
     @model_validator(mode="after")

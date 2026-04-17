@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, SecretStr
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
-from support_ope_agents.agents.roles import OBJECTIVE_EVALUATION_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
 
 
@@ -28,7 +28,7 @@ class StructuredAgentEvaluation(BaseModel):
     comment: str
 
 
-class ObjectiveEvaluationStructuredResult(BaseModel):
+class ObjectiveEvaluatorStructuredResult(BaseModel):
     criterion_evaluations: list[StructuredCriterionEvaluation]
     agent_evaluations: list[StructuredAgentEvaluation]
     overall_summary: str
@@ -46,22 +46,22 @@ def _get_chat_model(config: AppConfig) -> ChatOpenAI:
 
 
 @dataclass(frozen=True, slots=True)
-class ObjectiveEvaluationAgent:
+class ObjectiveEvaluator:
     config: AppConfig
     instruction_text: str
 
-    name = OBJECTIVE_EVALUATION_AGENT
+    name = OBJECTIVE_EVALUATOR
 
     def evaluate(
         self,
         *,
         evidence: dict[str, Any],
-    ) -> ObjectiveEvaluationStructuredResult:
+    ) -> ObjectiveEvaluatorStructuredResult:
         return self._invoke_structured_evaluation(evidence)
 
-    def _invoke_structured_evaluation(self, evidence: dict[str, Any]) -> ObjectiveEvaluationStructuredResult:
+    def _invoke_structured_evaluation(self, evidence: dict[str, Any]) -> ObjectiveEvaluatorStructuredResult:
         model = _get_chat_model(self.config)
-        structured_model = model.with_structured_output(ObjectiveEvaluationStructuredResult)
+        structured_model = model.with_structured_output(ObjectiveEvaluatorStructuredResult)
         response = structured_model.invoke([
             SystemMessage(content=self.instruction_text.strip()),
             HumanMessage(
@@ -72,18 +72,18 @@ class ObjectiveEvaluationAgent:
                 )
             ),
         ])
-        if isinstance(response, ObjectiveEvaluationStructuredResult):
+        if isinstance(response, ObjectiveEvaluatorStructuredResult):
             return response
         if isinstance(response, dict):
-            return ObjectiveEvaluationStructuredResult.model_validate(response)
+            return ObjectiveEvaluatorStructuredResult.model_validate(response)
         if hasattr(response, "model_dump"):
-            return ObjectiveEvaluationStructuredResult.model_validate(response.model_dump())
-        raise ValueError("ObjectiveEvaluationAgent returned an unsupported structured output payload.")
+            return ObjectiveEvaluatorStructuredResult.model_validate(response.model_dump())
+        raise ValueError("ObjectiveEvaluator returned an unsupported structured output payload.")
 
     @staticmethod
-    def build_objective_evaluation_agent_definition() -> AgentDefinition:
+    def build_objective_evaluator_definition() -> AgentDefinition:
         return AgentDefinition(
-            OBJECTIVE_EVALUATION_AGENT,
+            OBJECTIVE_EVALUATOR,
             "Evaluate support handling objectively for report generation",
             kind="agent",
             parent_role=SUPERVISOR_AGENT,

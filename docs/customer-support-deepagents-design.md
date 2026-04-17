@@ -9,7 +9,7 @@
 
 - 共通事項: [docs/agents/common.md](/home/user/source/repos/support-ope-agents/docs/agents/common.md)
 - SuperVisorAgent: [docs/agents/supervisor-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/supervisor-agent.md)
-- ObjectiveEvaluationAgent: [docs/agents/objective-evaluation-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/objective-evaluation-agent.md)
+- ObjectiveEvaluator: [docs/agents/objective-evaluator.md](/home/user/source/repos/support-ope-agents/docs/agents/objective-evaluator.md)
 - IntakeAgent: [docs/agents/intake-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/intake-agent.md)
 - InvestigateAgent: [docs/agents/investigate-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/investigate-agent.md)
 - BackSupportEscalationAgent: [docs/agents/back-support-escalation-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/back-support-escalation-agent.md)
@@ -24,7 +24,7 @@
 - SuperVisorAgent が investigation、approval、escalation の流れを制御する
 - InvestigateAgent がログ解析、ナレッジ探索、ドラフト作成を一体で実行する
 - BackSupport 系 Agent が通常回答で不足する場合の追加問い合わせを準備する
-- ObjectiveEvaluationAgent が trace、state、memory を突き合わせて改善レポートを生成する
+- ObjectiveEvaluator が trace、state、memory を突き合わせて改善レポートを生成する
 
 ## 4. ケース状態遷移
 

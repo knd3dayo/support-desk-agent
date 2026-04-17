@@ -7,7 +7,7 @@ Deep Agents と LangGraph を組み合わせて、カスタマーサポート業
 - 業務プロセス全体は LangGraph のワークフローで制御する
 - スーパーバイザーおよびサブエージェントは各々 DeepAgent として実装する
 - エージェント間の情報共有と進捗共有は、ケース単位の共有メモリファイルで行う
-- 改善レポートは ObjectiveEvaluationAgent が客観基準で評価する
+- 改善レポートは ObjectiveEvaluator が客観基準で評価する
 - 各エージェントは役割別ツールを持ち、コンテキスト逼迫時は圧縮済みサマリへ退避する
 - 指示ファイルを差し替えることで、業務手順の細部を後から拡張できる
 - CLI に加えて API と MCP を追加できる構成を前提にする
@@ -66,7 +66,7 @@ python -m support_ope_agents.cli checkpoint-status --case-id CASE-003 --workspac
 
 改善レポートは明示的に generate-report で作成できるほか、[config.yml](config.yml) の `agents.SuperVisorAgent.auto_generate_report` を true にすると action / resume 実行後に自動生成できます。出力先は `data_paths.report_subdir` で、既定では workspace 配下の `.report/support-improvement-<trace_id>.md` です。
 
-改善レポートの評価主体は `ObjectiveEvaluationAgent` です。レポートには全体シーケンス図に加え、IntakeAgent や Draft Review ループなどのサブグラフ詳細シーケンス、`.memory/shared` と各 agent working memory の情報伝達監査、エージェント別点数が含まれます。評価ルールの閾値や減点値は `agents.ObjectiveEvaluationAgent` で調整できます。
+改善レポートの評価主体は `ObjectiveEvaluator` です。レポートには全体シーケンス図に加え、IntakeAgent や Draft Review ループなどのサブグラフ詳細シーケンス、`.memory/shared` と各 agent working memory の情報伝達監査、エージェント別点数が含まれます。評価ルールの閾値や減点値は `agents.ObjectiveEvaluator` で調整できます。
 
 plan モードでは改善レポートは自動生成しません。plan は実行前の計画結果であり、実際にどの agent が何を呼び、どの調査結果で承認待ちやクローズに到達したかという評価材料が不足するためです。
 

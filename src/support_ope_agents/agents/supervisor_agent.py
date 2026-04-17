@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, cast
 
-from support_ope_agents.agents.intake_agent import IntakeAgent
+from support_ope_agents.agents.production.intake_agent import IntakeAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import EscalationSettings
@@ -16,9 +16,9 @@ from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPa
 
 if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState, WorkflowKind
-    from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
+    from support_ope_agents.agents.production.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
     from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
-    from support_ope_agents.agents.investigate_agent import InvestigateAgent
+    from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
 
 @dataclass(slots=True)
 class SupervisorPhaseExecutor:

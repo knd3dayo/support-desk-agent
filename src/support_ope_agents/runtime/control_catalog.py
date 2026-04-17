@@ -540,7 +540,7 @@ def _control_point(
 def _agent_doc_path(role: str) -> str:
     return {
         "SuperVisorAgent": "docs/agents/supervisor-agent.md",
-        "ObjectiveEvaluationAgent": "docs/agents/objective-evaluation-agent.md",
+        "ObjectiveEvaluator": "docs/agents/objective-evaluator.md",
         "IntakeAgent": "docs/agents/intake-agent.md",
         "InvestigateAgent": "docs/agents/common.md",
         "BackSupportEscalationAgent": "docs/agents/back-support-escalation-agent.md",

@@ -7,7 +7,7 @@
 
 ## 利用エージェント
 - SuperVisorAgent: provider=builtin, target=detect_log_format_and_search, status=implemented, override=allowed
-- ObjectiveEvaluationAgent: provider=builtin, target=detect_log_format_and_search, status=implemented, override=allowed
+- ObjectiveEvaluator: provider=builtin, target=detect_log_format_and_search, status=implemented, override=allowed
 - IntakeAgent: provider=builtin, target=detect_log_format_and_search, status=implemented, override=allowed
 - InvestigateAgent: provider=builtin, target=detect_log_format_and_search, status=implemented, override=allowed
 - BackSupportEscalationAgent: provider=builtin, target=detect_log_format_and_search, status=implemented, override=allowed

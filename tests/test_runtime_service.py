@@ -13,9 +13,9 @@ from unittest.mock import patch
 from langchain_core.messages import AIMessage
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
-from support_ope_agents.agents.objective_evaluation_agent import (
-    ObjectiveEvaluationAgent,
-    ObjectiveEvaluationStructuredResult,
+from support_ope_agents.agents.objective_evaluator import (
+    ObjectiveEvaluator,
+    ObjectiveEvaluatorStructuredResult,
     StructuredAgentEvaluation,
     StructuredCriterionEvaluation,
 )
@@ -28,7 +28,7 @@ from support_ope_agents.agents.roles import (
     INTAKE_AGENT,
     KNOWLEDGE_RETRIEVER_AGENT,
     LOG_ANALYZER_AGENT,
-    OBJECTIVE_EVALUATION_AGENT,
+    OBJECTIVE_EVALUATOR,
     SUPERVISOR_AGENT,
     TICKET_UPDATE_AGENT,
 )
@@ -47,8 +47,8 @@ from support_ope_agents.tools.registry import ToolSpec
 from support_ope_agents.workflow.state import CaseState
 
 
-def _fake_objective_evaluation_result() -> ObjectiveEvaluationStructuredResult:
-    return ObjectiveEvaluationStructuredResult(
+def _fake_objective_evaluation_result() -> ObjectiveEvaluatorStructuredResult:
+    return ObjectiveEvaluatorStructuredResult(
         criterion_evaluations=[
             StructuredCriterionEvaluation(
                 title="質問意図への回答妥当性",
@@ -450,7 +450,7 @@ class _FakeAgentFactory:
     def build_default_definitions() -> list[AgentDefinition]:
         return [
             AgentDefinition(SUPERVISOR_AGENT, ""),
-            AgentDefinition(OBJECTIVE_EVALUATION_AGENT, ""),
+            AgentDefinition(OBJECTIVE_EVALUATOR, ""),
             AgentDefinition(INTAKE_AGENT, ""),
             AgentDefinition(LOG_ANALYZER_AGENT, ""),
             AgentDefinition(KNOWLEDGE_RETRIEVER_AGENT, ""),
@@ -496,7 +496,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self._classify_model_patcher.start()
         self._draft_model_patcher.start()
         self._objective_eval_patcher = patch.object(
-            ObjectiveEvaluationAgent,
+            ObjectiveEvaluator,
             "_invoke_structured_evaluation",
             return_value=_fake_objective_evaluation_result(),
         )
@@ -1043,7 +1043,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("ユーザー指定観点「回答に注意文が含まれているか」を満たしたことが分かる根拠を、回答本文または shared memory に明示的に残してください。", content)
         self.assertIn("### 点数", content)
         self.assertRegex(content, r"\n\d{1,3} / 100\n")
-        self.assertIn("ObjectiveEvaluationAgent", content)
+        self.assertIn("ObjectiveEvaluator", content)
         self.assertIn("## Evaluator 評価観点一覧", content)
         self.assertIn("### 質問意図への回答妥当性", content)
         self.assertIn("### shared memory への情報反映", content)
@@ -1097,7 +1097,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
     def test_initialize_case_creates_objective_evaluator_working_memory(self) -> None:
         self.service.initialize_case("CASE-TEST-017", str(self.workspace_path))
 
-        working_memory = self.workspace_path / ".memory" / "agents" / OBJECTIVE_EVALUATION_AGENT / "working.md"
+        working_memory = self.workspace_path / ".memory" / "agents" / OBJECTIVE_EVALUATOR / "working.md"
         self.assertTrue(working_memory.exists())
 
     def test_objective_evaluator_settings_are_loaded(self) -> None:
@@ -1108,7 +1108,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 "data_paths": {},
                 "interfaces": {},
                 "agents": {
-                    "ObjectiveEvaluationAgent": {
+                    "ObjectiveEvaluator": {
                         "pass_score": 85,
                         "missing_shared_memory_penalty": 20,
                     }
@@ -1116,8 +1116,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(config.agents.ObjectiveEvaluationAgent.pass_score, 85)
-        self.assertEqual(config.agents.ObjectiveEvaluationAgent.missing_shared_memory_penalty, 20)
+        self.assertEqual(config.agents.ObjectiveEvaluator.pass_score, 85)
+        self.assertEqual(config.agents.ObjectiveEvaluator.missing_shared_memory_penalty, 20)
 
     def test_action_does_not_write_legacy_json_state_file(self) -> None:
         result = self.service.action(

@@ -10,9 +10,9 @@ from unittest.mock import patch
 from langchain_core.messages import AIMessage
 from fastapi.testclient import TestClient
 
-from support_ope_agents.agents.objective_evaluation_agent import (
-    ObjectiveEvaluationAgent,
-    ObjectiveEvaluationStructuredResult,
+from support_ope_agents.agents.objective_evaluator import (
+    ObjectiveEvaluator,
+    ObjectiveEvaluatorStructuredResult,
     StructuredAgentEvaluation,
     StructuredCriterionEvaluation,
 )
@@ -20,8 +20,8 @@ from support_ope_agents.interfaces.api import create_app
 from support_ope_agents.runtime.service import RuntimeService
 
 
-def _fake_objective_evaluation_result() -> ObjectiveEvaluationStructuredResult:
-    return ObjectiveEvaluationStructuredResult(
+def _fake_objective_evaluation_result() -> ObjectiveEvaluatorStructuredResult:
+    return ObjectiveEvaluatorStructuredResult(
         criterion_evaluations=[
             StructuredCriterionEvaluation(
                 title="質問意図への回答妥当性",
@@ -57,7 +57,7 @@ class ApiWorkspaceTests(unittest.TestCase):
             return_value=None,
         )
         self._objective_eval_patcher = patch.object(
-            ObjectiveEvaluationAgent,
+            ObjectiveEvaluator,
             "_invoke_structured_evaluation",
             return_value=_fake_objective_evaluation_result(),
         )

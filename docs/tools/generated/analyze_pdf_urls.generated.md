@@ -7,7 +7,7 @@
 
 ## 利用エージェント
 - SuperVisorAgent: provider=builtin, target=analyze_pdf_urls, status=implemented, override=allowed
-- ObjectiveEvaluationAgent: provider=builtin, target=analyze_pdf_urls, status=implemented, override=allowed
+- ObjectiveEvaluator: provider=builtin, target=analyze_pdf_urls, status=implemented, override=allowed
 - IntakeAgent: provider=builtin, target=analyze_pdf_urls, status=implemented, override=allowed
 - InvestigateAgent: provider=builtin, target=analyze_pdf_urls, status=implemented, override=allowed
 - BackSupportEscalationAgent: provider=builtin, target=analyze_pdf_urls, status=implemented, override=allowed
