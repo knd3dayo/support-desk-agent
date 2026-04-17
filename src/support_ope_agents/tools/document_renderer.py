@@ -4,7 +4,7 @@ import json
 from typing import Any
 from typing import cast
 
-from support_ope_agents.tools.shared_memory_payload import SharedMemorySectionPayload
+from support_ope_agents.util.shared_memory_payload import SharedMemorySectionPayload
 
 
 def render_document_payload(payload: Any, *, default_heading_level: int = 1) -> str:

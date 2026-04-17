@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support_ope_agents.agents.intake_agent import IntakeAgent
+from support_ope_agents.agents.production.intake_agent import IntakeAgent
 from support_ope_agents.config.models import AppConfig
 
 

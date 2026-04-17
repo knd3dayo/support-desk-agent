@@ -37,7 +37,7 @@ from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.runtime.service import RuntimeContext, RuntimeService
+from support_ope_agents.runtime.production.production_service import ProductionRuntimeContext, ProductionRuntimeService
 from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
 from support_ope_agents.tools.default_search_documents import build_default_search_documents_tool
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
@@ -503,7 +503,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self._objective_eval_patcher.start()
         self.service = self._build_service(self.config)
 
-    def _build_service(self, config: AppConfig) -> RuntimeService:
+    def _build_service(self, config: AppConfig) -> ProductionRuntimeService:
         memory_store = CaseMemoryStore(config)
         runtime_harness_manager = RuntimeHarnessManager(config)
         context = _FakeRuntimeContext(
@@ -515,7 +515,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             agent_factory=_FakeAgentFactory(),
             case_id_resolver_service=CaseIdResolverService(),
         )
-        return RuntimeService(context)  # type: ignore[arg-type]
+        return ProductionRuntimeService(context)  # type: ignore[arg-type]
 
     def tearDown(self) -> None:
         self._draft_model_patcher.stop()

@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any, cast
 
 from support_ope_agents.config.loader import load_config
+from .abstract_service import AbstractRuntimeContext
 from .case_id_resolver import CaseIdResolverService
-
-if TYPE_CHECKING:
-	from .production.service import RuntimeContext as ProductionRuntimeContext
-	from .sample.sample_service import RuntimeContext as SampleRuntimeContext
-
-	RuntimeContext = ProductionRuntimeContext | SampleRuntimeContext
 
 
 def _resolve_runtime_mode(config_path: str | Path) -> str:
@@ -20,16 +15,16 @@ def _resolve_runtime_mode(config_path: str | Path) -> str:
 def _resolve_runtime_exports(config_path: str | Path):
 	mode = _resolve_runtime_mode(config_path)
 	if mode == "sample":
-		from .sample.sample_service import RuntimeContext, RuntimeService, build_runtime_context
+		from .sample.sample_service import SampleRuntimeContext, SampleRuntimeService, build_runtime_context
 
-		return RuntimeContext, RuntimeService, build_runtime_context
-	from .production.service import RuntimeContext, RuntimeService, build_runtime_context
+		return SampleRuntimeContext, SampleRuntimeService, build_runtime_context
+	from .production.production_service import ProductionRuntimeContext, ProductionRuntimeService, build_runtime_context
 
-	return RuntimeContext, RuntimeService, build_runtime_context
+	return ProductionRuntimeContext, ProductionRuntimeService, build_runtime_context
 
 __all__ = ["CaseIdResolverService", "RuntimeContext", "RuntimeService", "build_runtime_context"]
 
-RuntimeContext = Any
+RuntimeContext = AbstractRuntimeContext
 
 
 def build_runtime_context(config_path: str | Path = "config.yml"):
@@ -38,22 +33,22 @@ def build_runtime_context(config_path: str | Path = "config.yml"):
 
 
 class RuntimeService:
-	def __init__(self, context: Any):
+	def __init__(self, context: AbstractRuntimeContext):
 		module_name = type(context).__module__
 		if module_name.startswith("support_ope_agents.runtime.sample"):
-			from .sample.sample_service import RuntimeService as SampleRuntimeService
+			from .sample.sample_service import SampleRuntimeContext, SampleRuntimeService
 
-			self._impl = SampleRuntimeService(context)
+			self._impl = SampleRuntimeService(cast(SampleRuntimeContext, context))
 			return
 		if module_name.startswith("support_ope_agents.runtime.production"):
-			from .production.service import RuntimeService as ProductionRuntimeService
+			from .production.production_service import ProductionRuntimeContext, ProductionRuntimeService
 
-			self._impl = ProductionRuntimeService(context)
+			self._impl = ProductionRuntimeService(cast(ProductionRuntimeContext, context))
 			return
 		raise TypeError(f"Unsupported runtime context type: {type(context)!r}")
 
 	@property
-	def context(self) -> Any:
+	def context(self) -> AbstractRuntimeContext:
 		return self._impl.context
 
 	def __getattr__(self, name: str) -> Any:

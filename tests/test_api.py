@@ -17,7 +17,7 @@ from support_ope_agents.agents.objective_evaluator import (
     StructuredCriterionEvaluation,
 )
 from support_ope_agents.interfaces.api import create_app
-from support_ope_agents.runtime.service import RuntimeService
+from support_ope_agents.runtime.production.production_service import ProductionRuntimeService
 
 
 def _fake_objective_evaluation_result() -> ObjectiveEvaluatorStructuredResult:
@@ -150,7 +150,7 @@ class ApiWorkspaceTests(unittest.TestCase):
 
     def test_describe_agents_surfaces_backend_failure_details(self) -> None:
         with patch.object(
-            RuntimeService,
+            ProductionRuntimeService,
             "describe_agents",
             side_effect=RuntimeError("DeepAgents agent initialization failed for role 'KnowledgeRetrieverAgent'."),
         ):
@@ -340,7 +340,7 @@ class ApiWorkspaceTests(unittest.TestCase):
 
     def test_action_endpoint_surfaces_backend_failure_details(self) -> None:
         with patch.object(
-            RuntimeService,
+            ProductionRuntimeService,
             "action",
             side_effect=RuntimeError(
                 "LLM-backed policy review failed: JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
