@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
+from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.util.formatting import format_result
 
 if TYPE_CHECKING:
@@ -20,6 +21,10 @@ if TYPE_CHECKING:
 class SampleSupervisorAgent(AbstractAgent):
     investigate_executor: "SampleInvestigateAgent | None" = None
     back_support_escalation_executor: "SampleBackSupportEscalationAgent | None" = None
+
+    @staticmethod
+    def _extract_investigation_summary(result: Any) -> str:
+        return extract_result_output_text(result) or format_result(result)
 
     @staticmethod
     def route_after_investigation(state: dict[str, object]) -> str:
@@ -63,7 +68,7 @@ class SampleSupervisorAgent(AbstractAgent):
             if self.investigate_executor is not None and raw_issue:
                 try:
                     investigation_result = self.investigate_executor.execute(query=raw_issue)
-                    investigation_summary = format_result(investigation_result)
+                    investigation_summary = self._extract_investigation_summary(investigation_result)
                 except Exception:
                     investigation_summary = self._fallback_investigation_summary(raw_issue)
             else:

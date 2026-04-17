@@ -103,3 +103,37 @@ def latest_human_message_text(messages: Sequence[Mapping[str, object]] | None) -
         if content:
             return content
     return ""
+
+
+def extract_message_content(message: object) -> str:
+    content = getattr(message, "content", None)
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+    if isinstance(message, Mapping):
+        dict_content = message.get("content")
+        if isinstance(dict_content, str) and dict_content.strip():
+            return dict_content.strip()
+    return ""
+
+
+def extract_result_output_text(result: object) -> str:
+    output = getattr(result, "output", None)
+    if isinstance(output, str) and output.strip():
+        return output.strip()
+    if isinstance(result, Mapping):
+        dict_output = result.get("output")
+        if isinstance(dict_output, str) and dict_output.strip():
+            return dict_output.strip()
+        dict_messages = result.get("messages")
+        if isinstance(dict_messages, Sequence) and not isinstance(dict_messages, (str, bytes)):
+            for message in reversed(dict_messages):
+                content = extract_message_content(message)
+                if content:
+                    return content
+    attr_messages = getattr(result, "messages", None)
+    if isinstance(attr_messages, Sequence) and not isinstance(attr_messages, (str, bytes)):
+        for message in reversed(attr_messages):
+            content = extract_message_content(message)
+            if content:
+                return content
+    return ""

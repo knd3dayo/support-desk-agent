@@ -9,6 +9,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
@@ -26,6 +27,9 @@ class SampleInvestigateAgent(AbstractAgent):
     """
     config: AppConfig
 
+    def __init__(self, config: AppConfig) -> None:
+        self.config = config
+
     @staticmethod
     def _default_query() -> str:
         return "調査すべき内容をここに記載してください"
@@ -36,6 +40,14 @@ class SampleInvestigateAgent(AbstractAgent):
             あなたはサポートケースの調査担当エージェントです。
             ケースの内容に基づいて、関連するログやドキュメントを調査し、サポート担当者が問題を理解しやすいように要約してください。
             調査の結果、サポート担当者が次に取るべきアクションも提案してください。
+            検索でヒットした箇所は、ヒット行だけで判断せず、必ずその前後10行以上を read_file で確認して文脈を把握してください。
+            grep や検索結果に line 情報が含まれる場合は、その近傍を優先して読んでください。
+            README や Markdown、設定ファイル内にリンク、参照先 path、関連ファイル名が出てきた場合は、そのリンク先や参照先ファイルも追加で調査してください。
+            ただし、README に書かれている外部 path や参照先が現在の backend 内に存在しない場合、その path の内容を読んだ前提で説明してはいけません。
+            backend 外の参照先は「今回の調査 backend からは未到達」とみなし、現在読める backend 内の別ソース、別ファイル、別の一致箇所を探してください。
+            参照先が未到達なら、その README 自体は補助情報にとどめ、対象そのものを直接説明している一次情報が backend 内にあるかを再探索してください。
+            特に「〜について教えて」のような説明要求では、サンプル説明文ではなく、対象そのものを説明している一次情報を優先してください。
+            調査根拠は1ファイルだけで確定せず、少なくとも複数の関連箇所を確認してから結論を出してください。
             調査対象のクエリ:
             {query}
             """
@@ -90,6 +102,10 @@ class SampleInvestigateAgent(AbstractAgent):
         return SampleInvestigateAgent.build_agent_definition()
 
 
+def _extract_result_output(result: Any) -> str:
+    return extract_result_output_text(result) or format_result(result)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the sample investigate deep agent")
     parser.add_argument("query", nargs="?", default=SampleInvestigateAgent._default_query(), help="Investigation query")
@@ -97,9 +113,9 @@ def main() -> int:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    agent = SampleInvestigateAgent(config=config)
+    agent = SampleInvestigateAgent(config)
     result = agent.execute(query=args.query)
-    print(format_result(result))
+    print(_extract_result_output(result))
     return 0
 
 

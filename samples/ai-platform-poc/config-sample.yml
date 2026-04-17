@@ -70,6 +70,9 @@ support_ope_agents:
       search_strategy: hybrid
       result_mode: relaxed
       document_sources:
+        - name: ai-platform-poc
+          description: ai-platform-poc の技術検証資料と設計資料
+          path: /home/user/source/repos/ai-platform-poc
         - name: support-ope-agents-docs
           description: support-ope-agents の設計資料と運用ドキュメント
           path: /home/user/source/repos/support-ope-agents/docs
