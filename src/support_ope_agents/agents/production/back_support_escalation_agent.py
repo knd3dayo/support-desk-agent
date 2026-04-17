@@ -3,16 +3,23 @@ from __future__ import annotations
 import inspect
 import json
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Any, Callable, Mapping, cast
 
+from langgraph.graph import END, START, StateGraph
+
+from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
+if TYPE_CHECKING:
+    from support_ope_agents.workflow.state import CaseState
+
 
 @dataclass(slots=True)
-class BackSupportEscalationPhaseExecutor:
+class BackSupportEscalationPhaseExecutor(AbstractAgent):
     read_shared_memory_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
 
@@ -96,11 +103,27 @@ class BackSupportEscalationPhaseExecutor:
             "current_agent": BACK_SUPPORT_ESCALATION_AGENT,
         }
 
-    @staticmethod
-    def build_back_support_escalation_agent_definition() -> AgentDefinition:
+    def create_node(self):
+        from support_ope_agents.workflow.state import CaseState
+
+        graph = StateGraph(CaseState)
+        graph.add_node(
+            "back_support_escalation",
+            lambda state: cast("CaseState", self.execute(cast(dict[str, Any], state))),
+        )
+        graph.add_edge(START, "back_support_escalation")
+        graph.add_edge("back_support_escalation", END)
+        return graph.compile()
+
+    @classmethod
+    def build_agent_definition(cls) -> AgentDefinition:
         return AgentDefinition(
             BACK_SUPPORT_ESCALATION_AGENT,
             "Organize evidence and missing artifacts for back support escalation",
             kind="agent",
             parent_role=SUPERVISOR_AGENT,
         )
+
+    @staticmethod
+    def build_back_support_escalation_agent_definition() -> AgentDefinition:
+        return BackSupportEscalationPhaseExecutor.build_agent_definition()

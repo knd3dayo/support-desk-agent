@@ -5,6 +5,9 @@ support_ope_agents:
     api_key: os.environ/LLM_API_KEY
     base_url: http://localhost:4000
 
+  runtime:
+    mode: sample
+
   tools:
     logical_tools:
       run_python_analysis:

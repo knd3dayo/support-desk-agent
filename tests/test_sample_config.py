@@ -14,6 +14,12 @@ from support_ope_agents.config.models import AgentCatalogSettings
 
 
 class SampleConfigTests(unittest.TestCase):
+    def test_ai_platform_poc_uses_sample_runtime_mode(self) -> None:
+        config_path = Path(__file__).resolve().parents[1] / "samples" / "ai-platform-poc" / "config.yml"
+        loaded = load_config(config_path)
+
+        self.assertEqual(loaded.runtime.mode, "sample")
+
     def test_ai_platform_poc_uses_default_constraint_mode_by_default(self) -> None:
         config_path = Path(__file__).resolve().parents[1] / "samples" / "ai-platform-poc" / "config.yml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))

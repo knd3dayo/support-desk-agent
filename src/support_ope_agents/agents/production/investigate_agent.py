@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, Callable, Mapping, cast
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
-from support_ope_agents.agents.production.intake_agent import IntakeAgent
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
-from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
+from support_ope_agents.util.formatting import format_result
 from ...util.document.document_source_backend import build_document_source_backend
 
 from langchain_core.messages import HumanMessage
@@ -34,6 +33,10 @@ class InvestigateAgent(AbstractAgent):
     read_shared_memory_tool: Callable[..., Any] | None = None
     write_shared_memory_tool: Callable[..., Any] | None = None
 
+    @staticmethod
+    def _default_query() -> str:
+        return "調査すべき内容をここに記載してください"
+
     def _get_chat_model(self) -> ChatOpenAI:
         if not self.config.llm.api_key:
             raise ValueError("LLM API key is not configured")
@@ -43,18 +46,17 @@ class InvestigateAgent(AbstractAgent):
             base_url=self.config.llm.base_url,
         )
 
-    def create_node(self) -> Any:
-
+    def create_sub_agent(self, *, query: str | None = None) -> Any:
         settings = self.config.agents.InvestigateAgent
-        query = "調査すべき内容をここに記載してください"  #
+        effective_query = (query or self._default_query()).strip()
 
         backend = build_document_source_backend(document_sources=settings.document_sources, route_base="knowledge")
         if backend is None:
             raise RuntimeError(
                 "Knowledge document backend could not be initialized. Check agents.InvestigateAgent.document_sources."
             )
-        
-        agent = create_deep_agent(
+
+        return create_deep_agent(
             model=self._get_chat_model(),
             backend=backend,
             system_prompt=(
@@ -65,11 +67,27 @@ class InvestigateAgent(AbstractAgent):
                 調査対象のクエリ:
                 {query}
                 """
-            ).format(query=query),  
+            ).format(query=effective_query),
             tools=[],
             name="investigate-agent",
         )
-        return agent
+
+    def create_node(self) -> Any:
+        return self.create_sub_agent(query=self._default_query())
+
+    def execute(self, state: Mapping[str, Any]) -> dict[str, Any]:
+        update = dict(state)
+        query = str(update.get("raw_issue") or "").strip() or self._default_query()
+        result = self.create_sub_agent(query=query).invoke({"messages": [HumanMessage(content=query)]})
+        update["current_agent"] = INVESTIGATE_AGENT
+        update["investigation_summary"] = format_result(result)
+        update.setdefault("log_analysis_summary", "")
+        update.setdefault("log_analysis_file", "")
+        update.setdefault("knowledge_retrieval_summary", "")
+        update.setdefault("knowledge_retrieval_results", [])
+        update.setdefault("knowledge_retrieval_adopted_sources", [])
+        update.setdefault("knowledge_retrieval_final_adopted_source", "")
+        return update
 
     @classmethod
     def build_agent_definition(cls) -> AgentDefinition:

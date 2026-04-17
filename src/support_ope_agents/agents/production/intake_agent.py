@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from langgraph.graph import END, START, StateGraph
 
+from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True)
-class IntakeAgent:
+class IntakeAgent(AbstractAgent):
     """
     サポート担当者からの問い合わせ内容を受け取り、初期分類や緊急度判定を行うエージェント。
     create_node() で Intake フェーズの実装をLanggraph のノードとして提供します。
@@ -681,6 +682,10 @@ class IntakeAgent:
         graph.add_edge("wait_for_customer_input", END)
         return graph.compile()
 
+    @classmethod
+    def build_agent_definition(cls) -> AgentDefinition:
+        return AgentDefinition(INTAKE_AGENT, "Triage and initialize the case", kind="phase", parent_role=SUPERVISOR_AGENT)
+
     @staticmethod
     def build_intake_agent_definition() -> AgentDefinition:
-        return AgentDefinition(INTAKE_AGENT, "Triage and initialize the case", kind="phase", parent_role=SUPERVISOR_AGENT)
+        return IntakeAgent.build_agent_definition()

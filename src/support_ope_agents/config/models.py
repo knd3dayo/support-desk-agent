@@ -142,6 +142,7 @@ class IntakePiiMaskSettings(StrictConfigModel):
 
 ConstraintMode = Literal["default", "instruction_only", "runtime_only", "bypass"]
 KnowledgeSearchStrategy = Literal["deepagents", "hybrid", "backend_only"]
+RuntimeMode = Literal["production", "sample"]
 
 
 class IntakeAgentSettings(StrictConfigModel):
@@ -326,12 +327,17 @@ class InterfaceSettings(StrictConfigModel):
         return self
 
 
+class RuntimeSettings(StrictConfigModel):
+    mode: RuntimeMode = "production"
+
+
 class AppConfig(StrictConfigModel):
     llm: LlmSettings
     config_paths: ConfigPathSettings
     data_paths: DataPathSettings
     workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)
+    runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
     tools: ToolSettings = Field(default_factory=ToolSettings)
     interfaces: InterfaceSettings = Field(default_factory=InterfaceSettings)
     agents: AgentCatalogSettings = Field(default_factory=AgentCatalogSettings)

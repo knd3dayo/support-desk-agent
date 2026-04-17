@@ -69,6 +69,11 @@ support_ope_agents:
   #   # トレースのプロジェクト名です。
   #   project_name: support-ope-agents
 
+  # runtime 実装の切り替え設定です。
+  # 通常運用は production、サンプル構成を使う場合は sample を指定します。
+  # runtime:
+  #   mode: production
+
   # 外部インターフェースの有効化設定です。
   # CLI 以外を使わない場合は未指定で構いません。
   # interfaces:

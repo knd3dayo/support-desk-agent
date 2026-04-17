@@ -10,7 +10,7 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.registry import ToolRegistry
-from support_ope_agents.workflow.case_workflow import reconstruct_main_workflow_path
+from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
 from support_ope_agents.workflow.state import CaseState
 
 
@@ -158,7 +158,7 @@ def build_runtime_audit(
     runtime_harness_manager: RuntimeHarnessManager | None = None,
 ) -> dict[str, object]:
     harness = runtime_harness_manager or RuntimeHarnessManager(config)
-    workflow_path = list(reconstruct_main_workflow_path(state))
+    workflow_path = list(ProductionCaseWorkflow().reconstruct_main_workflow_path(state))
     workflow_kind = _effective_workflow_kind(state)
     used_roles = _resolve_used_roles(workflow_path, workflow_kind)
     common_instruction_constraints = _infer_instruction_constraints(_load_common_instruction_text(config))

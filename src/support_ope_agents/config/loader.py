@@ -57,6 +57,7 @@ def load_config(config_path: str | Path) -> AppConfig:
     resolved["config_paths"] = config_paths
 
     resolved["data_paths"] = resolved.get("data_paths", {})
+    resolved["runtime"] = resolved.get("runtime", {})
 
     agents = resolved.get("agents", {})
     investigate = agents.get("InvestigateAgent", {})

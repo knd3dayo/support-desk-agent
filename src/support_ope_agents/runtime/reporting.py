@@ -10,7 +10,7 @@ from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
-from support_ope_agents.workflow.case_workflow import reconstruct_main_workflow_path
+from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
 from support_ope_agents.workflow.state import CaseState
 
 
@@ -674,7 +674,7 @@ def _workflow_path_for_report(state: CaseState, runtime_audit: dict[str, object]
     workflow_path = runtime_audit.get("workflow_path") if isinstance(runtime_audit, dict) else None
     if isinstance(workflow_path, list) and workflow_path:
         return tuple(str(item) for item in workflow_path if str(item).strip())
-    return reconstruct_main_workflow_path(state)
+    return ProductionCaseWorkflow().reconstruct_main_workflow_path(state)
 
 
 def _sequence_participants(

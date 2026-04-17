@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, cast
 
+from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.production.intake_agent import IntakeAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, INVESTIGATE_AGENT, SUPERVISOR_AGENT
@@ -17,16 +18,16 @@ from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPa
 if TYPE_CHECKING:
     from support_ope_agents.workflow.state import CaseState, WorkflowKind
     from support_ope_agents.agents.production.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
-    from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
     from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
 
 @dataclass(slots=True)
-class SupervisorPhaseExecutor:
+class SupervisorPhaseExecutor(AbstractAgent):
     read_shared_memory_tool: Callable[..., Any]
     write_shared_memory_tool: Callable[..., Any]
     investigate_executor: "InvestigateAgent | None" = None
+    draft_writer_executor: Any | None = None
     back_support_escalation_executor: "BackSupportEscalationPhaseExecutor | None" = None
-    back_support_inquiry_writer_executor: "BackSupportInquiryWriterPhaseExecutor | None" = None
+    back_support_inquiry_writer_executor: Any | None = None
     escalation_settings: EscalationSettings = field(default_factory=EscalationSettings)
     compliance_max_review_loops: int = 3
     constraint_mode: str = "default"
@@ -854,6 +855,10 @@ class SupervisorPhaseExecutor:
             )
         return cast("CaseState", update)
 
+    @classmethod
+    def build_agent_definition(cls) -> AgentDefinition:
+        return AgentDefinition(SUPERVISOR_AGENT, "Supervise the full support workflow", kind="supervisor")
+
     @staticmethod
     def build_supervisor_agent_definition() -> AgentDefinition:
-        return AgentDefinition(SUPERVISOR_AGENT, "Supervise the full support workflow", kind="supervisor")
+        return SupervisorPhaseExecutor.build_agent_definition()

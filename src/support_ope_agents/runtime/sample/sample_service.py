@@ -12,24 +12,12 @@ from uuid import uuid4
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from support_ope_agents.agents.catalog import build_default_agent_definitions
-from support_ope_agents.agents.approval_agent import ApprovalAgent
-from support_ope_agents.agents.back_support_escalation_agent import BackSupportEscalationPhaseExecutor
-from support_ope_agents.agents.back_support_inquiry_writer_agent import BackSupportInquiryWriterPhaseExecutor
-from support_ope_agents.agents.draft_writer_agent import DraftWriterPhaseExecutor
-from support_ope_agents.agents.investigate_agent import InvestigateAgent
-from support_ope_agents.agents.intake_agent import IntakeAgent
-from support_ope_agents.agents.knowledge_retriever_agent import KnowledgeRetrieverPhaseExecutor
-from support_ope_agents.agents.log_analyzer_agent import LogAnalyzerPhaseExecutor
-from support_ope_agents.agents.supervisor_agent import SupervisorPhaseExecutor
-from support_ope_agents.agents.ticket_update_agent import TicketUpdateAgent
-from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT
-from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT
+from support_ope_agents.agents.sample.sample_approval_agent import SampleApprovalAgent
+from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
+from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
+from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
+from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
 from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
-from support_ope_agents.agents.roles import INVESTIGATE_AGENT
-from support_ope_agents.agents.roles import APPROVAL_AGENT
-from support_ope_agents.agents.roles import INTAKE_AGENT
-from support_ope_agents.agents.roles import SUPERVISOR_AGENT
-from support_ope_agents.agents.roles import TICKET_UPDATE_AGENT
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
@@ -45,11 +33,11 @@ from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
-    build_case_workflow,
     build_plan_steps,
     route_workflow,
     summarize_plan,
 )
+from support_ope_agents.workflow.sample.sample_case_workflow import CaseWorkflow as SampleCaseWorkflow
 from support_ope_agents.workflow.state import CaseState, WorkflowKind
 
 
@@ -96,99 +84,13 @@ class RuntimeService:
     def __init__(self, context: RuntimeContext):
         self._context = context
         self._migrate_legacy_traces()
-        intake_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INTAKE_AGENT)}
-        back_support_escalation_tools = {
-            tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)
-        }
-        back_support_inquiry_writer_tools = {
-            tool.name: tool.handler for tool in context.tool_registry.get_tools(BACK_SUPPORT_INQUIRY_WRITER_AGENT)
-        }
-        investigate_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(INVESTIGATE_AGENT)}
-        approval_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(APPROVAL_AGENT)}
-        supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
-        ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
-        self._intake_executor = IntakeAgent(
-            config=context.config,
-            pii_mask_tool=intake_tools["pii_mask"],
-            external_ticket_tool=intake_tools["external_ticket"],
-            internal_ticket_tool=intake_tools["internal_ticket"],
-            classify_ticket_tool=intake_tools["classify_ticket"],
-            write_shared_memory_tool=intake_tools["write_shared_memory"],
-            write_working_memory_tool=intake_tools.get("write_working_memory"),
-            runtime_harness_manager=context.runtime_harness_manager,
-        )
-        self._approval_executor = ApprovalAgent(
-            record_approval_decision_tool=approval_tools["record_approval_decision"],
-        )
-        self._ticket_update_executor = TicketUpdateAgent(
-            prepare_ticket_update_tool=ticket_update_tools["prepare_ticket_update"],
-            zendesk_reply_tool=ticket_update_tools["zendesk_reply"],
-            redmine_update_tool=ticket_update_tools["redmine_update"],
-        )
-        self._log_analyzer_executor = LogAnalyzerPhaseExecutor(
-            detect_log_format_tool=investigate_tools["detect_log_format"],
-            write_working_memory_tool=investigate_tools["write_working_memory"],
-        )
-        self._knowledge_retriever_executor = KnowledgeRetrieverPhaseExecutor(
-            external_ticket_tool=investigate_tools["external_ticket"],
-            internal_ticket_tool=investigate_tools["internal_ticket"],
-            config=context.config,
-            document_sources=list(context.config.agents.InvestigateAgent.document_sources),
-            write_shared_memory_tool=investigate_tools.get("write_shared_memory"),
-            write_working_memory_tool=investigate_tools["write_working_memory"],
-            constraint_mode=context.runtime_harness_manager.resolve(INVESTIGATE_AGENT),
-            highlight_max_chars=context.runtime_harness_manager.get_optional_int_policy_value(
-                "knowledge.highlight_max_chars",
-                role=INVESTIGATE_AGENT,
-            ),
-            search_strategy=context.config.agents.InvestigateAgent.search_strategy,
-            result_mode=context.config.agents.InvestigateAgent.result_mode,
-            backend_read_char_limit=context.config.agents.InvestigateAgent.backend_read_char_limit,
-            max_evidence_count=context.config.agents.InvestigateAgent.max_evidence_count,
-            candidate_path_limit=context.config.agents.InvestigateAgent.candidate_path_limit,
-            persist_raw_search_snapshot=context.config.agents.InvestigateAgent.persist_raw_search_snapshot,
-        )
-        self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
-            read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
-            write_shared_memory_tool=back_support_escalation_tools["write_shared_memory"],
-        )
-        self._back_support_inquiry_writer_executor = BackSupportInquiryWriterPhaseExecutor(
-            write_shared_memory_tool=back_support_inquiry_writer_tools["write_shared_memory"],
-            write_draft_tool=back_support_inquiry_writer_tools["write_draft"],
-        )
-        self._draft_writer_executor = DraftWriterPhaseExecutor(
-            config=context.config,
-            write_draft_tool=investigate_tools.get("write_draft") or back_support_inquiry_writer_tools["write_draft"],
-            runtime_harness_manager=context.runtime_harness_manager,
-        )
-        self._investigate_executor = InvestigateAgent(
-            read_shared_memory_tool=investigate_tools.get("read_shared_memory") or supervisor_tools.get("read_shared_memory"),
-            write_shared_memory_tool=investigate_tools.get("write_shared_memory") or supervisor_tools.get("write_shared_memory"),
-            log_analyzer_executor=self._log_analyzer_executor,
-            knowledge_retriever_executor=self._knowledge_retriever_executor,
-            draft_writer_executor=self._draft_writer_executor,
-        )
-        self._supervisor_executor = SupervisorPhaseExecutor(
-            supervisor_tools["read_shared_memory"],
-            supervisor_tools["write_shared_memory"],
-            self._investigate_executor,
-            self._draft_writer_executor,
-            self._log_analyzer_executor,
-            self._knowledge_retriever_executor,
-            self._back_support_escalation_executor,
-            self._back_support_inquiry_writer_executor,
-            context.config.agents.BackSupportEscalationAgent.escalation,
-            3,
-            context.runtime_harness_manager.resolve(SUPERVISOR_AGENT),
-            context.runtime_harness_manager.get_int_policy_value(
-                "supervisor.max_investigation_loops",
-                role=SUPERVISOR_AGENT,
-                default=context.config.agents.SuperVisorAgent.max_investigation_loops,
-            ),
-            context.runtime_harness_manager.get_optional_int_policy_value(
-                "supervisor.review_excerpt_max_chars",
-                role=SUPERVISOR_AGENT,
-            ),
+        self._intake_executor = SampleIntakeAgent(config=context.config)
+        self._approval_executor = SampleApprovalAgent()
+        self._ticket_update_executor = SampleTicketUpdateAgent()
+        self._investigate_executor = SampleInvestigateAgent(config=context.config)
+        self._supervisor_executor = SampleSupervisorAgent(
+            investigate_executor=self._investigate_executor,
+            back_support_escalation_executor=None,
         )
 
     @property
@@ -932,7 +834,7 @@ class RuntimeService:
         return response
 
     def print_workflow_nodes(self) -> list[str]:
-        graph = build_case_workflow(
+        graph = SampleCaseWorkflow().build_case_workflow(
             intake_executor=self._intake_executor,
             approval_executor=self._approval_executor,
             ticket_update_executor=self._ticket_update_executor,
@@ -1060,7 +962,7 @@ class RuntimeService:
             return {}
 
         with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
-            graph = build_case_workflow(
+            graph = SampleCaseWorkflow().build_case_workflow(
                 checkpointer=checkpointer,
                 intake_executor=self._intake_executor,
                 approval_executor=self._approval_executor,
@@ -1079,7 +981,7 @@ class RuntimeService:
         workflow_config = {"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}}
 
         with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
-            graph = build_case_workflow(
+            graph = SampleCaseWorkflow().build_case_workflow(
                 checkpointer=checkpointer,
                 intake_executor=self._intake_executor,
                 approval_executor=self._approval_executor,
