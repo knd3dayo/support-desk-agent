@@ -292,9 +292,9 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertEqual(report_path.parent.name, ".report")
         content = report_path.read_text(encoding="utf-8")
         self.assertIn("sequenceDiagram", content)
-        self.assertIn("## 制御一覧", content)
-        self.assertIn("[defined] workflow.approval_node", content)
-        self.assertIn("config_key: workflow.approval_node", content)
+        self.assertIn("## 制御サマリー", content)
+        self.assertNotIn("## 制御一覧", content)
+        self.assertNotIn("[defined] workflow.approval_node", content)
 
     def test_action_endpoint_accepts_langchain_conversation_messages(self) -> None:
         response = self.client.post(
