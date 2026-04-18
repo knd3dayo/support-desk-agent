@@ -15,7 +15,7 @@ from support_ope_agents.agents.sample.sample_investigate_agent import SampleInve
 from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
-from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES, TICKET_UPDATE_AGENT
+from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
@@ -83,14 +83,9 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         super().__init__(context)
         self._migrate_legacy_traces()
         ticket_mcp_provider = XmlMcpToolsetProvider.from_config(context.config)
-        ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
         self._intake_executor = SampleIntakeAgent(config=context.config, ticket_mcp_provider=ticket_mcp_provider)
         self._approval_executor = SampleApprovalAgent()
-        self._ticket_update_executor = SampleTicketUpdateAgent(
-            prepare_ticket_update_tool=ticket_update_tools["prepare_ticket_update"],
-            zendesk_reply_tool=ticket_update_tools["zendesk_reply"],
-            redmine_update_tool=ticket_update_tools["redmine_update"],
-        )
+        self._ticket_update_executor = SampleTicketUpdateAgent()
         self._investigate_executor = SampleInvestigateAgent(config=context.config)
         self._supervisor_executor = SampleSupervisorAgent(
             investigate_executor=self._investigate_executor,
