@@ -24,6 +24,28 @@ Deep Agents と LangGraph を組み合わせて、カスタマーサポート業
 - [src/support_ope_agents/instructions/defaults](src/support_ope_agents/instructions/defaults): 共通指示と役割別指示の内蔵デフォルト
 - [.instructions](.instructions): 必要に応じて既定指示を上書きするための任意 override ディレクトリ
 
+## runtime mode の考え方
+
+このリポジトリには `sample` 系と `production` 系の 2 系統の runtime 実装があります。どちらを使うかは [config.yml](config.yml) の `support_ope_agents.runtime.mode` で切り替えます。
+
+```yaml
+support_ope_agents:
+	runtime:
+		mode: production
+```
+
+`sample` 系は、汎用的な作り込みを主目的にせず、コンセプト確認と UI / フローのテストを素早く回すための簡素な実装です。PoC の流れを短く確認したい場合、画面やケース進行のたたき台を試したい場合、個別の制約や例外処理をまだ詰め切っていない段階で全体像を確認したい場合に向いています。サンプル環境の起動例や前提条件は [samples/ai-platform-poc/README.md](samples/ai-platform-poc/README.md) を参照してください。
+
+`production` 系は、通常運用を見据えて、より多くの状況を想定した例外処理、制約、状態遷移、外部連携を含めるための実装です。`sample` で確認したコンセプトをそのまま終わらせず、実際の業務ワークフローに近い条件へ具体化していくことを目的にしています。既定の [config.yml](config.yml) はこちらを前提にしており、CLI / API / MCP の説明も原則として production runtime を基準にしています。
+
+使い分けの目安は次のとおりです。
+
+- まず画面や基本フローを早く確認したい場合は `sample`
+- 例外処理、承認、再開、チェックポイント、レポート生成まで含めて挙動を詰めたい場合は `production`
+- 実運用に近い設定やテストを増やしていく場合は `production` を基準にし、`sample` は概念実証や比較対象として扱う
+
+README 中の通常の起動例は `production` 前提です。`sample` を使う場合は [samples/ai-platform-poc/config.yml](samples/ai-platform-poc/config.yml) のように `runtime.mode: sample` を持つ設定ファイルを指定して起動します。
+
 ## 起動
 
 依存関係を導入した後、次のコマンドでワークフロー定義を出力します。
