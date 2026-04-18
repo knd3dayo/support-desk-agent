@@ -128,7 +128,7 @@ support_ope_agents:
   # tools:
   #   # 外部 MCP 定義ファイルへのパスです。
   #   # logical_tools のどれかで provider: mcp を使う場合は必須です。
-  #   mcp_manifest_path:mcp.json
+  #   mcp_manifest_path: mcp.json
   #
   #   # MCP 呼び出しの既定タイムアウト秒です。
   #   mcp_timeout_seconds: 30
@@ -150,19 +150,70 @@ support_ope_agents:
   #       enabled: true
   #       provider: builtin
   #
+  #   # 複数 Agent で共有する ticket 取得元です。
+  #   # IntakeAgent はこの設定を使って、manifest 上の tool 一覧から適切な ticket 取得 tool を選びます。
+  #   # TicketUpdateAgent などから同じ取得元を使いたい場合も、こちらを参照します。
+  #   # provider / tool はここでは不要です。server と arguments だけを指定します。
+  #   ticket_sources:
+  #     external:
+  #       enabled: false
+  #       server: github
+  #       description: GitHub 上で管理する顧客向け問い合わせ issue
+  #       decision_tag: decision
+  #       arguments:
+  #         owner: your-github-org
+  #         repo: support-ope-external-tickets
+  #       candidate_matching:
+  #         candidate_id_fields: [number, issue_number, id, key]
+  #         candidate_text_fields: [title, body, summary, description]
+  #         min_id_similarity: 0.45
+  #         min_content_similarity: 0.2
+  #         min_combined_similarity: 0.35
+  #         max_question_candidates: 3
+  #     internal:
+  #       enabled: false
+  #       server: github
+  #       description: GitHub 上で管理する内部管理 issue
+  #       decision_tag: decision
+  #       arguments:
+  #         owner: your-github-org
+  #         repo: support-ope-internal-tickets
+  #       candidate_matching:
+  #         candidate_id_fields: [number, issue_number, id, key]
+  #         candidate_text_fields: [title, body, summary, description]
+  #         min_id_similarity: 0.45
+  #         min_content_similarity: 0.2
+  #         min_combined_similarity: 0.35
+  #         max_question_candidates: 3
+  #
   #     # 次にケース情報の取得元を必要に応じて設定します。
+  #     # fixed tool を直接呼ぶ旧来の logical_tools 方式で GitHub issue を取得する例です。
   #     external_ticket:
   #       enabled: true
   #       provider: mcp
-  #       description: 顧客向けケース管理システム
-  #       server: support-ticket-mcp
-  #       tool: get_external_ticket
+  #       description: GitHub 上で管理する顧客向け問い合わせ issue
+  #       server: github
+  #       tool: get_issue
+  #       arguments:
+  #         owner: your-github-org
+  #         repo: support-ope-external-tickets
+  #       argument_map:
+  #         ticket_id: issue_number
+  #       integer_arguments:
+  #         - issue_number
   #     internal_ticket:
   #       enabled: true
   #       provider: mcp
-  #       description: 内部管理用チケットシステム
-  #       server: support-ticket-mcp
-  #       tool: get_internal_ticket
+  #       description: GitHub 上で管理する内部管理 issue
+  #       server: github
+  #       tool: get_issue
+  #       arguments:
+  #         owner: your-github-org
+  #         repo: support-ope-internal-tickets
+  #       argument_map:
+  #         ticket_id: issue_number
+  #       integer_arguments:
+  #         - issue_number
   #
   #     # InvestigateAgent が内部で使うログ解析を builtin で有効化する場合です。
   #     run_python_analysis:
@@ -227,42 +278,6 @@ support_ope_agents:
   #     pii_mask:
   #       # true の場合のみ Intake で PII マスキングを実行します。
   #       enabled: false
-  #     # external / internal ticket を MCP server から動的に解決する設定です。
-  #     # tools.logical_tools.external_ticket / internal_ticket を使う従来方式より優先されます。
-  #     # MCP tool 名はここに書かず、Agent が manifest 上のツール一覧から選択します。
-  #     ticket_servers:
-  #       external:
-  #         enabled: false
-  #         server: github
-  #         description: GitHub 上で管理する顧客向け問い合わせ issue
-  #         # XML 応答で使うルートタグ名です。通常は既定値のままで構いません。
-  #         decision_tag: decision
-  #         arguments:
-  #           owner: your-github-org
-  #           repo: support-ope-external-tickets
-  #         candidate_matching:
-  #           # Zendesk や Redmine では id / key / ticket_id などへ調整します。
-  #           candidate_id_fields: [number, issue_number, id, key]
-  #           candidate_text_fields: [title, body, summary, description]
-  #           min_id_similarity: 0.45
-  #           min_content_similarity: 0.2
-  #           min_combined_similarity: 0.35
-  #           max_question_candidates: 3
-  #       internal:
-  #         enabled: false
-  #         server: github
-  #         description: GitHub 上で管理する内部管理 issue
-  #         decision_tag: decision
-  #         arguments:
-  #           owner: your-github-org
-  #           repo: support-ope-internal-tickets
-  #         candidate_matching:
-  #           candidate_id_fields: [number, issue_number, id, key]
-  #           candidate_text_fields: [title, body, summary, description]
-  #           min_id_similarity: 0.45
-  #           min_content_similarity: 0.2
-  #           min_combined_similarity: 0.35
-  #           max_question_candidates: 3
   #
   #   # 調査統合 Agent の設定です。
   #   # 仕様確認、ログ解析、ドラフト作成を 1 つの Agent に集約します。

@@ -174,18 +174,17 @@ class ReportingEvaluationTests(unittest.TestCase):
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
-                "runtime": {"mode": "sample"},
-                "agents": {
-                    "IntakeAgent": {
-                        "ticket_servers": {
-                            "internal": {
-                                "enabled": True,
-                                "server": "github",
-                                "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
-                            }
+                "tools": {
+                    "ticket_sources": {
+                        "internal": {
+                            "enabled": True,
+                            "server": "github",
+                            "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
                         }
                     }
                 },
+                "runtime": {"mode": "sample"},
+                "agents": {},
             }
         )
 
@@ -210,18 +209,17 @@ class ReportingEvaluationTests(unittest.TestCase):
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
-                "runtime": {"mode": "sample"},
-                "agents": {
-                    "IntakeAgent": {
-                        "ticket_servers": {
-                            "internal": {
-                                "enabled": True,
-                                "server": "github",
-                                "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
-                            }
+                "tools": {
+                    "ticket_sources": {
+                        "internal": {
+                            "enabled": True,
+                            "server": "github",
+                            "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
                         }
                     }
                 },
+                "runtime": {"mode": "sample"},
+                "agents": {},
             }
         )
 

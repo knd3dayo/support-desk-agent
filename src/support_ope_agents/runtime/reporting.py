@@ -302,17 +302,12 @@ def _ticket_lookup_status(state: CaseState, *, config: AppConfig, ticket_kind: s
     if is_auto_generated:
         return "未実行: 自動採番 ID"
 
-    # internal.enabled: true かつ fetch不可の場合は強調して返す
     enabled = False
-    binding = None
-    if config.runtime.mode == "sample":
-        binding = config.agents.IntakeAgent.ticket_servers.get(ticket_kind)
-        enabled = binding is not None and getattr(binding, "enabled", False)
-        if enabled:
-            if config.tools.mcp_manifest_path is None:
-                return "enabled: true だがfetch不可: MCP manifest 未設定"
-        else:
-            return "未実行: ticket server 無効"
+    binding = config.tools.ticket_sources.get(ticket_kind)
+    if binding is not None and getattr(binding, "enabled", False):
+        enabled = True
+        if config.tools.mcp_manifest_path is None:
+            return "enabled: true だがfetch不可: MCP manifest 未設定"
     else:
         logical_tool = config.tools.get_logical_tool(f"{ticket_kind}_ticket")
         enabled = logical_tool is not None and getattr(logical_tool, "enabled", False)

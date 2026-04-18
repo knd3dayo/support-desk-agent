@@ -164,7 +164,7 @@ class TicketServerBindingSettings(StrictConfigModel):
         return self
 
 
-class IntakeTicketServerSettings(StrictConfigModel):
+class TicketSourceSettings(StrictConfigModel):
     external: TicketServerBindingSettings = Field(default_factory=TicketServerBindingSettings)
     internal: TicketServerBindingSettings = Field(default_factory=TicketServerBindingSettings)
 
@@ -185,7 +185,6 @@ class IntakeAgentSettings(StrictConfigModel):
     model: str | None = None
     constraint_mode: ConstraintMode | None = None
     pii_mask: IntakePiiMaskSettings = Field(default_factory=IntakePiiMaskSettings)
-    ticket_servers: IntakeTicketServerSettings = Field(default_factory=IntakeTicketServerSettings)
 
 
 class AgentSettings(StrictConfigModel):
@@ -330,6 +329,7 @@ class ToolSettings(StrictConfigModel):
     download_timeout_seconds: float = 30.0
     analysis_max_chars: int = 16000
     libreoffice_command: str | None = None
+    ticket_sources: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
     logical_tools: dict[str, LogicalToolSettings] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -340,6 +340,12 @@ class ToolSettings(StrictConfigModel):
 
     def has_enabled_mcp_tools(self) -> bool:
         return any(tool.enabled and tool.provider == "mcp" for tool in self.logical_tools.values())
+
+    def has_enabled_ticket_sources(self) -> bool:
+        return any(
+            binding is not None and binding.enabled
+            for binding in (self.ticket_sources.external, self.ticket_sources.internal)
+        )
 
     def get_logical_tool(self, name: str) -> LogicalToolSettings | None:
         return self.logical_tools.get(name)

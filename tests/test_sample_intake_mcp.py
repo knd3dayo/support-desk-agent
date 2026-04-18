@@ -80,25 +80,23 @@ class SampleIntakeMcpTests(unittest.TestCase):
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
-                "tools": {},
-                "agents": {
-                    "IntakeAgent": {
-                        "ticket_servers": {
-                            "external": {
-                                "enabled": True,
-                                "server": "github",
-                                "description": "external github issues",
-                                "arguments": {"owner": "acme", "repo": "external-support"},
-                            },
-                            "internal": {
-                                "enabled": False,
-                                "server": "github-internal",
-                                "description": "internal github issues",
-                                "arguments": {"owner": "acme", "repo": "internal-support"},
-                            },
-                        }
+                "tools": {
+                    "ticket_sources": {
+                        "external": {
+                            "enabled": True,
+                            "server": "github",
+                            "description": "external github issues",
+                            "arguments": {"owner": "acme", "repo": "external-support"},
+                        },
+                        "internal": {
+                            "enabled": False,
+                            "server": "github-internal",
+                            "description": "internal github issues",
+                            "arguments": {"owner": "acme", "repo": "internal-support"},
+                        },
                     }
                 },
+                "agents": {},
             }
         )
 

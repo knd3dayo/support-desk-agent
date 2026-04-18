@@ -109,7 +109,7 @@ class SampleIntakeAgent(AbstractAgent):
         return parse_mcp_tool_selection_xml(raw_text, decision_tag=decision_tag)
 
     def _ticket_binding(self, ticket_kind: str) -> TicketServerBindingSettings | None:
-        return self.config.agents.IntakeAgent.ticket_servers.get(ticket_kind)
+        return self.config.tools.ticket_sources.get(ticket_kind)
 
     @staticmethod
     def _artifact_dir(workspace_path: str) -> Path:

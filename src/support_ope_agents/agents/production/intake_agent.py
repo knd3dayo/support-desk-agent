@@ -252,7 +252,7 @@ class IntakeAgent(AbstractAgent):
         return not (settings is not None and not settings.enabled)
 
     def _ticket_binding(self, ticket_kind: str) -> TicketServerBindingSettings | None:
-        return self.config.agents.IntakeAgent.ticket_servers.get(ticket_kind)
+        return self.config.tools.ticket_sources.get(ticket_kind)
 
     @staticmethod
     def _is_ticket_tool_unavailable_error(error: Exception) -> bool:

@@ -11,6 +11,51 @@ support_ope_agents:
     mode: sample
 
   tools:
+    ticket_sources:
+      external:
+        enabled: true
+        server: github
+        description: GitHub 上で管理する顧客向け問い合わせ issue
+        arguments:
+          owner: your-github-org
+          repo: support-ope-external-tickets
+        candidate_matching:
+          candidate_id_fields:
+            - number
+            - issue_number
+            - id
+            - key
+          candidate_text_fields:
+            - title
+            - body
+            - summary
+            - description
+          min_id_similarity: 0.45
+          min_content_similarity: 0.2
+          min_combined_similarity: 0.35
+          max_question_candidates: 3
+      internal:
+        enabled: true
+        server: github
+        description: GitHub 上で管理する内部管理 issue
+        arguments:
+          owner: knd3dayo
+          repo: support-ope-agents
+        candidate_matching:
+          candidate_id_fields:
+            - number
+            - issue_number
+            - id
+            - key
+          candidate_text_fields:
+            - title
+            - body
+            - summary
+            - description
+          min_id_similarity: 0.45
+          min_content_similarity: 0.2
+          min_combined_similarity: 0.35
+          max_question_candidates: 3
     logical_tools:
       search_documents:
         enabled: true
@@ -20,7 +65,7 @@ support_ope_agents:
         provider: builtin
     # GitHub MCP を使う場合は、manifest 内で github server と
     # GITHUB_PERSONAL_ACCESS_TOKEN を設定したうえで path を有効化する
-    # mcp_manifest_path: /path/to/mcp-manifest.json
+    mcp_manifest_path: mcp.json
 
   interfaces:
     enable_cli: true
@@ -51,58 +96,6 @@ support_ope_agents:
       # constraint_mode: default
       pii_mask:
         enabled: false
-      ticket_servers:
-        external:
-          enabled: true
-          server: github
-          description: GitHub 上で管理する顧客向け問い合わせ issue
-          # decision XML のルートタグ。通常は既定値のままでよい
-          # decision_tag: decision
-          arguments:
-            owner: your-github-org
-            repo: support-ope-external-tickets
-          candidate_matching:
-            # Zendesk や Redmine では ["id", "ticket_id"] や ["id", "key"] のように変更する
-            candidate_id_fields:
-              - number
-              - issue_number
-              - id
-              - key
-            # 候補の本文比較に使うフィールド。ticket system ごとに上書きする
-            candidate_text_fields:
-              - title
-              - body
-              - summary
-              - description
-            # 類似候補を質問するしきい値。厳しくしたい場合だけ調整する
-            min_id_similarity: 0.45
-            min_content_similarity: 0.2
-            min_combined_similarity: 0.35
-            max_question_candidates: 3
-        internal:
-          enabled: true
-          server: github
-          description: GitHub 上で管理する内部管理 issue
-          # decision XML のルートタグ。通常は既定値のままでよい
-          # decision_tag: decision
-          arguments:
-            owner: knd3dayo
-            repo: support-ope-agents
-          candidate_matching:
-            candidate_id_fields:
-              - number
-              - issue_number
-              - id
-              - key
-            candidate_text_fields:
-              - title
-              - body
-              - summary
-              - description
-            min_id_similarity: 0.45
-            min_content_similarity: 0.2
-            min_combined_similarity: 0.35
-            max_question_candidates: 3
     
     InvestigateAgent:
       enabled: true

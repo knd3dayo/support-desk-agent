@@ -46,7 +46,7 @@ support_ope_agents:
           - issue_number
     # GitHub MCP を使う場合は、manifest 内で github server と
     # GITHUB_PERSONAL_ACCESS_TOKEN を設定したうえで path を有効化する
-    # mcp_manifest_path: /path/to/mcp-manifest.json
+    mcp_manifest_path: mcp.json
 
   interfaces:
     enable_cli: true

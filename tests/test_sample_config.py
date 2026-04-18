@@ -30,13 +30,13 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(settings.resolve_constraint_mode(INVESTIGATE_AGENT), "default")
         self.assertEqual(settings.resolve_constraint_mode(SUPERVISOR_AGENT), "default")
 
-    def test_support_ope_agents_sample_configures_github_ticket_servers(self) -> None:
+    def test_support_ope_agents_sample_configures_github_ticket_sources(self) -> None:
         config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-        ticket_servers = raw["support_ope_agents"]["agents"]["IntakeAgent"]["ticket_servers"]
-        external_ticket = ticket_servers["external"]
-        internal_ticket = ticket_servers["internal"]
+        ticket_sources = raw["support_ope_agents"]["tools"]["ticket_sources"]
+        external_ticket = ticket_sources["external"]
+        internal_ticket = ticket_sources["internal"]
 
         self.assertEqual(external_ticket["server"], "github")
         self.assertEqual(internal_ticket["server"], "github")

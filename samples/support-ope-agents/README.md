@@ -88,7 +88,7 @@ ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRAC
 ## 4. 補足
 
 - この sample は実 LLM / 実 MCP 前提です。`LLM_API_KEY` と、sample config の `github` server を解決できる MCP 実行環境を事前に用意してください
-- sample config の `agents.IntakeAgent.ticket_servers.external.arguments.repo` と `agents.IntakeAgent.ticket_servers.internal.arguments.repo` に、利用する GitHub repository を設定してください
+- sample config の `tools.ticket_sources.external.arguments.repo` と `tools.ticket_sources.internal.arguments.repo` に、利用する GitHub repository を設定してください
 - LangChain ドキュメントの path は `/home/user/oss/langchain-ai/langchain` を前提にしています
 - sample config は `constraint_mode: default` を既定にしています。`instruction_only` は instruction 側の制御だけが残るため、sample では回答や再調査の誘導が強く見えることがあります。
 - `InvestigateAgent.result_mode: raw_backend` は取得 payload の詳細度を上げる設定です。制約の強さを変えたい場合は `constraint_mode` を agent ごとに調整してください。

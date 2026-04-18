@@ -284,18 +284,17 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
-                "agents": {
-                    "IntakeAgent": {
-                        "ticket_servers": {
-                            "external": {
-                                "enabled": True,
-                                "server": "github",
-                                "decision_tag": "ticket_decision",
-                                "arguments": {"owner": "acme", "repo": "external-support"},
-                            }
+                "tools": {
+                    "ticket_sources": {
+                        "external": {
+                            "enabled": True,
+                            "server": "github",
+                            "decision_tag": "ticket_decision",
+                            "arguments": {"owner": "acme", "repo": "external-support"},
                         }
                     }
                 },
+                "agents": {},
             }
         )
         provider = XmlMcpToolsetProvider(backend=_FakeResolver())  # type: ignore[arg-type]
@@ -338,17 +337,16 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
-                "agents": {
-                    "IntakeAgent": {
-                        "ticket_servers": {
-                            "external": {
-                                "enabled": True,
-                                "server": "github",
-                                "arguments": {"owner": "acme", "repo": "external-support"},
-                            }
+                "tools": {
+                    "ticket_sources": {
+                        "external": {
+                            "enabled": True,
+                            "server": "github",
+                            "arguments": {"owner": "acme", "repo": "external-support"},
                         }
                     }
                 },
+                "agents": {},
             }
         )
         provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
