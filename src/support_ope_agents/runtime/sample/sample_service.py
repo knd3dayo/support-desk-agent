@@ -15,7 +15,7 @@ from support_ope_agents.agents.sample.sample_investigate_agent import SampleInve
 from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
-from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
+from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES, TICKET_UPDATE_AGENT
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
@@ -83,9 +83,14 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         super().__init__(context)
         self._migrate_legacy_traces()
         ticket_mcp_provider = XmlMcpToolsetProvider.from_config(context.config)
+        ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
         self._intake_executor = SampleIntakeAgent(config=context.config, ticket_mcp_provider=ticket_mcp_provider)
         self._approval_executor = SampleApprovalAgent()
-        self._ticket_update_executor = SampleTicketUpdateAgent()
+        self._ticket_update_executor = SampleTicketUpdateAgent(
+            prepare_ticket_update_tool=ticket_update_tools["prepare_ticket_update"],
+            zendesk_reply_tool=ticket_update_tools["zendesk_reply"],
+            redmine_update_tool=ticket_update_tools["redmine_update"],
+        )
         self._investigate_executor = SampleInvestigateAgent(config=context.config)
         self._supervisor_executor = SampleSupervisorAgent(
             investigate_executor=self._investigate_executor,
@@ -147,14 +152,19 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             metadata = self._context.memory_store.read_case_metadata(child)
             history = self._context.memory_store.read_chat_history(case_id, str(child))
             case_title = str(metadata.get("case_title") or "").strip()
+            updated_at = str(metadata.get("updated_at") or "").strip()
+            if not updated_at:
+                updated_at = datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat()
             if not case_title:
                 case_title = self._backfill_case_title(case_id=case_id, workspace_path=str(child), history=history)
+                metadata = self._context.memory_store.read_case_metadata(child)
+                updated_at = str(metadata.get("updated_at") or updated_at).strip() or updated_at
             cases.append(
                 {
                     "case_id": case_id,
                     "case_title": case_title,
                     "workspace_path": str(child),
-                    "updated_at": datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat(),
+                    "updated_at": updated_at,
                     "message_count": len(history),
                 }
             )
@@ -165,6 +175,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id)
         workspace_path = Path(cases_root).expanduser().resolve() / selected_case_id
         case_path = self.initialize_case(selected_case_id, str(workspace_path))
+        self._context.memory_store.touch_case(str(case_path))
         case_title = self._persist_case_title(
             case_id=selected_case_id,
             workspace_path=str(case_path),

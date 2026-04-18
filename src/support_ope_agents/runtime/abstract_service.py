@@ -168,14 +168,19 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 			metadata = self._context.memory_store.read_case_metadata(child)
 			history = self._context.memory_store.read_chat_history(case_id, str(child))
 			case_title = str(metadata.get("case_title") or "").strip()
+			updated_at = str(metadata.get("updated_at") or "").strip()
+			if not updated_at:
+				updated_at = datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat()
 			if not case_title:
 				case_title = self._backfill_case_title(case_id=case_id, workspace_path=str(child), history=history)
+				metadata = self._context.memory_store.read_case_metadata(child)
+				updated_at = str(metadata.get("updated_at") or updated_at).strip() or updated_at
 			cases.append(
 				{
 					"case_id": case_id,
 					"case_title": case_title,
 					"workspace_path": str(child),
-					"updated_at": datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat(),
+					"updated_at": updated_at,
 					"message_count": len(history),
 				}
 			)
@@ -186,6 +191,7 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 		selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id)
 		workspace_path = Path(cases_root).expanduser().resolve() / selected_case_id
 		case_path = self.initialize_case(selected_case_id, str(workspace_path))
+		self._context.memory_store.touch_case(str(case_path))
 		case_title = self._persist_case_title(
 			case_id=selected_case_id,
 			workspace_path=str(case_path),

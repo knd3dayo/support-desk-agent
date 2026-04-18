@@ -81,6 +81,7 @@ class RuntimeEnvelope(BaseModel):
     plan_steps: list[str] = Field(default_factory=list)
     requires_approval: bool | None = None
     requires_customer_input: bool | None = None
+    report_path: str | None = None
     state: dict[str, Any] = Field(default_factory=dict)
 
 

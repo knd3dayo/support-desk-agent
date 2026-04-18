@@ -1187,6 +1187,25 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         self.assertEqual([item["case_id"] for item in cases[:2]], ["CASE-NEWER", "CASE-OLDER"])
 
+    def test_list_cases_prefers_metadata_updated_at_over_directory_mtime(self) -> None:
+        older_workspace = self.workspace_path / "CASE-META-OLDER"
+        newer_workspace = self.workspace_path / "CASE-META-NEWER"
+        self.service.initialize_case("CASE-META-OLDER", str(older_workspace))
+        self.service.initialize_case("CASE-META-NEWER", str(newer_workspace))
+
+        self.service.context.memory_store.touch_case(str(older_workspace), updated_at="2026-04-16T09:00:00+00:00")
+        self.service.context.memory_store.touch_case(str(newer_workspace), updated_at="2026-04-18T10:30:00+00:00")
+
+        import os
+        base_time = older_workspace.stat().st_mtime
+        os.utime(older_workspace, (base_time + 300, base_time + 300))
+        os.utime(newer_workspace, (base_time - 300, base_time - 300))
+
+        cases = self.service.list_cases(str(self.workspace_path))
+
+        self.assertEqual([item["case_id"] for item in cases[:2]], ["CASE-META-NEWER", "CASE-META-OLDER"])
+        self.assertEqual(cases[0]["updated_at"], "2026-04-18T10:30:00+00:00")
+
     def test_action_persists_case_title_for_case_list(self) -> None:
         case_workspace = self.workspace_path / "CASE-TEST-TITLE"
         self.service.action(

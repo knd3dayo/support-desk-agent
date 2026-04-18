@@ -119,6 +119,10 @@ class CaseMemoryStore:
         metadata_path.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return metadata_path
 
+    def touch_case(self, workspace_path: str | Path, *, updated_at: str | None = None) -> Path:
+        timestamp = updated_at or datetime.now(tz=UTC).isoformat()
+        return self.update_case_metadata(workspace_path, updated_at=timestamp)
+
     def ensure_agent_working_memory(self, case_id: str, agent_name: str, workspace_path: str) -> Path:
         paths = self.resolve_case_paths(case_id, workspace_path=workspace_path)
         working_dir = paths.agents_dir / agent_name
@@ -186,6 +190,7 @@ class CaseMemoryStore:
         target = self.resolve_workspace_path(case_id, workspace_path=workspace_path, relative_path=relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
+        self.touch_case(workspace_path)
         return target
 
     def append_chat_history(self, case_id: str, workspace_path: str, message: dict[str, Any]) -> Path:
@@ -193,6 +198,8 @@ class CaseMemoryStore:
         paths.shared_history.parent.mkdir(parents=True, exist_ok=True)
         with paths.shared_history.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(message, ensure_ascii=False) + "\n")
+        created_at = str(message.get("created_at") or "").strip() or None
+        self.touch_case(workspace_path, updated_at=created_at)
         return paths.shared_history
 
     def read_chat_history(self, case_id: str, workspace_path: str) -> list[dict[str, Any]]:
