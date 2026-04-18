@@ -6,7 +6,7 @@ import unittest
 from pydantic import ValidationError
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_ticket_fetch_error_section, _ticket_lookup_detail, _ticket_lookup_status
+from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_ticket_fetch_error_section, _render_ticket_info_section, _ticket_lookup_detail, _ticket_lookup_status
 from support_ope_agents.models.state import CaseState
 
 
@@ -166,6 +166,41 @@ class ReportingEvaluationTests(unittest.TestCase):
                 "```",
             ],
         )
+
+    def test_render_ticket_info_section_reports_both_ticket_kinds(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+
+        lines = _render_ticket_info_section(
+            {
+                "external_ticket_id": "EXT-123",
+                "internal_ticket_id": "INT-456",
+                "external_ticket_lookup_enabled": True,
+                "internal_ticket_lookup_enabled": True,
+                "intake_ticket_context_summary": {
+                    "external_ticket": "External summary",
+                    "internal_ticket": "Internal summary",
+                },
+                "intake_ticket_artifacts": {
+                    "external_ticket": ["/tmp/external.json"],
+                    "internal_ticket": ["/tmp/internal.json"],
+                },
+                "agent_errors": [],
+            },
+            config=config,
+        )
+
+        self.assertIn("- External ticket ID: EXT-123", lines)
+        self.assertIn("- External ticket fetch: 成功", lines)
+        self.assertIn("- Internal ticket ID: INT-456", lines)
+        self.assertIn("- Internal ticket fetch: 成功", lines)
 
     def test_ticket_lookup_detail_reports_skip_reason_when_manifest_missing(self) -> None:
         config = AppConfig.model_validate(

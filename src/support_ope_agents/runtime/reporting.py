@@ -158,12 +158,6 @@ def build_support_improvement_report(
         "## Meta",
         *_report_item("Case ID", case_id, "レポート対象のケースを一意に識別するIDです。"),
         *_report_item("Trace ID", trace_id, "今回の実行トレースを追跡するための識別子です。"),
-        *_report_item("External ticket ID", str(state.get("external_ticket_id") or "n/a"), "ケースに関連付けられた外部チケットIDです。明示指定がない場合は trace 由来の自動採番が入ります。"),
-        *_report_item("Internal ticket ID", str(state.get("internal_ticket_id") or "n/a"), "ケースに関連付けられた内部チケットIDです。明示指定がない場合は trace 由来の自動採番が入ります。"),
-        *_report_item("External ticket fetch", _ticket_lookup_status(state, config=config, ticket_kind="external"), "外部チケット情報の取得が成功したか、失敗したか、未実行だったかを示します。"),
-        *_report_item("Internal ticket fetch", _ticket_lookup_status(state, config=config, ticket_kind="internal"), "内部チケット情報の取得が成功したか、失敗したか、未実行だったかを示します。"),
-        *_report_item("External ticket fetch detail", _ticket_lookup_detail(state, config=config, ticket_kind="external"), "外部チケット取得MCPの結果要約です。成功時は取得要約や保存成果物、失敗時はエラーメッセージ、未実行時は理由を示します。"),
-        *_report_item("Internal ticket fetch detail", _ticket_lookup_detail(state, config=config, ticket_kind="internal"), "内部チケット取得MCPの結果要約です。成功時は取得要約や保存成果物、失敗時はエラーメッセージ、未実行時は理由を示します。"),
         *_report_item("Workspace", case_paths.root, "ケース関連ファイルと成果物を保存した作業ディレクトリです。"),
         *_report_item("Final status", str(state.get("status") or "unknown"), "ワークフロー完了時点の最終ステータスです。"),
         *_report_item("Evaluator", evaluation.evaluator_name, "SuperVisor ではなく、instruction と structured output schema に基づいて評価する客観評価エージェントです。"),
@@ -182,6 +176,10 @@ def build_support_improvement_report(
         "## 調査に使用したログ・成果物",
         "調査時に参照した添付ファイル、ログ、派生成果物の一覧です。",
         *([f"- {path}" for path in artifact_paths] or ["- なし"]),
+        "",
+        "## チケット情報",
+        "ケースに関連付けられた internal / external チケットのIDと取得状況です。",
+        *_render_ticket_info_section(state, config=config),
         "",
         "## 結果と評価",
         *_report_item("結果", _result_label(state), "最終的に確定した対応方針を示します。"),
@@ -373,6 +371,33 @@ def _ticket_lookup_raw_error(state: CaseState, *, ticket_kind: str) -> str | Non
     message = str(relevant_errors[0].get("message") or "")
     stripped = message.strip("\n")
     return stripped or None
+
+
+def _render_ticket_info_section(state: CaseState, *, config: AppConfig) -> list[str]:
+    lines: list[str] = []
+    for ticket_kind, ticket_label in (("external", "External"), ("internal", "Internal")):
+        lines.extend(
+            _report_item(
+                f"{ticket_label} ticket ID",
+                str(state.get(f"{ticket_kind}_ticket_id") or "n/a"),
+                f"ケースに関連付けられた{ticket_kind}チケットIDです。明示指定がない場合は trace 由来の自動採番が入ります。",
+            )
+        )
+        lines.extend(
+            _report_item(
+                f"{ticket_label} ticket fetch",
+                _ticket_lookup_status(state, config=config, ticket_kind=ticket_kind),
+                f"{ticket_kind}チケット情報の取得が成功したか、失敗したか、未実行だったかを示します。",
+            )
+        )
+        lines.extend(
+            _report_item(
+                f"{ticket_label} ticket fetch detail",
+                _ticket_lookup_detail(state, config=config, ticket_kind=ticket_kind),
+                f"{ticket_kind}チケット取得結果の要約です。成功時は取得要約や保存成果物、失敗時はエラーメッセージ、未実行時は理由を示します。",
+            )
+        )
+    return lines
 
 
 def _render_ticket_fetch_error_section(state: CaseState) -> list[str]:

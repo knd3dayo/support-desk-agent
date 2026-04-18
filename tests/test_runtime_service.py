@@ -1087,14 +1087,20 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertTrue(report_path.exists())
         self.assertEqual(report_path.parent.name, ".report")
         content = report_path.read_text(encoding="utf-8")
+        meta_section = content.split("## Meta", 1)[1].split("## 問い合わせ内容", 1)[0]
         self.assertIn("# Support Improvement Report: CASE-TEST-011", content)
         self.assertIn("## 制御サマリー", content)
         self.assertIn("## ランタイム制約一覧", content)
         self.assertIn("## ランタイム制約影響評価", content)
+        self.assertIn("## チケット情報", content)
         self.assertIn("External ticket ID", content)
         self.assertIn("Internal ticket ID", content)
         self.assertIn("External ticket fetch", content)
         self.assertIn("Internal ticket fetch", content)
+        self.assertNotIn("External ticket ID", meta_section)
+        self.assertNotIn("Internal ticket ID", meta_section)
+        self.assertLess(content.index("## 調査に使用したログ・成果物"), content.index("## チケット情報"))
+        self.assertLess(content.index("## チケット情報"), content.index("## 結果と評価"))
         self.assertIn("### 発火した制御", content)
         self.assertIn("共通 instruction 制約", content)
         self.assertIn("役割別の想定 instruction 制約", content)
@@ -1190,11 +1196,15 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         )
 
         content = Path(str(report["report_path"])).read_text(encoding="utf-8")
+        meta_section = content.split("## Meta", 1)[1].split("## 問い合わせ内容", 1)[0]
 
+        self.assertIn("## チケット情報", content)
         self.assertIn("External ticket ID", content)
         self.assertIn("Internal ticket ID", content)
         self.assertIn("External ticket fetch", content)
         self.assertIn("Internal ticket fetch", content)
+        self.assertNotIn("External ticket ID", meta_section)
+        self.assertNotIn("Internal ticket ID", meta_section)
         self.assertNotIn("Adopted sources: none", content)
 
     def test_initialize_case_creates_objective_evaluator_working_memory(self) -> None:

@@ -7,20 +7,24 @@ support_ope_agents:
     api_key: os.environ/LLM_API_KEY
     base_url: http://localhost:4000
 
+  config_paths: {}
+
+  data_paths: {}
+
   runtime:
     mode: production
 
   tools:
     ticket_sources:
       external:
-        enabled: false
+        enabled: true
         server: github
         description: GitHub 上で管理する顧客向け問い合わせ issue
         arguments:
           owner: your-github-org
           repo: support-ope-external-tickets
       internal:
-        enabled: false
+        enabled: true
         server: github
         description: GitHub 上で管理する内部管理 issue
         arguments:
