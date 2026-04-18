@@ -298,7 +298,7 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
                 },
             }
         )
-        provider = XmlMcpToolsetProvider(resolver=_FakeResolver())  # type: ignore[arg-type]
+        provider = XmlMcpToolsetProvider(backend=_FakeResolver())  # type: ignore[arg-type]
         agent = IntakeAgent(
             config=config,
             pii_mask_tool=lambda *_args, **_kwargs: "",
@@ -351,7 +351,7 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
                 },
             }
         )
-        provider = XmlMcpToolsetProvider(resolver=resolver)  # type: ignore[arg-type]
+        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = IntakeAgent(
             config=config,
             pii_mask_tool=lambda *_args, **_kwargs: "",

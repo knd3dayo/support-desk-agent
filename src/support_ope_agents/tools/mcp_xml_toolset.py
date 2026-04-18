@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from typing import Any
 from xml.sax.saxutils import escape
 
-from support_ope_agents.tools.mcp_overrides import McpToolInfo, McpToolOverrideResolver
+from support_ope_agents.config.models import AppConfig
+from support_ope_agents.tools.mcp_overrides import McpToolClient, McpToolInfo
 
 
 def _normalize_scalar(value: Any) -> Any:
@@ -27,13 +28,18 @@ def _normalize_scalar(value: Any) -> Any:
 
 @dataclass(frozen=True, slots=True)
 class XmlMcpToolsetProvider:
-    resolver: McpToolOverrideResolver
+    backend: McpToolClient
+
+    @classmethod
+    def from_config(cls, config: AppConfig) -> "XmlMcpToolsetProvider | None":
+        client = McpToolClient.from_config(config) if config.tools.mcp_manifest_path is not None else None
+        return cls(backend=client) if client is not None else None
 
     def list_tools(self, server_name: str) -> tuple[McpToolInfo, ...]:
-        return self.resolver.list_tools(server_name)
+        return self.backend.list_tools(server_name)
 
     def list_tool_names(self, server_name: str) -> set[str]:
-        return self.resolver.list_tool_names(server_name)
+        return {tool.name for tool in self.list_tools(server_name)}
 
     def render_tools_xml(self, server_name: str) -> str:
         parts = [f'<tools server="{escape(server_name)}">']
@@ -59,6 +65,10 @@ class XmlMcpToolsetProvider:
         *,
         static_arguments: dict[str, Any] | None = None,
     ) -> str:
+        available_tools = self.list_tool_names(server_name)
+        if tool_name not in available_tools:
+            tools_text = ", ".join(sorted(available_tools)) or "<none>"
+            raise ValueError(f"selected MCP tool does not exist: {tool_name}. available_tools=[{tools_text}]")
         merged_arguments = {str(key): _normalize_scalar(value) for key, value in (static_arguments or {}).items()}
         merged_arguments.update({str(key): _normalize_scalar(value) for key, value in arguments.items()})
-        return self.resolver.call_tool(server_name, tool_name, merged_arguments)
+        return self.backend.call_tool(server_name, tool_name, merged_arguments)

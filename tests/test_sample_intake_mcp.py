@@ -105,7 +105,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_hydrates_ticket_context_with_xml_selected_tool(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        provider = XmlMcpToolsetProvider(resolver=resolver)  # type: ignore[arg-type]
+        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
         model = _FakeChatModel(
             [
@@ -150,7 +150,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_invalid_xml_tool_selection_disables_lookup_and_records_error(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        provider = XmlMcpToolsetProvider(resolver=resolver)  # type: ignore[arg-type]
+        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
         model = _FakeChatModel(
             [
@@ -178,7 +178,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
         config = self._build_config()
         resolver = _FakeResolver()
         resolver.raise_not_found_once = True
-        provider = XmlMcpToolsetProvider(resolver=resolver)  # type: ignore[arg-type]
+        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
         model = _FakeChatModel(
             [
@@ -222,7 +222,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
                 return super().call_tool(server_name, tool_name, arguments)
 
         resolver = _LowMatchResolver()
-        provider = XmlMcpToolsetProvider(resolver=resolver)  # type: ignore[arg-type]
+        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
         model = _FakeChatModel(
             [

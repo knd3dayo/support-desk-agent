@@ -7,20 +7,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 from support_ope_agents.config.models import McpToolBinding
-from support_ope_agents.tools.mcp_overrides import McpManifest, McpToolOverrideResolver
+from support_ope_agents.tools.mcp_overrides import McpManifest, McpToolClient
 
 
-class McpToolOverrideResolverTests(unittest.TestCase):
+class McpToolClientTests(unittest.TestCase):
     def test_build_handler_merges_static_and_mapped_arguments(self) -> None:
-        resolver = McpToolOverrideResolver(McpManifest(path=Path("manifest.json"), servers={}))
+        client = McpToolClient(McpManifest(path=Path("manifest.json"), servers={}))
 
         async def _fake_call(server_name: str, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
             self.assertEqual(server_name, "github")
             self.assertEqual(tool_name, "get_issue")
             return arguments
 
-        with patch.object(resolver, "_call_tool_async", side_effect=_fake_call):
-            handler = resolver.build_handler(
+        with patch.object(client, "_call_tool_async", side_effect=_fake_call):
+            handler = client.build_handler(
                 McpToolBinding(server="github", tool="get_issue"),
                 logical_tool_name="external_ticket",
                 static_arguments={"owner": "acme", "repo": "external-support"},
@@ -35,8 +35,8 @@ class McpToolOverrideResolverTests(unittest.TestCase):
         )
 
     def test_build_handler_rejects_non_numeric_integer_argument(self) -> None:
-        resolver = McpToolOverrideResolver(McpManifest(path=Path("manifest.json"), servers={}))
-        handler = resolver.build_handler(
+        client = McpToolClient(McpManifest(path=Path("manifest.json"), servers={}))
+        handler = client.build_handler(
             McpToolBinding(server="github", tool="get_issue"),
             logical_tool_name="external_ticket",
             argument_map={"ticket_id": "issue_number"},

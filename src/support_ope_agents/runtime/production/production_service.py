@@ -52,7 +52,7 @@ from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
-from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
+from support_ope_agents.tools.mcp_overrides import McpToolClient
 from support_ope_agents.workflow import (
     ProductionCaseWorkflow,
     WORKFLOW_LABELS,
@@ -72,12 +72,12 @@ def build_runtime_context(config_path: str) -> ProductionRuntimeContext:
     memory_store = CaseMemoryStore(config)
     runtime_harness_manager = RuntimeHarnessManager(config)
     instruction_loader = InstructionLoader(config, memory_store, runtime_harness_manager)
-    mcp_override_resolver = (
-        McpToolOverrideResolver.from_config(config)
+    mcp_tool_client = (
+        McpToolClient.from_config(config)
         if config.tools.has_enabled_mcp_tools() or config.tools.mcp_manifest_path is not None
         else None
     )
-    tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
+    tool_registry = ToolRegistry(config, mcp_tool_client=mcp_tool_client)
     return ProductionRuntimeContext(
         config,
         memory_store,
@@ -109,7 +109,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             write_shared_memory_tool=intake_tools["write_shared_memory"],
             write_working_memory_tool=intake_tools.get("write_working_memory"),
             runtime_harness_manager=context.runtime_harness_manager,
-            ticket_mcp_provider=(XmlMcpToolsetProvider(context.tool_registry._mcp_override_resolver) if getattr(context.tool_registry, "_mcp_override_resolver", None) is not None else None),
+            ticket_mcp_provider=XmlMcpToolsetProvider.from_config(context.config),
         )
         self._approval_executor = ApprovalAgent(
             record_approval_decision_tool=approval_tools["record_approval_decision"],

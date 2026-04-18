@@ -77,40 +77,8 @@ class IntakeAgent(AbstractAgent):
             else:
                 result = tool(*args)
         if inspect.isawaitable(result):
-            resolved = run_awaitable_sync(cast(Any, result))
-            return str(resolved)
+            return str(run_awaitable_sync(cast(Any, result)))
         return str(result)
-
-    @staticmethod
-    def _parse_classification(raw_result: str) -> dict[str, str]:
-        normalized_raw_result = raw_result.strip()
-        try:
-            parsed = json.loads(normalized_raw_result)
-        except json.JSONDecodeError:
-            code_fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", normalized_raw_result, flags=re.DOTALL)
-            inline_json_match = re.search(r"(\{.*\})", normalized_raw_result, flags=re.DOTALL)
-            candidate = ""
-            if code_fence_match:
-                candidate = code_fence_match.group(1).strip()
-            elif inline_json_match:
-                candidate = inline_json_match.group(1).strip()
-            if candidate:
-                try:
-                    parsed = json.loads(candidate)
-                except json.JSONDecodeError:
-                    return {"category": "ambiguous_case", "urgency": "medium", "investigation_focus": normalized_raw_result}
-            else:
-                return {"category": "ambiguous_case", "urgency": "medium", "investigation_focus": normalized_raw_result}
-
-        if not isinstance(parsed, dict):
-            return {"category": "ambiguous_case", "urgency": "medium", "investigation_focus": str(parsed)}
-
-        return {
-            "category": str(parsed.get("category") or "ambiguous_case"),
-            "urgency": str(parsed.get("urgency") or "medium"),
-            "investigation_focus": str(parsed.get("investigation_focus") or "問い合わせ内容の事実関係を確認する"),
-            "reason": str(parsed.get("reason") or ""),
-        }
 
     @staticmethod
     def _extract_incident_timeframe(text: str) -> str:
@@ -737,6 +705,23 @@ class IntakeAgent(AbstractAgent):
         return cast("CaseState", update)
 
     CLASSIFY_PROMPT = "Classify the intake issue for customer support workflow routing and investigation planning."
+
+    @staticmethod
+    def _parse_classification(raw_text: str) -> dict[str, str]:
+        candidate = raw_text.strip()
+        fenced_match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", candidate, re.DOTALL)
+        if fenced_match:
+            candidate = fenced_match.group(1).strip()
+        parsed = json.loads(candidate)
+        if not isinstance(parsed, dict):
+            raise ValueError("classify_ticket tool must return a JSON object")
+        return {
+            "category": str(parsed.get("category") or "ambiguous_case").strip() or "ambiguous_case",
+            "urgency": str(parsed.get("urgency") or "medium").strip() or "medium",
+            "investigation_focus": str(parsed.get("investigation_focus") or "問い合わせ内容の事実関係を確認する").strip()
+            or "問い合わせ内容の事実関係を確認する",
+            "reason": str(parsed.get("reason") or "").strip(),
+        }
 
     def classify_issue(self, state: CaseState) -> CaseState:
         update = dict(state)

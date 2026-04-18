@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from contextlib import asynccontextmanager
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
@@ -10,12 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import anyio
-import httpx
-from mcp import ClientSession, StdioServerParameters, stdio_client
-from mcp.client.session_group import SseServerParameters, StreamableHttpParameters
-from mcp.client.sse import sse_client
-from mcp.client.streamable_http import streamable_http_client
-from mcp.shared._httpx_utils import create_mcp_http_client
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.sessions import Connection
 
 from support_ope_agents.config.models import AppConfig, McpToolBinding
 
@@ -125,15 +120,22 @@ class McpManifest:
         )
 
 
-class McpToolOverrideResolver:
+class McpToolClient:
     def __init__(self, manifest: McpManifest, default_timeout_seconds: float = 30.0):
         self._manifest = manifest
         self._default_timeout_seconds = default_timeout_seconds
+        self._client = MultiServerMCPClient(
+            connections={
+                server_name: self._build_connection(server_config)
+                for server_name, server_config in manifest.servers.items()
+            },
+            tool_name_prefix=False,
+        )
         self._tool_name_cache: dict[str, set[str]] = {}
         self._tool_cache: dict[str, tuple[McpToolInfo, ...]] = {}
 
     @classmethod
-    def from_config(cls, config: AppConfig) -> "McpToolOverrideResolver":
+    def from_config(cls, config: AppConfig) -> "McpToolClient":
         manifest_path = config.tools.mcp_manifest_path
         if manifest_path is None:
             raise ToolConfigurationError("tools.mcp_manifest_path is required when enabled logical tools use provider='mcp'")
@@ -249,25 +251,11 @@ class McpToolOverrideResolver:
         return self._serialize_call_result(result)
 
     async def _list_tools_async(self, server: McpServerConfig) -> tuple[McpToolInfo, ...]:
-        async with self._session_for(server) as session:
-            result = await session.list_tools()
-        tools: list[McpToolInfo] = []
-        for tool in result.tools:
-            input_schema = getattr(tool, "inputSchema", None) or getattr(tool, "input_schema", None) or {}
-            if not isinstance(input_schema, dict):
-                input_schema = {}
-            tools.append(
-                McpToolInfo(
-                    name=str(getattr(tool, "name", "") or ""),
-                    description=str(getattr(tool, "description", "") or ""),
-                    input_schema=input_schema,
-                )
-            )
-        return tuple(tools)
+        raw_tools = await self._client.get_tools(server_name=server.name)
+        return tuple(self._tool_info_from_langchain_tool(tool) for tool in raw_tools)
 
     async def _call_tool_async(self, server_name: str, tool_name: str, arguments: dict[str, Any]) -> Any:
-        server = self._manifest.servers[server_name]
-        async with self._session_for(server) as session:
+        async with self._client.session(server_name) as session:
             return await session.call_tool(tool_name, arguments)
 
     def _serialize_call_result(self, result: Any) -> str:
@@ -296,60 +284,81 @@ class McpToolOverrideResolver:
     def _server_timeout(self, server: McpServerConfig) -> float:
         return server.timeout_seconds if server.timeout_seconds is not None else self._default_timeout_seconds
 
-    @asynccontextmanager
-    async def _session_for(self, server: McpServerConfig):
+    def _build_connection(self, server: McpServerConfig) -> Connection:
         timeout_seconds = self._server_timeout(server)
+        session_kwargs: dict[str, Any] = {"read_timeout_seconds": timedelta(seconds=timeout_seconds)}
+
         if server.transport == "stdio":
-            assert server.command is not None
-            params = StdioServerParameters(command=server.command, args=list(server.args), env=server.env)
-            async with stdio_client(params) as streams:
-                async with ClientSession(*streams, read_timeout_seconds=timedelta(seconds=timeout_seconds)) as session:
-                    await session.initialize()
-                    yield session
-            return
+            if server.command is None:
+                raise ToolConfigurationError(f"MCP stdio server '{server.name}' is missing command")
+            connection: Connection = {
+                "transport": "stdio",
+                "command": server.command,
+                "args": list(server.args),
+                "session_kwargs": session_kwargs,
+            }
+            if server.env is not None:
+                connection["env"] = server.env
+            return connection
 
         if server.transport == "sse":
-            assert server.url is not None
-            params = SseServerParameters(
-                url=server.url,
-                headers=server.headers,
-                timeout=timeout_seconds,
-                sse_read_timeout=server.sse_read_timeout_seconds or max(timeout_seconds, 300.0),
-            )
-            async with sse_client(
-                url=params.url,
-                headers=params.headers,
-                timeout=params.timeout,
-                sse_read_timeout=params.sse_read_timeout,
-            ) as streams:
-                async with ClientSession(*streams, read_timeout_seconds=timedelta(seconds=timeout_seconds)) as session:
-                    await session.initialize()
-                    yield session
-            return
+            if server.url is None:
+                raise ToolConfigurationError(f"MCP sse server '{server.name}' is missing url")
+            connection = {
+                "transport": "sse",
+                "url": server.url,
+                "timeout": timeout_seconds,
+                "sse_read_timeout": server.sse_read_timeout_seconds or max(timeout_seconds, 300.0),
+                "session_kwargs": session_kwargs,
+            }
+            if server.headers is not None:
+                connection["headers"] = server.headers
+            return connection
 
-        assert server.url is not None
-        params = StreamableHttpParameters(
-            url=server.url,
-            headers=server.headers,
-            timeout=timedelta(seconds=timeout_seconds),
-            sse_read_timeout=timedelta(seconds=server.sse_read_timeout_seconds or max(timeout_seconds, 300.0)),
-            terminate_on_close=server.terminate_on_close,
+        if server.transport == "streamable-http":
+            if server.url is None:
+                raise ToolConfigurationError(f"MCP streamable-http server '{server.name}' is missing url")
+            connection = {
+                "transport": "streamable_http",
+                "url": server.url,
+                "timeout": timedelta(seconds=timeout_seconds),
+                "sse_read_timeout": timedelta(seconds=server.sse_read_timeout_seconds or max(timeout_seconds, 300.0)),
+                "terminate_on_close": server.terminate_on_close,
+                "session_kwargs": session_kwargs,
+            }
+            if server.headers is not None:
+                connection["headers"] = server.headers
+            return connection
+
+        raise ToolConfigurationError(
+            f"MCP server '{server.name}' uses unsupported transport '{server.transport}' in {self._manifest.path}. Supported: stdio, sse, streamable-http"
         )
-        httpx_client = create_mcp_http_client(
-            headers=params.headers,
-            timeout=httpx.Timeout(timeout_seconds, read=params.sse_read_timeout.total_seconds()),
+
+    @staticmethod
+    def _tool_info_from_langchain_tool(tool: Any) -> McpToolInfo:
+        input_schema: dict[str, Any] = {}
+        get_input_schema = getattr(tool, "get_input_schema", None)
+        if callable(get_input_schema):
+            try:
+                schema = get_input_schema()
+                if hasattr(schema, "model_json_schema"):
+                    input_schema = schema.model_json_schema()
+                elif isinstance(schema, dict):
+                    input_schema = schema
+            except Exception:
+                input_schema = {}
+        if not input_schema:
+            args_schema = getattr(tool, "args_schema", None)
+            if hasattr(args_schema, "model_json_schema"):
+                input_schema = args_schema.model_json_schema()
+        if not input_schema:
+            tool_call_schema = getattr(tool, "tool_call_schema", None)
+            if hasattr(tool_call_schema, "model_json_schema"):
+                input_schema = tool_call_schema.model_json_schema()
+            elif isinstance(tool_call_schema, dict):
+                input_schema = tool_call_schema
+        return McpToolInfo(
+            name=str(getattr(tool, "name", "") or ""),
+            description=str(getattr(tool, "description", "") or ""),
+            input_schema=input_schema if isinstance(input_schema, dict) else {},
         )
-        async with httpx_client:
-            async with streamable_http_client(
-                url=params.url,
-                http_client=httpx_client,
-                terminate_on_close=params.terminate_on_close,
-            ) as streams:
-                read_stream, write_stream, _ = streams
-                async with ClientSession(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds=timedelta(seconds=timeout_seconds),
-                ) as session:
-                    await session.initialize()
-                    yield session

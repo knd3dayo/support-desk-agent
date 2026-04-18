@@ -26,7 +26,7 @@ from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
 from .default_write_shared_memory import build_default_write_shared_memory_tool
 from .default_write_working_memory import build_default_write_working_memory_tool
-from .mcp_overrides import McpToolOverrideResolver, ToolConfigurationError
+from .mcp_overrides import McpToolClient, ToolConfigurationError
 
 
 ToolCallable = Callable[..., Any]
@@ -56,9 +56,9 @@ def _unavailable_tool(message: str) -> ToolCallable:
 
 
 class ToolRegistry:
-    def __init__(self, config: AppConfig, mcp_override_resolver: McpToolOverrideResolver | None = None):
+    def __init__(self, config: AppConfig, mcp_tool_client: McpToolClient | None = None):
         self._config = config
-        self._mcp_override_resolver = mcp_override_resolver
+        self._mcp_tool_client = mcp_tool_client
         self._builtin_tools = {
             name: ToolSpec(
                 name=builtin.name,
@@ -365,11 +365,11 @@ class ToolRegistry:
                     )
                 continue
             binding = McpToolBinding(server=str(setting.server), tool=str(setting.tool))
-            if self._mcp_override_resolver is None:
+            if self._mcp_tool_client is None:
                 raise ToolConfigurationError(
-                    f"tools.logical_tools.{logical_tool_name} requires an MCP resolver, but tools.mcp_manifest_path is not configured"
+                    f"tools.logical_tools.{logical_tool_name} requires an MCP client, but tools.mcp_manifest_path is not configured"
                 )
-            self._mcp_override_resolver.validate_logical_tool(logical_tool_name=logical_tool_name, binding=binding)
+            self._mcp_tool_client.validate_logical_tool(logical_tool_name=logical_tool_name, binding=binding)
 
     def _resolve_tool_configuration(self, tool: ToolSpec) -> ToolSpec | None:
         setting = self._config.tools.get_logical_tool(tool.name)
@@ -405,15 +405,15 @@ class ToolRegistry:
                 provider="builtin",
                 target=target_name,
             )
-        if self._mcp_override_resolver is None:
+        if self._mcp_tool_client is None:
             raise ToolConfigurationError(
-                f"tools.logical_tools.{tool.name} requested MCP provider, but no MCP resolver is configured"
+                f"tools.logical_tools.{tool.name} requested MCP provider, but no MCP client is configured"
             )
         binding = McpToolBinding(server=str(setting.server), tool=str(setting.tool))
         return ToolSpec(
             name=tool.name,
             description=tool.description,
-            handler=self._mcp_override_resolver.build_handler(
+            handler=self._mcp_tool_client.build_handler(
                 binding,
                 logical_tool_name=tool.name,
                 static_arguments=setting.arguments,

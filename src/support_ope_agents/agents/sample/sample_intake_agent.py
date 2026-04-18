@@ -327,8 +327,6 @@ class SampleIntakeAgent(AbstractAgent):
             return None
         if decision.list_tool_name.lower() == "skip":
             return None
-        if decision.list_tool_name not in provider.list_tool_names(binding.server):
-            raise ValueError(f"selected MCP tool does not exist: {decision.list_tool_name}")
         raw_result = provider.call_tool(
             binding.server,
             decision.list_tool_name,
@@ -390,15 +388,6 @@ class SampleIntakeAgent(AbstractAgent):
                     ]
                 )
                 decision = self._parse_tool_decision(self._extract_text(response), decision_tag=binding.decision_tag)
-                if decision.get_tool_name not in provider.list_tool_names(binding.server):
-                    raise ValueError(f"selected MCP tool does not exist: {decision.get_tool_name}")
-                if decision.list_tool_name.lower() != "skip" and decision.list_tool_name not in provider.list_tool_names(binding.server):
-                    raise ValueError(f"selected MCP tool does not exist: {decision.list_tool_name}")
-                if (
-                    decision.attachment_tool_name.lower() != "skip"
-                    and decision.attachment_tool_name not in provider.list_tool_names(binding.server)
-                ):
-                    raise ValueError(f"selected MCP tool does not exist: {decision.attachment_tool_name}")
                 raw_result = provider.call_tool(
                     binding.server,
                     decision.get_tool_name,

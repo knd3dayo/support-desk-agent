@@ -19,6 +19,7 @@ dependencies = [
   "langgraph-checkpoint-sqlite>=2.0.0",
   "langchain-core>=0.3.0",
   "langchain-openai>=0.2.0",
+  "langchain-mcp-adapters>=0.2.2",
   "deepagents>=0.0.7",
   "mcp>=1,<2",
   "requests>=2.32,<3",
