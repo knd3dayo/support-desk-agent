@@ -5,6 +5,8 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .tool_surface import CONFIGURABLE_LOGICAL_TOOLS, INTERNAL_ONLY_LOGICAL_TOOLS
+
 
 DEFAULT_DOCUMENT_IGNORE_PATTERNS = [
     ".*",
@@ -334,8 +336,25 @@ class ToolSettings(StrictConfigModel):
 
     @model_validator(mode="after")
     def _validate_mcp_manifest_requirement(self) -> "ToolSettings":
-        if self.has_enabled_mcp_tools() and self.mcp_manifest_path is None:
-            raise ValueError("tools.mcp_manifest_path is required when any enabled logical tool uses provider='mcp'")
+        if (self.has_enabled_mcp_tools() or self.has_enabled_ticket_sources()) and self.mcp_manifest_path is None:
+            raise ValueError(
+                "tools.mcp_manifest_path is required when enabled logical tools or ticket_sources use MCP"
+            )
+        for logical_tool_name in self.logical_tools:
+            if logical_tool_name in {"external_ticket", "internal_ticket"}:
+                ticket_kind = logical_tool_name.removesuffix("_ticket")
+                raise ValueError(
+                    f"tools.logical_tools.{logical_tool_name} is no longer supported; use tools.ticket_sources.{ticket_kind}"
+                )
+            if logical_tool_name in INTERNAL_ONLY_LOGICAL_TOOLS:
+                raise ValueError(
+                    f"tools.logical_tools.{logical_tool_name} is internal-only and cannot be configured from config.yml"
+                )
+            if logical_tool_name not in CONFIGURABLE_LOGICAL_TOOLS:
+                allowed = ", ".join(sorted(CONFIGURABLE_LOGICAL_TOOLS))
+                raise ValueError(
+                    f"tools.logical_tools.{logical_tool_name} is not configurable. configurable_tools=[{allowed}]"
+                )
         return self
 
     def has_enabled_mcp_tools(self) -> bool:

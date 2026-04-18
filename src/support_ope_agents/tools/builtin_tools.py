@@ -25,6 +25,7 @@ from PIL import Image
 from pptx import Presentation
 
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.util.langchain import build_chat_openai_model, stringify_response_content
 
 
 ToolCallable = Callable[..., Any]
@@ -63,35 +64,6 @@ def _ensure_existing_paths(paths: list[str]) -> list[Path]:
             raise FileNotFoundError(f"File was not found: {path}")
         resolved.append(path)
     return resolved
-
-
-def _stringify_response_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-                continue
-            if isinstance(item, dict):
-                text = item.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-        if parts:
-            return "\n".join(parts)
-    return json.dumps(content, ensure_ascii=False)
-
-
-def _get_chat_model(config: AppConfig) -> ChatOpenAI:
-    return ChatOpenAI(
-        model=config.llm.model,
-        api_key=cast(Any, config.llm.api_key),
-        base_url=config.llm.base_url,
-        temperature=0,
-    )
-
-
 def _truncate_text(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
@@ -193,7 +165,7 @@ def _serialize_document_summaries(documents: list[dict[str, Any]], prompt: str, 
 
 
 async def _analyze_text_documents(config: AppConfig, documents: list[dict[str, Any]], prompt: str) -> str:
-    model = _get_chat_model(config)
+    model = build_chat_openai_model(config, temperature=0)
 
     payload_lines = ["You are analyzing customer support evidence.", f"Task: {prompt}", ""]
     for document in documents:
@@ -201,7 +173,7 @@ async def _analyze_text_documents(config: AppConfig, documents: list[dict[str, A
         payload_lines.append(document["content"])
         payload_lines.append("")
     response = await model.ainvoke([HumanMessage(content="\n".join(payload_lines))])
-    return _stringify_response_content(response.content)
+    return stringify_response_content(response.content)
 
 
 async def _analyze_images(config: AppConfig, paths: list[Path], prompt: str, detail: str) -> str:
@@ -218,7 +190,7 @@ async def _analyze_images(config: AppConfig, paths: list[Path], prompt: str, det
                 }
             )
 
-    model = _get_chat_model(config)
+    model = build_chat_openai_model(config, temperature=0)
     content: list[dict[str, Any]] = [
         {
             "type": "text",
@@ -239,7 +211,7 @@ async def _analyze_images(config: AppConfig, paths: list[Path], prompt: str, det
             }
         )
     response = await model.ainvoke([HumanMessage(content=cast(Any, content))])
-    return _stringify_response_content(response.content)
+    return stringify_response_content(response.content)
 
 
 def _resolve_output_dir(output_dir: str | None) -> Path | None:

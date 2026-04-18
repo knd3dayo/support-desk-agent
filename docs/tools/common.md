@@ -17,6 +17,8 @@
 - tool の責務、利用 agent、既定実装、実装状況は tool 個別ページに分離する
 - 既定実装は builtin を優先し、外部接続が必要なものは後続で MCP または API adapter に置き換える
 - 共有メモリの読み書きは write_shared_memory / read_shared_memory の論理ツール経由に統一する
+- shared memory や working memory のような workflow 内部ツールは MCP override 対象に含めない
+- external_ticket / internal_ticket の接続先設定は logical_tools ではなく tools.ticket_sources に集約する
 - 実装未着手のツールでも、設計上の責務と I/O 契約は先に固定する
 
 ## 4. 読み方

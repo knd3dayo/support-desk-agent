@@ -1,39 +1,12 @@
 from __future__ import annotations
 
 import re
-from typing import Any, cast
+from typing import Any
 
 from langchain_core.messages import HumanMessage
-from langchain_openai import ChatOpenAI
 
 from support_ope_agents.config.models import AppConfig
-
-
-def _get_chat_model(config: AppConfig) -> ChatOpenAI:
-    return ChatOpenAI(
-        model=config.llm.model,
-        api_key=cast(Any, config.llm.api_key),
-        base_url=config.llm.base_url,
-        temperature=0,
-    )
-
-
-def _stringify_response_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content.strip()
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-                continue
-            if isinstance(item, dict):
-                text = item.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-        if parts:
-            return "\n".join(parts).strip()
-    return str(content).strip()
+from support_ope_agents.util.langchain import build_chat_openai_model, stringify_response_content
 
 
 def build_default_pii_mask_tool(config: AppConfig):
@@ -43,7 +16,7 @@ def build_default_pii_mask_tool(config: AppConfig):
         if not normalized_text.strip():
             return normalized_text
 
-        model = _get_chat_model(config)
+        model = build_chat_openai_model(config, temperature=0)
         instructions = [
             "You redact sensitive secrets from customer support text.",
             "Mask API keys, access tokens, bearer tokens, secrets, passwords, private keys, and similar credentials.",
@@ -56,7 +29,7 @@ def build_default_pii_mask_tool(config: AppConfig):
             instructions.extend(["", f"Context: {normalized_context}"])
         instructions.extend(["", "Input text:", normalized_text])
         response = await model.ainvoke([HumanMessage(content="\n".join(instructions))])
-        content = _stringify_response_content(response.content)
+        content = stringify_response_content(response.content)
         if not content:
             raise ValueError("pii_mask returned an empty response")
         return content

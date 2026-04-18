@@ -57,21 +57,11 @@ class McpAdapterTests(unittest.TestCase):
             return_value=_fake_objective_evaluation_result(),
         )
         self._classify_model_patcher = patch(
-            "support_ope_agents.tools.default_classify_ticket._get_chat_model",
+            "support_ope_agents.tools.default_classify_ticket.build_chat_openai_model",
             return_value=_FakeClassifierModel(),
-        )
-        self._draft_model_patcher = patch(
-            "support_ope_agents.agents.draft_writer_agent._get_chat_model",
-            return_value=_FakeDraftModel(),
-        )
-        self._compliance_model_patcher = patch(
-            "support_ope_agents.tools.default_check_policy._get_chat_model",
-            return_value=_FakeComplianceModel(),
         )
         self._objective_eval_patcher.start()
         self._classify_model_patcher.start()
-        self._draft_model_patcher.start()
-        self._compliance_model_patcher.start()
         self._tmpdir = tempfile.TemporaryDirectory()
         self.repo_root = Path(self._tmpdir.name)
         self.workspace_path = self.repo_root / "work" / "cases" / "CASE-MCP-001"
@@ -96,8 +86,6 @@ class McpAdapterTests(unittest.TestCase):
         self.adapter = SupportOpeMcpAdapter(str(config_path))
 
     def tearDown(self) -> None:
-        self._compliance_model_patcher.stop()
-        self._draft_model_patcher.stop()
         self._classify_model_patcher.stop()
         self._objective_eval_patcher.stop()
         self._tmpdir.cleanup()

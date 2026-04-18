@@ -83,8 +83,8 @@ IntakeAgent が参照する使用ツール詳細は次を参照する。
 - [docs/tools/specs/classify_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/classify_ticket.md)
 - [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_shared_memory.md)
 
-ticket 取得系ツールの有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools.external_ticket / internal_ticket で管理する。
-logical_tools は disabled、builtin、mcp の 3 パターンで表現し、provider: mcp の場合は manifest と server / tool 定義を起動時に検証する。
+ticket 取得系ツールの有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.ticket_sources.external / internal で管理する。
+ticket_sources を有効化した場合は manifest と server 定義を起動時に検証する。logical_tools は classify_ticket など任意差し替え対象だけを扱う。
 
 ## 6. 処理内容
 

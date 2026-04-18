@@ -2,40 +2,13 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, cast
+from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
-
-
-def _get_chat_model(config: AppConfig) -> ChatOpenAI:
-    return ChatOpenAI(
-        model=config.llm.model,
-        api_key=cast(Any, config.llm.api_key),
-        base_url=config.llm.base_url,
-        temperature=0,
-    )
-
-
-def _stringify_response_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content.strip()
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-                continue
-            if isinstance(item, dict):
-                text = item.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-        if parts:
-            return "\n".join(parts).strip()
-    return str(content).strip()
+from support_ope_agents.util.langchain import build_chat_openai_model, stringify_response_content
 
 
 def build_default_classify_ticket_tool(config: AppConfig):
@@ -49,7 +22,7 @@ def build_default_classify_ticket_tool(config: AppConfig):
         if not normalized_text:
             raise ValueError("classify_ticket requires non-empty text")
 
-        model = _get_chat_model(config)
+        model = build_chat_openai_model(config, temperature=0)
         instructions = [
             "You classify a customer support issue for workflow intake.",
             "Return only JSON.",
@@ -69,7 +42,7 @@ def build_default_classify_ticket_tool(config: AppConfig):
                 HumanMessage(content="\n".join(prompt_lines)),
             ]
         )
-        content = _stringify_response_content(response.content)
+        content = stringify_response_content(response.content)
         if not content:
             raise ValueError("classify_ticket returned an empty response")
         return content

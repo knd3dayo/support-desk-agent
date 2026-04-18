@@ -11,39 +11,31 @@ support_ope_agents:
     mode: production
 
   tools:
+    ticket_sources:
+      external:
+        enabled: false
+        server: github
+        description: GitHub 上で管理する顧客向け問い合わせ issue
+        arguments:
+          owner: your-github-org
+          repo: support-ope-external-tickets
+      internal:
+        enabled: false
+        server: github
+        description: GitHub 上で管理する内部管理 issue
+        arguments:
+          owner: your-github-org
+          repo: support-ope-internal-tickets
     logical_tools:
+      # logical_tools は optional override 対象だけを定義します。
+      # external/internal ticket は ticket_sources で設定します。
+      # workflow 内部メモリ用 tool や detect_log_format は MCP へ差し替えできません。
       search_documents:
         enabled: true
         provider: builtin
       run_python_analysis:
         enabled: true
         provider: builtin
-      external_ticket:
-        enabled: false
-        provider: mcp
-        description: GitHub 上で管理する顧客向け問い合わせ issue
-        server: github
-        tool: get_issue
-        arguments:
-          owner: your-github-org
-          repo: support-ope-external-tickets
-        argument_map:
-          ticket_id: issue_number
-        integer_arguments:
-          - issue_number
-      internal_ticket:
-        enabled: false
-        provider: mcp
-        description: GitHub 上で管理する内部管理 issue
-        server: github
-        tool: get_issue
-        arguments:
-          owner: your-github-org
-          repo: support-ope-internal-tickets
-        argument_map:
-          ticket_id: issue_number
-        integer_arguments:
-          - issue_number
     # GitHub MCP を使う場合は、manifest 内で github server と
     # GITHUB_PERSONAL_ACCESS_TOKEN を設定したうえで path を有効化する
     mcp_manifest_path: mcp.json

@@ -63,13 +63,57 @@ class ConsolidatedKnowledgeTests(unittest.TestCase):
                     "data_paths": {},
                     "tools": {
                         "logical_tools": {
+                            "classify_ticket": {
+                                "enabled": True,
+                                "provider": "mcp",
+                                "server": "support-ticket-mcp",
+                                "tool": "classify_ticket",
+                            }
+                        }
+                    },
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+
+    def test_enabled_ticket_source_requires_manifest(self) -> None:
+        with self.assertRaises(ValidationError):
+            AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "sk-test-value", "base_url": "http://localhost:4000"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "tools": {
+                        "ticket_sources": {
+                            "external": {
+                                "enabled": True,
+                                "server": "support-ticket-mcp",
+                            }
+                        }
+                    },
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
+
+    def test_legacy_ticket_logical_tool_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "sk-test-value", "base_url": "http://localhost:4000"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "tools": {
+                        "mcp_manifest_path": "/tmp/test-mcp.json",
+                        "logical_tools": {
                             "external_ticket": {
                                 "enabled": True,
                                 "provider": "mcp",
                                 "server": "support-ticket-mcp",
                                 "tool": "get_external_ticket",
+                                "arguments": {"owner": "acme", "repo": "support"},
                             }
-                        }
+                        },
                     },
                     "interfaces": {},
                     "agents": {},
@@ -92,6 +136,26 @@ class ConsolidatedKnowledgeTests(unittest.TestCase):
 
         self.assertEqual(tools["external_ticket"].provider, "local")
         self.assertEqual(tools["internal_ticket"].provider, "local")
+
+    def test_internal_memory_tools_are_rejected_during_config_validation(self) -> None:
+        with self.assertRaises(ValidationError):
+            AppConfig.model_validate(
+                {
+                    "llm": {"provider": "openai", "model": "poc-chat-model", "api_key": "sk-test-value", "base_url": "http://localhost:4000"},
+                    "config_paths": {},
+                    "data_paths": {},
+                    "tools": {
+                        "logical_tools": {
+                            "write_shared_memory": {
+                                "enabled": True,
+                                "provider": "builtin",
+                            }
+                        },
+                    },
+                    "interfaces": {},
+                    "agents": {},
+                }
+            )
 
     def test_returns_unavailable_when_document_sources_are_missing(self) -> None:
         config = AppConfig.model_validate(

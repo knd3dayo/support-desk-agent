@@ -4,11 +4,11 @@ import json
 from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
 from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
+from support_ope_agents.util.langchain import build_chat_openai_model
 
 from ..util.document.document_source_backend import build_document_source_backend, read_backend_file_data
 
@@ -30,17 +30,6 @@ class _DeepAgentSourceResult(BaseModel):
 
 class _DeepAgentSearchResponse(BaseModel):
     results: list[_DeepAgentSourceResult] = Field(default_factory=list)
-
-
-def _get_chat_model(config: AppConfig) -> ChatOpenAI:
-    return ChatOpenAI(
-        model=config.llm.model,
-        api_key=config.llm.api_key,
-        base_url=config.llm.base_url,
-        temperature=0,
-    )
-
-
 def _build_search_prompt(
     *,
     query: str,
@@ -89,7 +78,7 @@ def _invoke_deepagents_search(
         return None
 
     agent = create_deep_agent(
-        model=_get_chat_model(config),
+        model=build_chat_openai_model(config, temperature=0),
         backend=backend,
         system_prompt=(
             "Search the mounted documentation and return only structured data. "

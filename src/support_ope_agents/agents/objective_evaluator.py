@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.util.langchain import build_chat_openai_model
 
 
 class StructuredCriterionEvaluation(BaseModel):
@@ -34,17 +34,6 @@ class ObjectiveEvaluatorStructuredResult(BaseModel):
     overall_summary: str
     improvement_points: list[str]
     overall_score: int = Field(ge=0, le=100)
-
-
-def _get_chat_model(config: AppConfig) -> ChatOpenAI:
-    return ChatOpenAI(
-        model=config.llm.model,
-        api_key=SecretStr(config.llm.api_key),
-        base_url=config.llm.base_url,
-        temperature=0,
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class ObjectiveEvaluator:
     config: AppConfig
@@ -60,7 +49,7 @@ class ObjectiveEvaluator:
         return self._invoke_structured_evaluation(evidence)
 
     def _invoke_structured_evaluation(self, evidence: dict[str, Any]) -> ObjectiveEvaluatorStructuredResult:
-        model = _get_chat_model(self.config)
+        model = build_chat_openai_model(self.config, temperature=0)
         structured_model = model.with_structured_output(ObjectiveEvaluatorStructuredResult)
         response = structured_model.invoke([
             SystemMessage(content=self.instruction_text.strip()),

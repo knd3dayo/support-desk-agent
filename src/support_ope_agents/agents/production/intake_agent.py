@@ -248,8 +248,14 @@ class IntakeAgent(AbstractAgent):
         return bool(update.get(f"{ticket_kind}_ticket_lookup_enabled"))
 
     def _ticket_tool_is_enabled(self, ticket_kind: str) -> bool:
-        settings = self.config.tools.get_logical_tool(f"{ticket_kind}_ticket")
-        return not (settings is not None and not settings.enabled)
+        binding = self._ticket_binding(ticket_kind)
+        if binding is None:
+            return True
+        if binding.enabled:
+            return True
+        if binding.server.strip() or binding.description.strip() or binding.arguments:
+            return False
+        return True
 
     def _ticket_binding(self, ticket_kind: str) -> TicketServerBindingSettings | None:
         return self.config.tools.ticket_sources.get(ticket_kind)

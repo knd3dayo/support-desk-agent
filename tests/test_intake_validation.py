@@ -254,8 +254,8 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         agent = IntakeAgent(
             config=config,
             pii_mask_tool=lambda *_args, **_kwargs: "",
-            external_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("external_ticket tool is not configured. Configure tools.logical_tools.external_ticket in config.yml.")),
-            internal_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("internal_ticket tool is not configured. Configure tools.logical_tools.internal_ticket in config.yml.")),
+            external_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("external_ticket tool is not configured. Configure tools.ticket_sources.external in config.yml.")),
+            internal_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("internal_ticket tool is not configured. Configure tools.ticket_sources.internal in config.yml.")),
             classify_ticket_tool=lambda *_args, **_kwargs: "",
             write_shared_memory_tool=lambda *_args, **_kwargs: "",
         )
@@ -285,6 +285,7 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
                 "data_paths": {},
                 "interfaces": {},
                 "tools": {
+                    "mcp_manifest_path": "/tmp/test-mcp.json",
                     "ticket_sources": {
                         "external": {
                             "enabled": True,
@@ -338,6 +339,7 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
                 "data_paths": {},
                 "interfaces": {},
                 "tools": {
+                    "mcp_manifest_path": "/tmp/test-mcp.json",
                     "ticket_sources": {
                         "external": {
                             "enabled": True,

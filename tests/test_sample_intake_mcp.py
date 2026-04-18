@@ -81,6 +81,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
                 "data_paths": {},
                 "interfaces": {},
                 "tools": {
+                    "mcp_manifest_path": "/tmp/test-mcp.json",
                     "ticket_sources": {
                         "external": {
                             "enabled": True,

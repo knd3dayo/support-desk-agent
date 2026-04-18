@@ -124,7 +124,10 @@ support_ope_agents:
   #   mcp_transport: streamable-http
 
   # ツールの供給方法と共通 runtime 設定です。
-  # logical_tools では、各論理ツールを無効化するか、builtin を使うか、MCP を使うかを定義します。
+  # logical_tools では、任意差し替えを許す論理ツールだけを定義します。
+  # write_shared_memory / read_shared_memory / write_working_memory / write_draft / detect_log_format など、
+  # workflow 内部の状態管理に結びついたツールは logical_tools から MCP へ差し替えできません。
+  # external_ticket / internal_ticket は logical_tools ではなく ticket_sources で定義します。
   # tools:
   #   # 外部 MCP 定義ファイルへのパスです。
   #   # logical_tools のどれかで provider: mcp を使う場合は必須です。
@@ -144,6 +147,8 @@ support_ope_agents:
   #   libreoffice_command:
   #
   #   # 論理ツールごとの有効化と供給元です。
+  #   # ここには classify_ticket / search_documents / prepare_ticket_update /
+  #   # zendesk_reply / redmine_update のような差し替え対象だけを書きます。
   #   logical_tools:
   #     # まず InvestigateAgent で使う文書検索を有効化します。
   #     search_documents:
@@ -186,36 +191,7 @@ support_ope_agents:
   #         min_combined_similarity: 0.35
   #         max_question_candidates: 3
   #
-  #     # 次にケース情報の取得元を必要に応じて設定します。
-  #     # fixed tool を直接呼ぶ旧来の logical_tools 方式で GitHub issue を取得する例です。
-  #     external_ticket:
-  #       enabled: true
-  #       provider: mcp
-  #       description: GitHub 上で管理する顧客向け問い合わせ issue
-  #       server: github
-  #       tool: get_issue
-  #       arguments:
-  #         owner: your-github-org
-  #         repo: support-ope-external-tickets
-  #       argument_map:
-  #         ticket_id: issue_number
-  #       integer_arguments:
-  #         - issue_number
-  #     internal_ticket:
-  #       enabled: true
-  #       provider: mcp
-  #       description: GitHub 上で管理する内部管理 issue
-  #       server: github
-  #       tool: get_issue
-  #       arguments:
-  #         owner: your-github-org
-  #         repo: support-ope-internal-tickets
-  #       argument_map:
-  #         ticket_id: issue_number
-  #       integer_arguments:
-  #         - issue_number
-  #
-  #     # InvestigateAgent が内部で使うログ解析を builtin で有効化する場合です。
+  #     # LogAnalyzerAgent の解析ステップを別実装へ切り替えたい場合です。
   #     run_python_analysis:
   #       enabled: true
   #       provider: builtin
@@ -233,6 +209,13 @@ support_ope_agents:
   #     # builtin があっても明示的に使わない例です。
   #     record_approval_decision:
   #       enabled: false
+  #
+  #   # 次の内部専用 tool は logical_tools に書けません。
+  #   #   - read_shared_memory
+  #   #   - write_shared_memory
+  #   #   - write_working_memory
+  #   #   - write_draft
+  #   #   - detect_log_format
 
   # 上記 external_ticket / internal_ticket の MCP tool は ticket_id を受け取り、summary と attachments を含む JSON を返すことを推奨します。
   # attachments の各要素は以下のいずれかを持てます。

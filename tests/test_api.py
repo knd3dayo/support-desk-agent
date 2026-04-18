@@ -62,7 +62,7 @@ class ApiWorkspaceTests(unittest.TestCase):
             return_value=_fake_objective_evaluation_result(),
         )
         self._classify_model_patcher = patch(
-            "support_ope_agents.tools.default_classify_ticket._get_chat_model",
+            "support_ope_agents.tools.default_classify_ticket.build_chat_openai_model",
             return_value=_FakeClassifierModel(),
         )
         self._startup_probe_patcher.start()
