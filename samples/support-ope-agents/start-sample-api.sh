@@ -77,6 +77,7 @@ if [[ ! -f "${CONFIG_PATH}" ]]; then
   echo "設定ファイルが見つかりません: ${CONFIG_PATH}" >&2
   exit 1
 fi
+CONFIG_PATH="$(cd "$(dirname "${CONFIG_PATH}")" && pwd -P)/$(basename "${CONFIG_PATH}")"
 
 RAW_WORKSPACE_ROOT="${WORKSPACE_ROOT_ARG:-${SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT:-${WORKSPACE_ROOT:-}}}"
 if [[ -z "${RAW_WORKSPACE_ROOT}" ]]; then
