@@ -488,13 +488,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             "support_ope_agents.tools.default_classify_ticket._get_chat_model",
             return_value=_FakeClassifierModel(),
         )
-        self._draft_model_patcher = patch(
-            "support_ope_agents.agents.draft_writer_agent._get_chat_model",
-            return_value=_FakeDraftModel(),
-        )
         # Removed compliance model patcher as it is not needed
         self._classify_model_patcher.start()
-        self._draft_model_patcher.start()
         self._objective_eval_patcher = patch.object(
             ObjectiveEvaluator,
             "_invoke_structured_evaluation",
@@ -518,7 +513,6 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         return ProductionRuntimeService(context)  # type: ignore[arg-type]
 
     def tearDown(self) -> None:
-        self._draft_model_patcher.stop()
         self._classify_model_patcher.stop()
         self._objective_eval_patcher.stop()
         self._tmpdir.cleanup()
@@ -1470,7 +1464,12 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         )
         service = self._build_service(config)
 
-        with patch("support_ope_agents.runtime.service.build_case_workflow", _fake_build_case_workflow):
+        with patch.object(
+            ProductionRuntimeService,
+            "_build_case_workflow",
+            autospec=True,
+            side_effect=lambda self, *, checkpointer=None: _fake_build_case_workflow(checkpointer=checkpointer),
+        ):
             result = service.action(
                 prompt="クローズまで進むケースです。",
                 workspace_path=str(self.workspace_path),
@@ -1524,8 +1523,11 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         )
         service = self._build_service(config)
 
-        with patch("support_ope_agents.runtime.service.SqliteSaver", _FakeSqliteSaver), patch(
-            "support_ope_agents.runtime.service.build_case_workflow", _fake_build_case_workflow
+        with patch("support_ope_agents.runtime.abstract_service.SqliteSaver", _FakeSqliteSaver), patch.object(
+            ProductionRuntimeService,
+            "_build_case_workflow",
+            autospec=True,
+            side_effect=lambda self, *, checkpointer=None: _fake_build_case_workflow(checkpointer=checkpointer),
         ):
             result = service.action(
                 prompt="生成AI基盤のアーキテクチャ概要を教えてください。",

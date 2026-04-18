@@ -12,6 +12,7 @@ from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
 from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
 from support_ope_agents.models.state import CaseState
+from support_ope_agents.models.state_transitions import CaseStatuses
 
 
 @dataclass(slots=True)
@@ -658,7 +659,7 @@ def _approval_route_for_report(state: CaseState, runtime_audit: dict[str, object
         route = str(audit_summary.get("approval_route") or "").strip()
         if route:
             return route
-    if str(state.get("status") or "") == "CLOSED" or str(state.get("ticket_update_result") or "").strip():
+    if str(state.get("status") or "") == CaseStatuses.CLOSED or str(state.get("ticket_update_result") or "").strip():
         return "ticket_update_prepare"
     decision = str(state.get("approval_decision") or "").strip().lower()
     if decision in {"approved", "approve"}:

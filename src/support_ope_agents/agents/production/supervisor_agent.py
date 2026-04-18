@@ -11,6 +11,7 @@ from support_ope_agents.agents.production.intake_agent import IntakeAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import EscalationSettings
+from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
@@ -570,9 +571,7 @@ class SupervisorPhaseExecutor(AbstractAgent):
         return str(best.get("source_name") or "").strip()
 
     def execute_investigation(self, state: CaseState) -> CaseState:
-        update = cast("CaseState", dict(state))
-        update["status"] = "INVESTIGATING"
-        update["current_agent"] = SUPERVISOR_AGENT
+        update = cast("CaseState", StateTransitionHelper.supervisor_investigating(state))
         update["intake_rework_required"] = False
         update["intake_rework_reason"] = ""
         update["intake_missing_fields"] = []
@@ -684,10 +683,10 @@ class SupervisorPhaseExecutor(AbstractAgent):
                 investigation_summary=investigation_summary,
                 missing_artifacts=escalation_missing_artifacts,
             )
-            update["next_action"] = "BackSupportEscalationAgent がエスカレーション材料を整理する"
+            update["next_action"] = NextActionTexts.PRODUCTION_PREPARE_ESCALATION
         else:
             update["escalation_summary"] = ""
-            update["next_action"] = "SuperVisorAgent がドラフト作成フェーズを開始する"
+            update["next_action"] = NextActionTexts.PRODUCTION_START_DRAFT_PHASE
 
         if case_id and workspace_path:
             context_payload: SharedMemoryDocumentPayload = {
@@ -748,9 +747,10 @@ class SupervisorPhaseExecutor(AbstractAgent):
         return cast("CaseState", update)
 
     def execute_escalation_review(self, state: CaseState) -> CaseState:
-        update = cast("CaseState", dict(state))
-        update["status"] = "DRAFT_READY"
-        update["current_agent"] = BACK_SUPPORT_INQUIRY_WRITER_AGENT
+        update = cast(
+            "CaseState",
+            StateTransitionHelper.draft_ready(state, current_agent=BACK_SUPPORT_INQUIRY_WRITER_AGENT),
+        )
 
         if not bool(update.get("escalation_required")):
             update["escalation_required"] = True
@@ -778,13 +778,11 @@ class SupervisorPhaseExecutor(AbstractAgent):
             )
             update["draft_response"] = update["escalation_draft"]
 
-        update["next_action"] = "エスカレーション問い合わせ文案を承認フェーズへ回付する"
+        update["next_action"] = NextActionTexts.PRODUCTION_ESCALATION_TO_APPROVAL
         return cast("CaseState", update)
 
     def execute_draft_review(self, state: CaseState) -> CaseState:
-        update = cast("CaseState", dict(state))
-        update["status"] = "DRAFT_READY"
-        update["current_agent"] = SUPERVISOR_AGENT
+        update = cast("CaseState", StateTransitionHelper.draft_ready(state, current_agent=SUPERVISOR_AGENT))
 
         case_id = str(update.get("case_id") or "").strip()
         workspace_path = str(update.get("workspace_path") or "").strip()
@@ -814,7 +812,7 @@ class SupervisorPhaseExecutor(AbstractAgent):
             if not str(update.get("draft_response") or "").strip() and self.draft_writer_executor is not None:
                 draft_result = self.draft_writer_executor.execute(cast(dict[str, object], update))
                 update["draft_response"] = str(draft_result.get("draft_response") or "")
-            update["next_action"] = "ApprovalAgent へドラフトを回付する"
+            update["next_action"] = NextActionTexts.APPROVAL_REVIEW_DRAFT
 
         update["review_focus"] = review_focus
 

@@ -14,6 +14,7 @@ from support_ope_agents.agents.roles import (
     SUPERVISOR_AGENT,
 )
 from support_ope_agents.models.state import CaseState
+from support_ope_agents.models.state_transitions import CaseStatuses
 
 class CaseWorkflow:
 
@@ -95,7 +96,7 @@ class CaseWorkflow:
 
     def _receive_case(self, state: CaseState) -> CaseState:
         update = dict(state)
-        update["status"] = "RECEIVED"
+        update["status"] = CaseStatuses.RECEIVED
         update.setdefault("current_agent", SUPERVISOR_AGENT)
         update.setdefault("created_at", datetime.now(UTC).isoformat())
         update.setdefault("approval_history", [])
@@ -118,7 +119,7 @@ class CaseWorkflow:
 
 
     def _route_after_intake(self, state: CaseState) -> str:
-        if state.get("status") == "WAITING_CUSTOMER_INPUT":
+        if state.get("status") == CaseStatuses.WAITING_CUSTOMER_INPUT:
             return "wait_for_customer_input"
         return "investigation"
 

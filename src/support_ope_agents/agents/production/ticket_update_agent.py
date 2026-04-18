@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT, TICKET_UPDATE_AGENT
+from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 
 if TYPE_CHECKING:
     from support_ope_agents.models.state import CaseState
@@ -20,19 +21,17 @@ class TicketUpdateAgent(AbstractAgent):
     redmine_update_tool: Callable[..., Any]
 
     def prepare_update(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        update["current_agent"] = TICKET_UPDATE_AGENT
-        update["ticket_update_payload"] = "Zendesk / Redmine に反映する更新内容を準備しました。"
-        update["next_action"] = "外部チケット更新内容を確定して更新を実行する"
-        return cast("CaseState", update)
+        return cast(
+            "CaseState",
+            StateTransitionHelper.ticket_update_prepared(
+                state,
+                payload="Zendesk / Redmine に反映する更新内容を準備しました。",
+                next_action=NextActionTexts.EXECUTE_TICKET_UPDATE,
+            ),
+        )
 
     def execute_update(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        update["status"] = "CLOSED"
-        update["current_agent"] = TICKET_UPDATE_AGENT
-        update["ticket_update_result"] = "Zendesk と Redmine の更新処理を完了しました。"
-        update["next_action"] = "外部チケット更新を完了しました"
-        return cast("CaseState", update)
+        return cast("CaseState", StateTransitionHelper.ticket_update_completed(state))
 
     def create_node(self):
         from support_ope_agents.models.state import CaseState

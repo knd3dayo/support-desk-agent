@@ -11,6 +11,7 @@ from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAge
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
 from support_ope_agents.models.state import CaseState
+from support_ope_agents.models.state_transitions import CaseStatuses
 
 class CaseWorkflow:
 
@@ -75,7 +76,7 @@ class CaseWorkflow:
 
     def _receive_case(self, state: CaseState) -> CaseState:
         update = dict(state)
-        update["status"] = "RECEIVED"
+        update["status"] = CaseStatuses.RECEIVED
         update.setdefault("current_agent", SUPERVISOR_AGENT)
         update.setdefault("created_at", datetime.now(UTC).isoformat())
         update.setdefault("approval_history", [])

@@ -12,6 +12,7 @@ from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessMan
 from support_ope_agents.tools.registry import ToolRegistry
 from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
 from support_ope_agents.models.state import CaseState
+from support_ope_agents.models.state_transitions import CaseStatuses
 
 
 class _ReadablePath(Protocol):
@@ -562,7 +563,7 @@ def _effective_workflow_kind(state: CaseState) -> str:
 
 
 def _approval_route(state: CaseState) -> str:
-    if str(state.get("status") or "") == "CLOSED" or str(state.get("ticket_update_result") or "").strip():
+    if str(state.get("status") or "") == CaseStatuses.CLOSED or str(state.get("ticket_update_result") or "").strip():
         return "ticket_update_prepare"
     decision = str(state.get("approval_decision") or "").strip().lower()
     if decision in {"approved", "approve"}:
@@ -674,7 +675,7 @@ def _result_label(state: CaseState) -> str:
         return "エスカレーションが必要だった"
     if str(state.get("draft_response") or "").strip():
         return "確実な回答が得られた"
-    if str(state.get("status") or "") == "WAITING_CUSTOMER_INPUT":
+    if str(state.get("status") or "") == CaseStatuses.WAITING_CUSTOMER_INPUT:
         return "追加の顧客入力が必要"
     return "回答ドラフトは作成されたが追加確認が必要"
 

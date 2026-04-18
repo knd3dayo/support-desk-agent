@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from support_ope_agents.config.loader import load_config
-from .abstract_service import AbstractRuntimeService
+
+if TYPE_CHECKING:
+	from .abstract_service import AbstractRuntimeService
 
 
 def _resolve_runtime_mode(config_path: str | Path) -> str:

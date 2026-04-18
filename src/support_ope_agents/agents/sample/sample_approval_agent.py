@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import APPROVAL_AGENT, SUPERVISOR_AGENT
+from support_ope_agents.models.state_transitions import StateTransitionHelper
 from support_ope_agents.util.formatting import format_result
 
 
@@ -24,17 +25,7 @@ class SampleApprovalState(TypedDict, total=False):
 @dataclass(slots=True)
 class SampleApprovalAgent(AbstractAgent):
     def wait_for_approval(self, state: dict[str, Any]) -> dict[str, Any]:
-        update = dict(state)
-        update["status"] = "WAITING_APPROVAL"
-        update["current_agent"] = APPROVAL_AGENT
-        update.setdefault("approval_decision", "pending")
-        if update.get("execution_mode") == "plan":
-            update["next_action"] = "この計画で action を実行するか確認してください。"
-        elif update.get("escalation_required"):
-            update["next_action"] = "エスカレーション問い合わせ文案を確認し、送付可否を承認してください。"
-        else:
-            update["next_action"] = "回答ドラフトを確認し、チケット更新を承認してください。"
-        return update
+        return StateTransitionHelper.waiting_for_approval(state)
 
     def create_node(self) -> Any:
         graph = StateGraph(SampleApprovalState)

@@ -15,6 +15,7 @@ from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
@@ -373,14 +374,11 @@ class IntakeAgent(AbstractAgent):
         return raw_result, artifact_paths
 
     def prepare_state(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        raw_issue = str(update.get("raw_issue") or "").strip()
-        update["status"] = "TRIAGED"
-        update["current_agent"] = INTAKE_AGENT
+        raw_issue = str(state.get("raw_issue") or "").strip()
+        update = StateTransitionHelper.intake_triaged(state, masked_issue=raw_issue)
         update.setdefault("intake_ticket_context_summary", {})
         update.setdefault("intake_ticket_artifacts", {})
         update.setdefault("customer_followup_answers", {})
-        update["masked_issue"] = raw_issue
         if raw_issue and not str(update.get("case_title") or "").strip():
             update["case_title"] = derive_case_title(raw_issue, fallback=str(update.get("case_id") or "新規ケース"))
         return cast("CaseState", update)
@@ -497,9 +495,11 @@ class IntakeAgent(AbstractAgent):
         followup_questions: dict[str, str] = {}
         if update.get("intake_rework_required") and missing_fields:
             followup_questions = self._build_followup_questions(missing_fields)
-            update["status"] = "WAITING_CUSTOMER_INPUT"
+            update = StateTransitionHelper.waiting_for_customer_input(
+                update,
+                next_action="不足情報をユーザーへ確認し、追加入力後に Intake を再実行する",
+            )
             update["intake_followup_questions"] = followup_questions
-            update["next_action"] = "不足情報をユーザーへ確認し、追加入力後に Intake を再実行する"
         else:
             update["intake_followup_questions"] = {}
 
@@ -631,11 +631,11 @@ class IntakeAgent(AbstractAgent):
         update["intake_followup_questions"] = {}
 
         if update.get("execution_mode") == "plan":
-            update["next_action"] = "ユーザーに計画を提示して承認を得る"
+            update["next_action"] = NextActionTexts.PRESENT_PLAN_FOR_APPROVAL
         elif update.get("customer_followup_answers"):
-            update["next_action"] = "追加情報を踏まえて SuperVisorAgent が再評価する"
+            update["next_action"] = NextActionTexts.REEVALUATE_WITH_CUSTOMER_INPUT
         else:
-            update["next_action"] = "SuperVisorAgent が調査フェーズを開始する"
+            update["next_action"] = NextActionTexts.START_SUPERVISOR_INVESTIGATION
         return cast("CaseState", update)
 
     def execute(self, state: CaseState) -> CaseState:
@@ -647,12 +647,7 @@ class IntakeAgent(AbstractAgent):
         return self.finalize_state(update)
 
     def wait_for_customer_input(self, state: CaseState) -> CaseState:
-        update = dict(state)
-        update["status"] = "WAITING_CUSTOMER_INPUT"
-        update["current_agent"] = INTAKE_AGENT
-        if not update.get("next_action"):
-            update["next_action"] = "IntakeAgent の質問に回答し、追加情報を提供してください。"
-        return cast("CaseState", update)
+        return cast("CaseState", StateTransitionHelper.waiting_for_customer_input(state))
 
     def create_node(self):
         from support_ope_agents.models.state import CaseState

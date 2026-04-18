@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT, TICKET_UPDATE_AGENT
+from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.util.formatting import format_result
 
 
@@ -25,28 +26,28 @@ class SampleTicketUpdateState(TypedDict, total=False):
 @dataclass(slots=True)
 class SampleTicketUpdateAgent(AbstractAgent):
     def prepare_update(self, state: dict[str, Any]) -> dict[str, Any]:
-        update = dict(state)
-        update["current_agent"] = TICKET_UPDATE_AGENT
-        draft_response = str(update.get("draft_response") or "").strip()
-        escalation_draft = str(update.get("escalation_draft") or "").strip()
+        draft_response = str(state.get("draft_response") or "").strip()
+        escalation_draft = str(state.get("escalation_draft") or "").strip()
         if escalation_draft:
-            update["ticket_update_payload"] = f"Back support inquiry prepared: {escalation_draft}"
-            update["next_action"] = "問い合わせ文案を確定して外部連携を実行する"
-        elif draft_response:
-            update["ticket_update_payload"] = f"Customer reply prepared: {draft_response}"
-            update["next_action"] = "回答内容を確定してチケット更新を実行する"
-        else:
-            update["ticket_update_payload"] = "Zendesk / Redmine に反映する更新内容を準備しました。"
-            update["next_action"] = "外部チケット更新内容を確定して更新を実行する"
-        return update
+            return StateTransitionHelper.ticket_update_prepared(
+                state,
+                payload=f"Back support inquiry prepared: {escalation_draft}",
+                next_action="問い合わせ文案を確定して外部連携を実行する",
+            )
+        if draft_response:
+            return StateTransitionHelper.ticket_update_prepared(
+                state,
+                payload=f"Customer reply prepared: {draft_response}",
+                next_action="回答内容を確定してチケット更新を実行する",
+            )
+        return StateTransitionHelper.ticket_update_prepared(
+            state,
+            payload="Zendesk / Redmine に反映する更新内容を準備しました。",
+            next_action=NextActionTexts.EXECUTE_TICKET_UPDATE,
+        )
 
     def execute_update(self, state: dict[str, Any]) -> dict[str, Any]:
-        update = dict(state)
-        update["status"] = "CLOSED"
-        update["current_agent"] = TICKET_UPDATE_AGENT
-        update["ticket_update_result"] = "Zendesk と Redmine の更新処理を完了しました。"
-        update["next_action"] = "外部チケット更新を完了しました"
-        return update
+        return StateTransitionHelper.ticket_update_completed(state)
 
     def create_node(self) -> Any:
         graph = StateGraph(SampleTicketUpdateState)

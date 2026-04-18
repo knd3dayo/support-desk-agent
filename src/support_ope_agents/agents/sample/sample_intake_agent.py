@@ -13,6 +13,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
 from support_ope_agents.models.state import CaseState
@@ -45,12 +46,8 @@ class SampleIntakeAgent(AbstractAgent):
         )
 
     def prepare_state(self, state: dict[str, Any]) -> dict[str, Any]:
-        update = dict(state)
-        raw_issue = str(update.get("raw_issue") or "").strip()
-        update["status"] = "TRIAGED"
-        update["current_agent"] = INTAKE_AGENT
-        update["masked_issue"] = raw_issue
-        return update
+        raw_issue = str(state.get("raw_issue") or "").strip()
+        return StateTransitionHelper.intake_triaged(state, masked_issue=raw_issue)
 
     def classify_issue(self, state: dict[str, Any]) -> dict[str, Any]:
         update = dict(state)
@@ -82,7 +79,7 @@ class SampleIntakeAgent(AbstractAgent):
 
     def finalize_state(self, state: dict[str, Any]) -> dict[str, Any]:
         update = dict(state)
-        update["next_action"] = "SuperVisorAgent が調査フェーズを開始する"
+        update["next_action"] = NextActionTexts.START_SUPERVISOR_INVESTIGATION
         return update
 
     def run_pipeline(self, state: dict[str, Any]) -> dict[str, Any]:

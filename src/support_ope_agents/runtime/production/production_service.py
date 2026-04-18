@@ -26,6 +26,7 @@ from support_ope_agents.agents.roles import TICKET_UPDATE_AGENT
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
+from support_ope_agents.models.state_transitions import CaseStatuses, NextActionTexts, ReportStatusTriggers
 from support_ope_agents.runtime.abstract_service import AbstractRuntimeContext
 from support_ope_agents.runtime.abstract_service import AbstractRuntimeService
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
@@ -488,8 +489,8 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             "internal_ticket_id": resolved_internal_ticket_id,
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
-            "requires_approval": result.get("status") == "WAITING_APPROVAL",
-            "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
+            "requires_approval": result.get("status") == CaseStatuses.WAITING_APPROVAL,
+            "requires_customer_input": result.get("status") == CaseStatuses.WAITING_CUSTOMER_INPUT,
             "report_path": report_path,
             "state": result,
         }
@@ -613,7 +614,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             "execution_mode": "action",
             "external_ticket_id": resolved_external_ticket_id,
             "internal_ticket_id": resolved_internal_ticket_id,
-            "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
+            "requires_customer_input": result.get("status") == CaseStatuses.WAITING_CUSTOMER_INPUT,
             "report_path": report_path,
             "state": result,
         }
@@ -650,7 +651,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
         if not saved_state:
             raise ValueError("指定された trace_id の保存 state が見つかりません")
 
-        if str(saved_state.get("status") or "") != "WAITING_CUSTOMER_INPUT":
+        if str(saved_state.get("status") or "") != CaseStatuses.WAITING_CUSTOMER_INPUT:
             raise ValueError("指定された trace は顧客入力待ち状態ではありません")
 
         self.initialize_case(case_id, workspace_path=workspace_path)
@@ -711,7 +712,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             if record_key == "intake_incident_timeframe":
                 resumed_state["intake_incident_timeframe"] = normalized_additional_input
         resumed_state["customer_followup_answers"] = answer_records
-        resumed_state["next_action"] = "追加情報を反映して Intake subgraph を再実行する"
+        resumed_state["next_action"] = NextActionTexts.RESUME_INTAKE
 
         result = self._invoke_workflow(resumed_state, trace_id)
         self._sync_case_title_from_state(
@@ -741,8 +742,8 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             "internal_ticket_id": str(result.get("internal_ticket_id") or resumed_state.get("internal_ticket_id") or ""),
             "plan_summary": str(result.get("plan_summary") or saved_state.get("plan_summary") or ""),
             "plan_steps": list(result.get("plan_steps") or saved_state.get("plan_steps") or []),
-            "requires_approval": result.get("status") == "WAITING_APPROVAL",
-            "requires_customer_input": result.get("status") == "WAITING_CUSTOMER_INPUT",
+            "requires_approval": result.get("status") == CaseStatuses.WAITING_APPROVAL,
+            "requires_customer_input": result.get("status") == CaseStatuses.WAITING_CUSTOMER_INPUT,
             "report_path": report_path,
             "state": result,
         }
@@ -866,11 +867,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             return None
 
         status = str(state.get("status") or "")
-        trigger_map = {
-            "WAITING_APPROVAL": "waiting_approval",
-            "CLOSED": "closed",
-        }
-        trigger = trigger_map.get(status)
+        trigger = ReportStatusTriggers.BY_STATUS.get(status)
         if trigger is None or trigger not in settings.report_on:
             return None
 

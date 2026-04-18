@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
+from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.util.formatting import format_result
 
@@ -58,9 +59,7 @@ class SampleSupervisorAgent(AbstractAgent):
         return f"お問い合わせありがとうございます。\n\n{summary}\n\n必要であれば追加の確認事項もご案内できます。"
 
     def execute_investigation(self, state: "CaseState") -> "CaseState":
-        update = cast("CaseState", dict(state))
-        update["status"] = "INVESTIGATING"
-        update["current_agent"] = SUPERVISOR_AGENT
+        update = cast("CaseState", StateTransitionHelper.supervisor_investigating(state))
 
         raw_issue = str(update.get("raw_issue") or "").strip()
         investigation_summary = str(update.get("investigation_summary") or "").strip()
@@ -78,15 +77,14 @@ class SampleSupervisorAgent(AbstractAgent):
         update["escalation_required"] = self._should_escalate(cast(dict[str, Any], update))
         if update["escalation_required"]:
             update["escalation_reason"] = str(update.get("escalation_reason") or "追加確認のためバックサポートへ問い合わせます。")
-            update["next_action"] = "BackSupportEscalationAgent が問い合わせ文案を準備する"
+            update["next_action"] = NextActionTexts.SAMPLE_PREPARE_ESCALATION
         else:
             update["escalation_reason"] = ""
-            update["next_action"] = "SuperVisorAgent がドラフトを整えて承認待ちに進める"
+            update["next_action"] = NextActionTexts.SAMPLE_PREPARE_DRAFT_FOR_APPROVAL
         return update
 
     def execute_escalation_review(self, state: "CaseState") -> "CaseState":
-        update = cast("CaseState", dict(state))
-        update["status"] = "DRAFT_READY"
+        update = cast("CaseState", StateTransitionHelper.draft_ready(state))
         if self.back_support_escalation_executor is not None:
             try:
                 query = str(update.get("raw_issue") or "").strip() or None
@@ -105,19 +103,17 @@ class SampleSupervisorAgent(AbstractAgent):
             or "お世話になっております。追加調査のため、関連ログと再現条件のご確認をお願いいたします。"
         )
         update["draft_response"] = str(update.get("draft_response") or update["escalation_draft"])
-        update["next_action"] = "エスカレーション問い合わせ文案を承認待ちに進める"
+        update["next_action"] = NextActionTexts.SAMPLE_ESCALATION_TO_APPROVAL
         return update
 
     def execute_draft_review(self, state: "CaseState") -> "CaseState":
-        update = cast("CaseState", dict(state))
-        update["status"] = "DRAFT_READY"
-        update["current_agent"] = SUPERVISOR_AGENT
+        update = cast("CaseState", StateTransitionHelper.draft_ready(state, current_agent=SUPERVISOR_AGENT))
         update["review_focus"] = "サンプル回答として分かりやすいか確認する"
         update["draft_review_iterations"] = 1
         update["draft_review_max_loops"] = 1
         if not str(update.get("draft_response") or "").strip():
             update["draft_response"] = self._build_draft_response(str(update.get("investigation_summary") or ""))
-        update["next_action"] = "ApprovalAgent へドラフトを回付する"
+        update["next_action"] = NextActionTexts.APPROVAL_REVIEW_DRAFT
         return update
 
     def create_node(self) -> Any:
