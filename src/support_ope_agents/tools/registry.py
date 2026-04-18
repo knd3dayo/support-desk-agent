@@ -21,6 +21,7 @@ from support_ope_agents.config.models import AppConfig, McpToolBinding
 from .builtin_tools import build_builtin_tools
 from .default_classify_ticket import build_default_classify_ticket_tool
 from .default_pii_mask import build_default_pii_mask_tool
+from .default_prepare_ticket_update import build_default_prepare_ticket_update_tool
 from .default_read_shared_memory import build_default_read_shared_memory_tool
 from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
@@ -315,7 +316,9 @@ class ToolRegistry:
                 ToolSpec(
                     "prepare_ticket_update",
                     "Prepare external ticket update payload",
-                    _not_implemented_tool("prepare_ticket_update"),
+                    build_default_prepare_ticket_update_tool(self._config),
+                    provider="builtin",
+                    target="default-prepare-ticket-update",
                 ),
                 ToolSpec(
                     "zendesk_reply",

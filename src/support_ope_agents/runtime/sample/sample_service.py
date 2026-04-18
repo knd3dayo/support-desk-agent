@@ -44,6 +44,7 @@ from support_ope_agents.runtime.service_support import sync_case_title_from_stat
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
+from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
 from support_ope_agents.workflow import (
@@ -85,7 +86,11 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         ticket_mcp_provider = XmlMcpToolsetProvider.from_config(context.config)
         self._intake_executor = SampleIntakeAgent(config=context.config, ticket_mcp_provider=ticket_mcp_provider)
         self._approval_executor = SampleApprovalAgent()
-        self._ticket_update_executor = SampleTicketUpdateAgent()
+        self._ticket_update_executor = SampleTicketUpdateAgent(
+            config=context.config,
+            ticket_mcp_provider=ticket_mcp_provider,
+            prepare_ticket_update_tool=build_default_prepare_ticket_update_tool(context.config),
+        )
         self._investigate_executor = SampleInvestigateAgent(config=context.config)
         self._supervisor_executor = SampleSupervisorAgent(
             investigate_executor=self._investigate_executor,

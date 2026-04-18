@@ -115,9 +115,11 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             record_approval_decision_tool=approval_tools["record_approval_decision"],
         )
         self._ticket_update_executor = TicketUpdateAgent(
+            config=context.config,
             prepare_ticket_update_tool=ticket_update_tools["prepare_ticket_update"],
             zendesk_reply_tool=ticket_update_tools["zendesk_reply"],
             redmine_update_tool=ticket_update_tools["redmine_update"],
+            ticket_mcp_provider=XmlMcpToolsetProvider.from_config(context.config),
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
