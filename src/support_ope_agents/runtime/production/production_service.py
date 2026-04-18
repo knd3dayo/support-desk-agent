@@ -36,6 +36,7 @@ from support_ope_agents.runtime.control_catalog import build_control_catalog, bu
 from support_ope_agents.runtime.followup_context import build_conversation_messages
 from support_ope_agents.runtime.followup_context import resolve_action_prompt
 from support_ope_agents.runtime.followup_context import resolve_saved_conversation_messages
+from support_ope_agents.runtime.mcp_startup_validation import validate_ticket_sources_startup
 from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.runtime.service_support import append_chat_message
@@ -77,6 +78,7 @@ def build_runtime_context(config_path: str) -> ProductionRuntimeContext:
         if config.tools.has_enabled_mcp_tools() or config.tools.mcp_manifest_path is not None
         else None
     )
+    validate_ticket_sources_startup(config, mcp_tool_client)
     tool_registry = ToolRegistry(config, mcp_tool_client=mcp_tool_client)
     return ProductionRuntimeContext(
         config,

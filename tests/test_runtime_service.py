@@ -37,12 +37,13 @@ from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.runtime.production.production_service import ProductionRuntimeContext, ProductionRuntimeService
+from support_ope_agents.runtime.production.production_service import ProductionRuntimeContext, ProductionRuntimeService, build_runtime_context
 from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
 from support_ope_agents.tools.default_search_documents import build_default_search_documents_tool
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
 from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
 from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
+from support_ope_agents.tools import ToolConfigurationError
 from support_ope_agents.tools.registry import ToolSpec
 from support_ope_agents.models.state import CaseState
 
@@ -537,6 +538,90 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         prompt = loader.load("CASE-TEST", DRAFT_WRITER_AGENT, constraint_mode=config.agents.DraftWriterAgent.constraint_mode)
 
         self.assertEqual(prompt, "")
+
+    def test_build_runtime_context_validates_enabled_ticket_sources_on_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "support_ope_agents:",
+                        "  llm:",
+                        "    provider: openai",
+                        "    model: gpt-4.1",
+                        "    api_key: sk-test-value",
+                        "  tools:",
+                        "    mcp_manifest_path: ./mcp.json",
+                        "    ticket_sources:",
+                        "      external:",
+                        "        enabled: true",
+                        "        server: github",
+                        "  config_paths: {}",
+                        "  data_paths: {}",
+                        "  interfaces: {}",
+                        "  agents: {}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            class _FakeMcpClient:
+                def __init__(self) -> None:
+                    self.calls: list[str] = []
+
+                def validate_ticket_source(self, *, ticket_kind: str, server_name: str) -> None:
+                    self.calls.append(f"{ticket_kind}:{server_name}")
+
+            fake_client = _FakeMcpClient()
+
+            with patch(
+                "support_ope_agents.runtime.production.production_service.McpToolClient.from_config",
+                return_value=fake_client,
+            ):
+                build_runtime_context(str(config_path))
+
+        self.assertEqual(fake_client.calls, ["external:github"])
+
+    def test_build_runtime_context_fails_fast_when_ticket_source_startup_check_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "support_ope_agents:",
+                        "  llm:",
+                        "    provider: openai",
+                        "    model: gpt-4.1",
+                        "    api_key: sk-test-value",
+                        "  tools:",
+                        "    mcp_manifest_path: ./mcp.json",
+                        "    ticket_sources:",
+                        "      external:",
+                        "        enabled: true",
+                        "        server: github",
+                        "  config_paths: {}",
+                        "  data_paths: {}",
+                        "  interfaces: {}",
+                        "  agents: {}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            class _FailingMcpClient:
+                def validate_ticket_source(self, *, ticket_kind: str, server_name: str) -> None:
+                    raise ToolConfigurationError(
+                        f"tools.ticket_sources.{ticket_kind} failed startup MCP connectivity check for server '{server_name}': boom"
+                    )
+
+            with patch(
+                "support_ope_agents.runtime.production.production_service.McpToolClient.from_config",
+                return_value=_FailingMcpClient(),
+            ):
+                with self.assertRaisesRegex(ToolConfigurationError, "tools.ticket_sources.external"):
+                    build_runtime_context(str(config_path))
 
     def test_runtime_harness_manager_describes_role_capabilities(self) -> None:
         config = AppConfig.model_validate(

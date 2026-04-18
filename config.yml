@@ -159,6 +159,8 @@ support_ope_agents:
   #   # IntakeAgent はこの設定を使って、manifest 上の tool 一覧から適切な ticket 取得 tool を選びます。
   #   # TicketUpdateAgent などから同じ取得元を使いたい場合も、こちらを参照します。
   #   # provider / tool はここでは不要です。server と arguments だけを指定します。
+  #   # CLI / API 起動時には enabled な ticket_sources について list_tools を実行し、
+  #   # 接続できない場合や server 名が誤っている場合は fail-fast で起動を止めます。
   #   ticket_sources:
   #     external:
   #       enabled: false

@@ -65,6 +65,8 @@ support_ope_agents:
 - `server`: MCP manifest 上の server 名
 - `arguments`: ticket 取得 tool 群へ常に付与する固定引数
 
+enabled な `ticket_sources` は CLI / API 起動時に `list_tools` で接続確認する。server 名の誤りや接続失敗がある場合は fail-fast で起動を中断する。
+
 `external_ticket` / `internal_ticket` は `tools.logical_tools` ではなく、常に `tools.ticket_sources` から設定する。
 
 ## 5. logical tools
