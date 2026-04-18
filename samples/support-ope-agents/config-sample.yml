@@ -80,14 +80,14 @@ support_ope_agents:
             min_combined_similarity: 0.35
             max_question_candidates: 3
         internal:
-          enabled: false
+          enabled: true
           server: github
           description: GitHub 上で管理する内部管理 issue
           # decision XML のルートタグ。通常は既定値のままでよい
           # decision_tag: decision
           arguments:
-            owner: your-github-org
-            repo: support-ope-internal-tickets
+            owner: knd3dayo
+            repo: support-ope-agents
           candidate_matching:
             candidate_id_fields:
               - number

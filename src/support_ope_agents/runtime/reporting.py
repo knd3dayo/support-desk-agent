@@ -157,6 +157,8 @@ def build_support_improvement_report(
         "## Meta",
         *_report_item("Case ID", case_id, "レポート対象のケースを一意に識別するIDです。"),
         *_report_item("Trace ID", trace_id, "今回の実行トレースを追跡するための識別子です。"),
+        *_report_item("External ticket ID", str(state.get("external_ticket_id") or "n/a"), "ケースに関連付けられた外部チケットIDです。明示指定がない場合は trace 由来の自動採番が入ります。"),
+        *_report_item("Internal ticket ID", str(state.get("internal_ticket_id") or "n/a"), "ケースに関連付けられた内部チケットIDです。明示指定がない場合は trace 由来の自動採番が入ります。"),
         *_report_item("Workspace", case_paths.root, "ケース関連ファイルと成果物を保存した作業ディレクトリです。"),
         *_report_item("Final status", str(state.get("status") or "unknown"), "ワークフロー完了時点の最終ステータスです。"),
         *_report_item("Evaluator", evaluation.evaluator_name, "SuperVisor ではなく、instruction と structured output schema に基づいて評価する客観評価エージェントです。"),

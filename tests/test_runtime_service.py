@@ -1006,6 +1006,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("## 制御サマリー", content)
         self.assertIn("## ランタイム制約一覧", content)
         self.assertIn("## ランタイム制約影響評価", content)
+        self.assertIn("External ticket ID", content)
+        self.assertIn("Internal ticket ID", content)
         self.assertIn("### 発火した制御", content)
         self.assertIn("共通 instruction 制約", content)
         self.assertIn("役割別の想定 instruction 制約", content)
@@ -1102,7 +1104,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         content = Path(str(report["report_path"])).read_text(encoding="utf-8")
 
-        self.assertNotIn("External ticket ID", content)
+        self.assertIn("External ticket ID", content)
+        self.assertIn("Internal ticket ID", content)
         self.assertNotIn("Adopted sources: none", content)
 
     def test_initialize_case_creates_objective_evaluator_working_memory(self) -> None:
