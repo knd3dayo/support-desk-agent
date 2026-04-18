@@ -413,7 +413,13 @@ class ToolRegistry:
         return ToolSpec(
             name=tool.name,
             description=tool.description,
-            handler=self._mcp_override_resolver.build_handler(binding, logical_tool_name=tool.name),
+            handler=self._mcp_override_resolver.build_handler(
+                binding,
+                logical_tool_name=tool.name,
+                static_arguments=setting.arguments,
+                argument_map=setting.argument_map,
+                integer_arguments=tuple(setting.integer_arguments),
+            ),
             provider=f"mcp:{binding.server}",
             target=binding.tool,
         )

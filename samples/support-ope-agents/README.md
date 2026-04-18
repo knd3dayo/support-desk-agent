@@ -24,7 +24,7 @@
 1. workspace テンプレートを任意の作業ディレクトリへコピーする
 2. `.evidence/` 配下へ pytest 出力、調査メモ、エラーログを置く
 3. sample_prompt.txt をそのまま使うか、問い合わせ文面を調整する
-4. OpenAI API キーと、external / internal ticket を引ける MCP 環境を用意する
+4. OpenAI API キーと、GitHub の external / internal issue を引ける MCP 環境を用意する
 5. sample config を指定して action を実行する
 
 API と React UI を使って試す場合は、このディレクトリに追加した起動スクリプトを使えます。
@@ -44,7 +44,7 @@ API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ
 
 起動時に `--config` を省略すると `config.yml` を見にいくため、通常は `--config config-sample.yml` または `--config config-prodction.yml` を明示指定してください。
 
-sample config で MCP manifest が未設定の場合、API 起動スクリプトは UI テストを止めないために `external_ticket` と `internal_ticket` を一時的に無効化した設定を自動生成して起動します。実 MCP 連携を含めて試したい場合は、sample config の `tools.mcp_manifest_path` を有効化するか、起動時に `MCP_MANIFEST_PATH=/path/to/manifest.json` を渡してください。
+sample config で MCP manifest が未設定の場合、API 起動スクリプトは UI テストを止めないために `external_ticket` と `internal_ticket` を一時的に無効化した設定を自動生成して起動します。実 MCP 連携を含めて試したい場合は、sample config の `tools.mcp_manifest_path` を有効化するか、起動時に `MCP_MANIFEST_PATH=/path/to/manifest.json` を渡してください。GitHub MCP を使う場合は、manifest 側で `github` server を定義し、`GITHUB_PERSONAL_ACCESS_TOKEN` を環境変数で渡してください。
 
 ポートを変えたい場合は環境変数で上書きできます。
 
@@ -56,7 +56,7 @@ API_PORT=8010 UI_PORT=5174 \
 ```
 
 ```bash
-MCP_MANIFEST_PATH=/home/user/source/repos/ai-chat-util/app/ai-chat-util-mcp.json \
+MCP_MANIFEST_PATH=/path/to/mcp-manifest.json \
   SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT=/tmp/support-ope-agents-sample-cases \
   /home/user/source/repos/support-ope-agents/samples/support-ope-agents/start-sample.sh \
   --config /home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml
@@ -78,17 +78,17 @@ HOST=0.0.0.0 PORT=5174 /home/user/source/repos/support-ope-agents/samples/suppor
 python -m support_ope_agents.cli action \
   "ai-chat-util の利用方法について問い合わせがあります。関連資料を調査し、必要に応じてバックサポート向け問い合わせ文も作成してください。" \
   --workspace-path /tmp/support-ope-agents-support-case \
-  --external-ticket-id EXT-A-02-02 \
-  --internal-ticket-id INT-A-02-02 \
+  --external-ticket-id 101 \
+  --internal-ticket-id 202 \
   --config /home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml
 ```
 
-ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、InvestigateAgent は external / internal ticket の実参照をスキップします。実チケットを引きたい場合は `--external-ticket-id` と `--internal-ticket-id` を明示指定してください。
+ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、InvestigateAgent は external / internal ticket の実参照をスキップします。GitHub MCP を使う sample config では、`--external-ticket-id` と `--internal-ticket-id` には config に設定した各 repository の GitHub Issue 番号を指定してください。
 
 ## 4. 補足
 
-- この sample は実 LLM / 実 MCP 前提です。`LLM_API_KEY` と、sample config の `support-ticket-mcp` を解決できる MCP 実行環境を事前に用意してください
-- ai-chat-util 側に MCP manifest がある場合は、sample config の `tools.mcp_manifest_path` と `tools.logical_tools.*` を環境に合わせて有効化してください
+- この sample は実 LLM / 実 MCP 前提です。`LLM_API_KEY` と、sample config の `github` server を解決できる MCP 実行環境を事前に用意してください
+- sample config の `tools.logical_tools.external_ticket.arguments.repo` と `tools.logical_tools.internal_ticket.arguments.repo` に、利用する GitHub repository を設定してください
 - LangChain ドキュメントの path は `/home/user/oss/langchain-ai/langchain` を前提にしています
 - sample config は `constraint_mode: default` を既定にしています。`instruction_only` は instruction 側の制御だけが残るため、sample では回答や再調査の誘導が強く見えることがあります。
 - `InvestigateAgent.result_mode: raw_backend` は取得 payload の詳細度を上げる設定です。制約の強さを変えたい場合は `constraint_mode` を agent ごとに調整してください。

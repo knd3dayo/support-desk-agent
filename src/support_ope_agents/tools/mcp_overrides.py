@@ -150,13 +150,49 @@ class McpToolOverrideResolver:
     def validate_logical_tool(self, *, logical_tool_name: str, binding: McpToolBinding) -> None:
         self.validate_binding(role="tools.logical_tools", logical_tool_name=logical_tool_name, binding=binding)
 
-    def build_handler(self, binding: McpToolBinding, logical_tool_name: str) -> Callable[..., Any]:
+    def build_handler(
+        self,
+        binding: McpToolBinding,
+        logical_tool_name: str,
+        *,
+        static_arguments: dict[str, Any] | None = None,
+        argument_map: dict[str, str] | None = None,
+        integer_arguments: tuple[str, ...] = (),
+    ) -> Callable[..., Any]:
+        resolved_static_arguments = dict(static_arguments or {})
+        resolved_argument_map = dict(argument_map or {})
+
         async def _handler(*args: object, **kwargs: object) -> str:
             if args:
                 raise TypeError(
                     f"MCP-backed tool '{logical_tool_name}' accepts keyword arguments only. Received positional args: {len(args)}"
                 )
-            result = await self._call_tool_async(binding.server, binding.tool, dict(kwargs))
+            prepared_arguments = dict(resolved_static_arguments)
+            for name, value in kwargs.items():
+                prepared_arguments[resolved_argument_map.get(name, name)] = value
+
+            for name in integer_arguments:
+                if name not in prepared_arguments:
+                    continue
+                value = prepared_arguments[name]
+                if isinstance(value, bool) or isinstance(value, int):
+                    continue
+                if isinstance(value, str):
+                    stripped = value.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        prepared_arguments[name] = int(stripped)
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"MCP-backed tool '{logical_tool_name}' requires integer argument '{name}', but received {value!r}"
+                        ) from exc
+                    continue
+                raise ValueError(
+                    f"MCP-backed tool '{logical_tool_name}' requires integer argument '{name}', but received {type(value).__name__}"
+                )
+
+            result = await self._call_tool_async(binding.server, binding.tool, prepared_arguments)
             return self._serialize_call_result(result)
 
         _handler.__name__ = logical_tool_name

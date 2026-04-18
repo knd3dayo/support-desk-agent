@@ -269,6 +269,9 @@ class LogicalToolSettings(StrictConfigModel):
     builtin_tool: str | None = None
     server: str | None = None
     tool: str | None = None
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    argument_map: dict[str, str] = Field(default_factory=dict)
+    integer_arguments: list[str] = Field(default_factory=list)
     description: str = ""
 
     @model_validator(mode="after")
@@ -281,6 +284,10 @@ class LogicalToolSettings(StrictConfigModel):
             return self
         if self.server or self.tool:
             raise ValueError("logical tool with provider='builtin' cannot define 'server' or 'tool'")
+        if self.arguments or self.argument_map or self.integer_arguments:
+            raise ValueError(
+                "logical tool with provider='builtin' cannot define 'arguments', 'argument_map', or 'integer_arguments'"
+            )
         return self
 
 

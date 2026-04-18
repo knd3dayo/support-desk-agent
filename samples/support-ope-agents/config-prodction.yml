@@ -21,17 +21,32 @@ support_ope_agents:
       external_ticket:
         enabled: false
         provider: mcp
-        description: support-ope-agents チームの顧客向け検証問い合わせ
-        server: support-ticket-mcp
-        tool: get_external_ticket
+        description: GitHub 上で管理する顧客向け問い合わせ issue
+        server: github
+        tool: get_issue
+        arguments:
+          owner: your-github-org
+          repo: support-ope-external-tickets
+        argument_map:
+          ticket_id: issue_number
+        integer_arguments:
+          - issue_number
       internal_ticket:
         enabled: false
         provider: mcp
-        description: support-ope-agents チームの内部管理チケット
-        server: support-ticket-mcp
-        tool: get_internal_ticket
-    # 実 MCP を使う場合は、環境に合わせて manifest を有効化する
-    # mcp_manifest_path: /home/user/source/repos/ai-chat-util/app/ai-chat-util-mcp.json
+        description: GitHub 上で管理する内部管理 issue
+        server: github
+        tool: get_issue
+        arguments:
+          owner: your-github-org
+          repo: support-ope-internal-tickets
+        argument_map:
+          ticket_id: issue_number
+        integer_arguments:
+          - issue_number
+    # GitHub MCP を使う場合は、manifest 内で github server と
+    # GITHUB_PERSONAL_ACCESS_TOKEN を設定したうえで path を有効化する
+    # mcp_manifest_path: /path/to/mcp-manifest.json
 
   interfaces:
     enable_cli: true
