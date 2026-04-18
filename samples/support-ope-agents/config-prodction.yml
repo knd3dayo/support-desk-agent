@@ -1,5 +1,5 @@
 support_ope_agents:
-  # このファイルは sample 実装をこの repository 単体で試すための実行用 config です。
+  # このファイルは production 実装をこの repository で試すための実行用 config です。
   # 利用時は config.yml としてコピーして使う想定です。
   llm:
     provider: openai
@@ -8,7 +8,7 @@ support_ope_agents:
     base_url: http://localhost:4000
 
   runtime:
-    mode: sample
+    mode: production
 
   tools:
     logical_tools:
@@ -21,13 +21,13 @@ support_ope_agents:
       external_ticket:
         enabled: false
         provider: mcp
-        description: ai-platform-poc チームの顧客向け検証問い合わせ
+        description: support-ope-agents チームの顧客向け検証問い合わせ
         server: support-ticket-mcp
         tool: get_external_ticket
       internal_ticket:
         enabled: false
         provider: mcp
-        description: ai-platform-poc チームの内部管理チケット
+        description: support-ope-agents チームの内部管理チケット
         server: support-ticket-mcp
         tool: get_internal_ticket
     # 実 MCP を使う場合は、環境に合わせて manifest を有効化する
@@ -38,8 +38,8 @@ support_ope_agents:
     enable_api: false
     enable_mcp: false
     ui_app_name: Support Desk
-    ui_target_label: ai-platform-poc 向けサンプル
-    ui_target_description: ai-platform-poc チームの問い合わせ検証とバックサポート連携を試すためのサンプル UI
+    ui_target_label: support-ope-agents 向けサンプル
+    ui_target_description: support-ope-agents チームの問い合わせ検証とバックサポート連携を試すためのサンプル UI
 
   agents:
     default_constraint_mode: default
@@ -70,18 +70,9 @@ support_ope_agents:
       search_strategy: hybrid
       result_mode: relaxed
       document_sources:
-        - name: ai-platform-poc
-          description: ai-platform-poc の技術検証資料と設計資料
-          path: /home/user/source/repos/ai-platform-poc
         - name: support-ope-agents-docs
           description: support-ope-agents の設計資料と運用ドキュメント
           path: /home/user/source/repos/support-ope-agents/docs
-        - name: ai-platform-poc-sample
-          description: ai-platform-poc sample の README と設定例
-          path: /home/user/source/repos/support-ope-agents/samples/ai-platform-poc
-        - name: ai-platform-poc-workspace-template
-          description: sample workspace の証跡例と調査素材
-          path: /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/workspace-template
     BackSupportEscalationAgent:
       enabled: true
       auto_compress: true

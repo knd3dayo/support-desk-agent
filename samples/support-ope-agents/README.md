@@ -1,15 +1,15 @@
-# ai-platform-poc 向け sample
+# support-ope-agents sample
 
-* このディレクトリは、ai-platform-poc チームが support-ope-agents を実 LLM / 実 MCP 連携込みで試すためのサンプルです。
-* ai-platform-poc チームが問合せ元の顧客、sampleが一次サポート窓口、ai-chat-utilチームがバックサポートをイメージしており、
+* このディレクトリは、support-ope-agents を実 LLM / 実 MCP 連携込みで試すためのサンプルです。
+* ai-platform-poc チームが問合せ元の顧客、support-ope-agents が一次サポート窓口、ai-chat-util チームがバックサポートをイメージしており、
 本sampleにより確実な回答を生成できるか？できない場合はai-chat-utilチームへのエスカレーション文書が作成可能か？を確かめることを目的としています。
 * ここで発見された、support-ope-agentsの不具合は、イシューとして残して、ソース改修に役立てます。
 
 ## 1. 含まれるもの
 
-- [samples/ai-platform-poc/config.yml](/home/user/source/repos/support-ope-agents/samples/ai-platform-poc/config.yml): ai-platform-poc 向けの設定例
-- [samples/ai-platform-poc/sample_prompt.txt](/home/user/source/repos/support-ope-agents/samples/ai-platform-poc/sample_prompt.txt): 問い合わせ文面の例
-- [samples/ai-platform-poc/workspace-template](/home/user/source/repos/support-ope-agents/samples/ai-platform-poc/workspace-template): workspace 配置例
+- [samples/support-ope-agents/config-sample.yml](/home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml): sample 実装向けの設定例
+- [samples/support-ope-agents/config-prodction.yml](/home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-prodction.yml): production 実装向けの設定例
+- [samples/support-ope-agents/workspace-template](/home/user/source/repos/support-ope-agents/samples/support-ope-agents/workspace-template): workspace 配置例
 
 ## 2. 想定するナレッジ
 
@@ -30,17 +30,19 @@
 API と React UI を使って試す場合は、このディレクトリに追加した起動スクリプトを使えます。
 
 ```bash
-/home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample.sh \
-  --workspace-root /tmp/ai-platform-poc-sample-cases
+/home/user/source/repos/support-ope-agents/samples/support-ope-agents/start-sample.sh \
+  --workspace-root /tmp/support-ope-agents-sample-cases
 ```
 
 この統合スクリプトは sample 用 API と React frontend をまとめて起動します。`--workspace-root` または環境変数 `SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT` が必須で、未指定ならエラー終了します。指定したディレクトリが存在しない場合は自動作成します。終了するときはその端末で `Ctrl+C` を押すと、子プロセスもあわせて停止します。
 
 ```bash
-/home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample-react.sh
+/home/user/source/repos/support-ope-agents/samples/support-ope-agents/start-sample-react.sh
 ```
 
 API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ個別に起動したい場合は `start-sample-react.sh` も引き続き使えます。API 起動スクリプトは `--workspace-root` または `SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT` を必須とし、指定したディレクトリをケース作成先として使ったうえで、内部的には `uv run -m support_ope_agents.interfaces.api` を呼び出します。sample API は UI テストを優先して、既定では起動時の LLM probe を skip します。実 backend の疎通確認も startup で行いたい場合は `SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE=0` を付けて起動してください。React 起動スクリプトはリポジトリ直下の frontend を開発モードで起動し、`API_PORT` が指定されていればそのポートの API を proxy します。
+
+起動時に `--config` を省略すると `config.yml` を見にいくため、通常は `--config config-sample.yml` または `--config config-prodction.yml` を明示指定してください。
 
 sample config で MCP manifest が未設定の場合、API 起動スクリプトは UI テストを止めないために `external_ticket` と `internal_ticket` を一時的に無効化した設定を自動生成して起動します。実 MCP 連携を含めて試したい場合は、sample config の `tools.mcp_manifest_path` を有効化するか、起動時に `MCP_MANIFEST_PATH=/path/to/manifest.json` を渡してください。
 
@@ -48,34 +50,37 @@ sample config で MCP manifest が未設定の場合、API 起動スクリプト
 
 ```bash
 API_PORT=8010 UI_PORT=5174 \
-  /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample.sh \
-  --workspace-root /tmp/ai-platform-poc-sample-cases
+  /home/user/source/repos/support-ope-agents/samples/support-ope-agents/start-sample.sh \
+  --workspace-root /tmp/support-ope-agents-sample-cases \
+  --config /home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml
 ```
 
 ```bash
 MCP_MANIFEST_PATH=/home/user/source/repos/ai-chat-util/app/ai-chat-util-mcp.json \
-  SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT=/tmp/ai-platform-poc-sample-cases \
-  /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample.sh
+  SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT=/tmp/support-ope-agents-sample-cases \
+  /home/user/source/repos/support-ope-agents/samples/support-ope-agents/start-sample.sh \
+  --config /home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml
 ```
 
 ```bash
-SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT=/tmp/ai-platform-poc-sample-cases \
-  /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample-api.sh
+SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT=/tmp/support-ope-agents-sample-cases \
+  /home/user/source/repos/support-ope-agents/samples/support-ope-agents/start-sample-api.sh \
+  --config /home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml
 ```
 
 ```bash
-HOST=0.0.0.0 PORT=5174 /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/start-sample-react.sh
+HOST=0.0.0.0 PORT=5174 /home/user/source/repos/support-ope-agents/samples/support-ope-agents/start-sample-react.sh
 ```
 
 実行例:
 
 ```bash
 python -m support_ope_agents.cli action \
-  "$(cat /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/sample_prompt.txt)" \
-  --workspace-path /tmp/ai-platform-poc-support-case \
+  "ai-chat-util の利用方法について問い合わせがあります。関連資料を調査し、必要に応じてバックサポート向け問い合わせ文も作成してください。" \
+  --workspace-path /tmp/support-ope-agents-support-case \
   --external-ticket-id EXT-A-02-02 \
   --internal-ticket-id INT-A-02-02 \
-  --config /home/user/source/repos/support-ope-agents/samples/ai-platform-poc/config.yml
+  --config /home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml
 ```
 
 ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、InvestigateAgent は external / internal ticket の実参照をスキップします。実チケットを引きたい場合は `--external-ticket-id` と `--internal-ticket-id` を明示指定してください。

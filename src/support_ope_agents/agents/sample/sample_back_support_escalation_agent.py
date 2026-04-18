@@ -35,7 +35,7 @@ class SampleBackSupportEscalationAgent(AbstractAgent):
 
     @staticmethod
     def _default_memory_dir() -> str:
-        return "samples/ai-platform-poc/work/CASE-20260416-013703-2ADB/.memory"
+        return "samples/support-ope-agents/work/CASE-20260416-013703-2ADB/.memory"
 
     @staticmethod
     def _default_query() -> str:
