@@ -14,7 +14,9 @@ CONFIGURABLE_LOGICAL_TOOLS = frozenset(
     {
         "classify_ticket",
         "evaluate_agent_result",
+        "external_ticket",
         "inspect_workflow_state",
+        "internal_ticket",
         "pii_mask",
         "prepare_ticket_update",
         "read_log_file",

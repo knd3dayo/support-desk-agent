@@ -63,17 +63,18 @@ class McpToolClient:
         self.validate_binding(role="tools.logical_tools", logical_tool_name=logical_tool_name, binding=binding)
 
     def validate_ticket_source(self, *, ticket_kind: str, server_name: str) -> None:
+        logical_tool_name = f"{ticket_kind}_ticket"
         if server_name not in self._manifest.servers:
             available = ", ".join(sorted(self._manifest.servers)) or "<none>"
             raise ToolConfigurationError(
-                f"tools.ticket_sources.{ticket_kind} references unknown MCP server '{server_name}'. "
+                f"tools.logical_tools.{logical_tool_name} references unknown MCP server '{server_name}'. "
                 f"manifest={self._manifest.path} available_servers=[{available}]"
             )
         try:
             self.list_tools(server_name)
         except ToolConfigurationError as exc:
             raise ToolConfigurationError(
-                f"tools.ticket_sources.{ticket_kind} failed startup MCP connectivity check for server '{server_name}': {exc}"
+                f"tools.logical_tools.{logical_tool_name} failed startup MCP connectivity check for server '{server_name}': {exc}"
             ) from exc
 
     def build_handler(

@@ -33,6 +33,41 @@ def _resolve_path(base_dir: Path, value: str) -> Path:
     return (base_dir / candidate).resolve()
 
 
+def _migrate_legacy_ticket_sources(tools: dict[str, Any]) -> dict[str, Any]:
+    ticket_sources = tools.pop("ticket_sources", None)
+    if not isinstance(ticket_sources, dict):
+        return tools
+
+    logical_tools = tools.get("logical_tools")
+    if not isinstance(logical_tools, dict):
+        logical_tools = {}
+        tools["logical_tools"] = logical_tools
+
+    for ticket_kind in ("external", "internal"):
+        binding = ticket_sources.get(ticket_kind)
+        if not isinstance(binding, dict):
+            continue
+        logical_tool_name = f"{ticket_kind}_ticket"
+        if logical_tool_name in logical_tools:
+            continue
+
+        enabled = bool(binding.get("enabled"))
+        server = str(binding.get("server") or "").strip()
+        migrated: dict[str, Any] = {
+            "enabled": enabled,
+            "provider": "mcp",
+            "description": str(binding.get("description") or ""),
+        }
+        if server:
+            migrated["server"] = server
+        arguments = binding.get("arguments")
+        if isinstance(arguments, dict):
+            migrated["arguments"] = arguments
+        logical_tools[logical_tool_name] = migrated
+
+    return tools
+
+
 def load_config(config_path: str | Path) -> AppConfig:
     load_dotenv()
     path = Path(config_path).resolve()
@@ -73,6 +108,7 @@ def load_config(config_path: str | Path) -> AppConfig:
     resolved["agents"] = agents
 
     tools = resolved.get("tools", {})
+    tools = _migrate_legacy_ticket_sources(tools)
     manifest_path = tools.get("mcp_manifest_path")
     if manifest_path:
         tools["mcp_manifest_path"] = _resolve_path(base_dir, manifest_path)

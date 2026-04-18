@@ -308,13 +308,17 @@ class LogicalToolSettings(StrictConfigModel):
     integer_arguments: list[str] = Field(default_factory=list)
     description: str = ""
 
+    @staticmethod
+    def _is_ticket_lookup_tool(name: str | None) -> bool:
+        return name in {"external_ticket", "internal_ticket"}
+
     @model_validator(mode="after")
     def _validate_enabled_provider(self) -> "LogicalToolSettings":
         if not self.enabled:
             return self
         if self.provider == "mcp":
-            if not self.server or not self.tool:
-                raise ValueError("enabled logical tool with provider='mcp' requires both 'server' and 'tool'")
+            if not self.server:
+                raise ValueError("enabled logical tool with provider='mcp' requires 'server'")
             return self
         if self.server or self.tool:
             raise ValueError("logical tool with provider='builtin' cannot define 'server' or 'tool'")
@@ -331,21 +335,15 @@ class ToolSettings(StrictConfigModel):
     download_timeout_seconds: float = 30.0
     analysis_max_chars: int = 16000
     libreoffice_command: str | None = None
-    ticket_sources: TicketSourceSettings = Field(default_factory=TicketSourceSettings)
     logical_tools: dict[str, LogicalToolSettings] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_mcp_manifest_requirement(self) -> "ToolSettings":
-        if (self.has_enabled_mcp_tools() or self.has_enabled_ticket_sources()) and self.mcp_manifest_path is None:
+        if self.has_enabled_mcp_tools() and self.mcp_manifest_path is None:
             raise ValueError(
-                "tools.mcp_manifest_path is required when enabled logical tools or ticket_sources use MCP"
+                "tools.mcp_manifest_path is required when enabled logical tools use MCP"
             )
         for logical_tool_name in self.logical_tools:
-            if logical_tool_name in {"external_ticket", "internal_ticket"}:
-                ticket_kind = logical_tool_name.removesuffix("_ticket")
-                raise ValueError(
-                    f"tools.logical_tools.{logical_tool_name} is no longer supported; use tools.ticket_sources.{ticket_kind}"
-                )
             if logical_tool_name in INTERNAL_ONLY_LOGICAL_TOOLS:
                 raise ValueError(
                     f"tools.logical_tools.{logical_tool_name} is internal-only and cannot be configured from config.yml"
@@ -360,10 +358,22 @@ class ToolSettings(StrictConfigModel):
     def has_enabled_mcp_tools(self) -> bool:
         return any(tool.enabled and tool.provider == "mcp" for tool in self.logical_tools.values())
 
-    def has_enabled_ticket_sources(self) -> bool:
-        return any(
-            binding is not None and binding.enabled
-            for binding in (self.ticket_sources.external, self.ticket_sources.internal)
+    @property
+    def ticket_sources(self) -> TicketSourceSettings:
+        def _build_binding(ticket_kind: str) -> TicketServerBindingSettings:
+            logical_tool = self.get_logical_tool(f"{ticket_kind}_ticket")
+            if logical_tool is None:
+                return TicketServerBindingSettings()
+            return TicketServerBindingSettings(
+                enabled=logical_tool.enabled and logical_tool.provider == "mcp",
+                server=str(logical_tool.server or ""),
+                description=logical_tool.description,
+                arguments=dict(logical_tool.arguments),
+            )
+
+        return TicketSourceSettings(
+            external=_build_binding("external"),
+            internal=_build_binding("internal"),
         )
 
     def get_logical_tool(self, name: str) -> LogicalToolSettings | None:

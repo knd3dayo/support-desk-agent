@@ -49,7 +49,7 @@ class ObjectiveEvaluator:
         return self._invoke_structured_evaluation(evidence)
 
     def _invoke_structured_evaluation(self, evidence: dict[str, Any]) -> ObjectiveEvaluatorStructuredResult:
-        model = build_chat_openai_model(self.config, temperature=0)
+        model = build_chat_openai_model(self.config)
         structured_model = model.with_structured_output(ObjectiveEvaluatorStructuredResult)
         response = structured_model.invoke([
             SystemMessage(content=self.instruction_text.strip()),

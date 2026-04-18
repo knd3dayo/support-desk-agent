@@ -573,6 +573,9 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                 def validate_ticket_source(self, *, ticket_kind: str, server_name: str) -> None:
                     self.calls.append(f"{ticket_kind}:{server_name}")
 
+                def validate_logical_tool(self, *, logical_tool_name: str, binding) -> None:
+                    return None
+
             fake_client = _FakeMcpClient()
 
             with patch(
@@ -611,16 +614,19 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             )
 
             class _FailingMcpClient:
+                def validate_logical_tool(self, *, logical_tool_name: str, binding) -> None:
+                    return None
+
                 def validate_ticket_source(self, *, ticket_kind: str, server_name: str) -> None:
                     raise ToolConfigurationError(
-                        f"tools.ticket_sources.{ticket_kind} failed startup MCP connectivity check for server '{server_name}': boom"
+                        f"tools.logical_tools.{ticket_kind}_ticket failed startup MCP connectivity check for server '{server_name}': boom"
                     )
 
             with patch(
                 "support_ope_agents.runtime.production.production_service.McpToolClient.from_config",
                 return_value=_FailingMcpClient(),
             ):
-                with self.assertRaisesRegex(ToolConfigurationError, "tools.ticket_sources.external"):
+                with self.assertRaisesRegex(ToolConfigurationError, "tools.logical_tools.external_ticket"):
                     build_runtime_context(str(config_path))
 
     def test_runtime_harness_manager_describes_role_capabilities(self) -> None:

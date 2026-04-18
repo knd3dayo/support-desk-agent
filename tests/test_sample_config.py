@@ -10,7 +10,7 @@ import yaml
 
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config import load_config
-from support_ope_agents.config.models import AgentCatalogSettings
+from support_ope_agents.config.models import AgentCatalogSettings, AppConfig
 from support_ope_agents.runtime.sample.sample_service import build_runtime_context
 from support_ope_agents.tools import ToolConfigurationError
 
@@ -83,6 +83,71 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(loaded.llm.model, "gpt-4.1")
         self.assertIsNone(loaded.llm.base_url)
 
+    def test_app_config_accepts_server_only_mcp_ticket_logical_tool(self) -> None:
+        loaded = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "tools": {
+                    "mcp_manifest_path": "/tmp/test-mcp.json",
+                    "logical_tools": {
+                        "external_ticket": {
+                            "enabled": True,
+                            "provider": "mcp",
+                            "server": "generic-ticket-server",
+                        }
+                    },
+                },
+                "agents": {},
+            }
+        )
+
+        external_ticket = loaded.tools.get_logical_tool("external_ticket")
+        self.assertIsNotNone(external_ticket)
+        self.assertEqual(external_ticket.provider, "mcp")
+        self.assertEqual(external_ticket.server, "generic-ticket-server")
+        self.assertIsNone(external_ticket.tool)
+
+    def test_load_config_migrates_legacy_ticket_sources_into_logical_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "support_ope_agents:",
+                        "  llm:",
+                        "    provider: openai",
+                        "    model: gpt-4.1",
+                        "    api_key: sk-test-value",
+                        "  tools:",
+                        "    mcp_manifest_path: ./mcp.json",
+                        "    ticket_sources:",
+                        "      external:",
+                        "        enabled: true",
+                        "        server: github",
+                        "        description: legacy external binding",
+                        "        arguments:",
+                        "          repo: external-support",
+                        "  config_paths: {}",
+                        "  data_paths: {}",
+                        "  interfaces: {}",
+                        "  agents: {}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            loaded = load_config(config_path)
+
+        external_ticket = loaded.tools.get_logical_tool("external_ticket")
+        self.assertIsNotNone(external_ticket)
+        self.assertEqual(external_ticket.provider, "mcp")
+        self.assertEqual(external_ticket.server, "github")
+        self.assertEqual(external_ticket.arguments, {"repo": "external-support"})
+
     def test_sample_runtime_context_validates_enabled_ticket_sources_on_startup(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.yml"
@@ -118,6 +183,9 @@ class SampleConfigTests(unittest.TestCase):
 
                 def validate_ticket_source(self, *, ticket_kind: str, server_name: str) -> None:
                     self.calls.append(f"{ticket_kind}:{server_name}")
+
+                def validate_logical_tool(self, *, logical_tool_name: str, binding) -> None:
+                    return None
 
             fake_client = _FakeMcpClient()
 
@@ -159,16 +227,19 @@ class SampleConfigTests(unittest.TestCase):
             )
 
             class _FailingMcpClient:
+                def validate_logical_tool(self, *, logical_tool_name: str, binding) -> None:
+                    return None
+
                 def validate_ticket_source(self, *, ticket_kind: str, server_name: str) -> None:
                     raise ToolConfigurationError(
-                        f"tools.ticket_sources.{ticket_kind} failed startup MCP connectivity check for server '{server_name}': boom"
+                        f"tools.logical_tools.{ticket_kind}_ticket failed startup MCP connectivity check for server '{server_name}': boom"
                     )
 
             with patch(
                 "support_ope_agents.runtime.sample.sample_service.McpToolClient.from_config",
                 return_value=_FailingMcpClient(),
             ):
-                with self.assertRaisesRegex(ToolConfigurationError, "tools.ticket_sources.external"):
+                with self.assertRaisesRegex(ToolConfigurationError, "tools.logical_tools.external_ticket"):
                     build_runtime_context(str(config_path))
 
 

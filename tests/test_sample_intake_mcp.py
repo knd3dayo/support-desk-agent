@@ -72,6 +72,29 @@ class _FakeChatModel:
         return AIMessage(content=self._responses.pop(0))
 
 
+class _FakeReactAgent:
+    def __init__(self, tools, scenario):
+        self._tools = {tool.name: tool for tool in tools}
+        self._scenario = scenario
+
+    def invoke(self, _input):
+        return {"messages": [AIMessage(content=self._scenario(self._tools))]}
+
+
+class _FakeUrlResponse:
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+
+    def read(self) -> bytes:
+        return self._payload
+
+    def __enter__(self) -> _FakeUrlResponse:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
 class SampleIntakeMcpTests(unittest.TestCase):
     def _build_config(self) -> AppConfig:
         return AppConfig.model_validate(
@@ -82,15 +105,17 @@ class SampleIntakeMcpTests(unittest.TestCase):
                 "interfaces": {},
                 "tools": {
                     "mcp_manifest_path": "/tmp/test-mcp.json",
-                    "ticket_sources": {
-                        "external": {
+                    "logical_tools": {
+                        "external_ticket": {
                             "enabled": True,
+                            "provider": "mcp",
                             "server": "github",
                             "description": "external github issues",
                             "arguments": {"owner": "acme", "repo": "external-support"},
                         },
-                        "internal": {
+                        "internal_ticket": {
                             "enabled": False,
+                            "provider": "mcp",
                             "server": "github-internal",
                             "description": "internal github issues",
                             "arguments": {"owner": "acme", "repo": "internal-support"},
@@ -101,19 +126,42 @@ class SampleIntakeMcpTests(unittest.TestCase):
             }
         )
 
+    @staticmethod
+    def _react_agent_factory(scenario):
+        def _factory(_model, tools, **_kwargs):
+            return _FakeReactAgent(tools, scenario)
+
+        return _factory
+
     def test_hydrates_ticket_context_with_xml_selected_tool(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
         provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
-        model = _FakeChatModel(
-            [
-                "<decision><get_tool>get_issue</get_tool><get_arguments>{\"issue_number\": \"123\"}</get_arguments><list_tool>search_issues</list_tool><list_arguments>{\"q\": \"login 500\"}</list_arguments><get_attachment_tool>get_issue_attachments</get_attachment_tool><get_attachment_arguments>{\"issue_number\": \"123\"}</get_attachment_arguments><reason>direct issue lookup with attachments</reason></decision>"
-            ]
-        )
+
+        def _scenario(tools) -> str:
+            raw_result = tools["get_issue"].invoke({"issue_number": "123"})
+            return (
+                "<result>"
+                f"<content>{raw_result}</content>"
+                "<suggestion></suggestion>"
+                "<attachments>"
+                "<attachment>https://example.invalid/files/error-screenshot.png</attachment>"
+                "</attachments>"
+                "</result>"
+            )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model", return_value=model):
+            with patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                side_effect=self._react_agent_factory(_scenario),
+            ), patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                return_value=_FakeChatModel([]),
+            ), patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.urlopen",
+                return_value=_FakeUrlResponse(b"png-binary"),
+            ):
                 result = agent.create_node().invoke(
                     {
                         "raw_issue": "ログイン時の 500 エラーを調査してください",
@@ -129,36 +177,36 @@ class SampleIntakeMcpTests(unittest.TestCase):
             artifacts = result.get("intake_ticket_artifacts") or {}
             self.assertIn("external_ticket", summary)
             self.assertIn("Issue 123", str(summary["external_ticket"]))
-            self.assertEqual("Attachment metadata retrieved.", str(summary["external_ticket_attachments"]))
+            self.assertIn("external_ticket_attachments", summary)
+            self.assertIn("https://example.invalid/files/error-screenshot.png", str(summary["external_ticket_attachments"]))
             self.assertTrue(artifacts.get("external_ticket"))
             self.assertTrue(artifacts.get("external_ticket_attachments"))
             self.assertEqual(
                 resolver.calls,
                 [
                     ("github", "get_issue", {"owner": "acme", "repo": "external-support", "issue_number": 123}),
-                    (
-                        "github",
-                        "get_issue_attachments",
-                        {"owner": "acme", "repo": "external-support", "issue_number": 123},
-                    ),
                 ],
             )
             artifact_path = Path(artifacts["external_ticket"][0])
             self.assertTrue(artifact_path.exists())
+            attachment_path = Path(artifacts["external_ticket_attachments"][0])
+            self.assertTrue(attachment_path.exists())
+            self.assertEqual(attachment_path.read_bytes(), b"png-binary")
 
     def test_invalid_xml_tool_selection_disables_lookup_and_records_error(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
         provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
-        model = _FakeChatModel(
-            [
-                "<decision><get_tool>unknown_tool</get_tool><get_arguments>{}</get_arguments><list_tool>skip</list_tool><get_attachment_tool>skip</get_attachment_tool></decision>"
-            ]
-        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model", return_value=model):
+            with patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                side_effect=self._react_agent_factory(lambda _tools: "<result><content>broken</content>"),
+            ), patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                return_value=_FakeChatModel([]),
+            ):
                 result = agent.create_node().invoke(
                     {
                         "raw_issue": "ログイン時の 500 エラーを調査してください",
@@ -171,7 +219,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
         self.assertFalse(bool(result.get("external_ticket_lookup_enabled")))
         errors = result.get("agent_errors") or []
         self.assertTrue(errors)
-        self.assertIn("selected MCP tool does not exist", str(errors[0].get("message") or ""))
+        self.assertIn("no element found", str(errors[0].get("message") or ""))
 
     def test_not_found_ticket_builds_followup_question_with_candidates(self) -> None:
         config = self._build_config()
@@ -179,14 +227,27 @@ class SampleIntakeMcpTests(unittest.TestCase):
         resolver.raise_not_found_once = True
         provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
-        model = _FakeChatModel(
-            [
-                "<decision><get_tool>get_issue</get_tool><get_arguments>{\"issue_number\": \"999\"}</get_arguments><list_tool>search_issues</list_tool><list_arguments>{\"q\": \"login 500\"}</list_arguments><get_attachment_tool>skip</get_attachment_tool><reason>try exact lookup then search nearby candidates</reason></decision>",
-            ]
-        )
+
+        def _scenario(tools) -> str:
+            try:
+                tools["get_issue"].invoke({"issue_number": "999"})
+            except Exception:
+                tools["search_issues"].invoke({"q": "login 500"})
+            return (
+                "<result><content></content><suggestion>"
+                "指定された external ticket '999' は見つかりませんでした。"
+                " このチケットですか？ 候補: 121 / Login failure incident / open | 123 / Login 500 on production / open"
+                "</suggestion></result>"
+            )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model", return_value=model):
+            with patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                side_effect=self._react_agent_factory(_scenario),
+            ), patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                return_value=_FakeChatModel([]),
+            ):
                 result = agent.create_node().invoke(
                     {
                         "raw_issue": "ログイン時の 500 エラーを調査してください",
@@ -223,14 +284,26 @@ class SampleIntakeMcpTests(unittest.TestCase):
         resolver = _LowMatchResolver()
         provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
-        model = _FakeChatModel(
-            [
-                "<decision><get_tool>get_issue</get_tool><get_arguments>{\"issue_number\": \"999\"}</get_arguments><list_tool>search_issues</list_tool><list_arguments>{\"q\": \"login 500\"}</list_arguments><get_attachment_tool>skip</get_attachment_tool><reason>try exact lookup then search nearby candidates</reason></decision>",
-            ]
-        )
+
+        def _scenario(tools) -> str:
+            try:
+                tools["get_issue"].invoke({"issue_number": "999"})
+            except Exception:
+                tools["search_issues"].invoke({"q": "login 500"})
+            return (
+                "<result><content></content><suggestion>"
+                "ticket が見つからないため、URL または識別子の再確認が必要です。"
+                "</suggestion></result>"
+            )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model", return_value=model):
+            with patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                side_effect=self._react_agent_factory(_scenario),
+            ), patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                return_value=_FakeChatModel([]),
+            ):
                 result = agent.create_node().invoke(
                     {
                         "raw_issue": "ログイン時の 500 エラーを調査してください",
@@ -241,10 +314,9 @@ class SampleIntakeMcpTests(unittest.TestCase):
                 )
 
         questions = result.get("intake_followup_questions") or {}
-        self.assertFalse(bool(questions))
-        errors = result.get("agent_errors") or []
-        self.assertTrue(errors)
-        self.assertIn("Issue not found: 404", str(errors[0].get("message") or ""))
+        self.assertIn("external_ticket_confirmation", questions)
+        self.assertIn("URL または識別子の再確認", str(questions["external_ticket_confirmation"]))
+        self.assertEqual(str(result.get("status") or ""), "WAITING_CUSTOMER_INPUT")
 
 
 if __name__ == "__main__":

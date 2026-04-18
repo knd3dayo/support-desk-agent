@@ -133,14 +133,14 @@ class ToolRegistry:
                     "external_ticket",
                     "Fetch customer-facing external ticket information",
                     _unavailable_tool(
-                        "external_ticket tool is not configured. Configure tools.ticket_sources.external in config.yml."
+                        "external_ticket tool is not configured. Configure tools.logical_tools.external_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
                     "internal_ticket",
                     "Fetch internal management ticket information",
                     _unavailable_tool(
-                        "internal_ticket tool is not configured. Configure tools.ticket_sources.internal in config.yml."
+                        "internal_ticket tool is not configured. Configure tools.logical_tools.internal_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
@@ -177,14 +177,14 @@ class ToolRegistry:
                     "external_ticket",
                     "Fetch customer-facing external ticket information",
                     _unavailable_tool(
-                        "external_ticket tool is not configured. Configure tools.ticket_sources.external in config.yml."
+                        "external_ticket tool is not configured. Configure tools.logical_tools.external_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
                     "internal_ticket",
                     "Fetch internal management ticket information",
                     _unavailable_tool(
-                        "internal_ticket tool is not configured. Configure tools.ticket_sources.internal in config.yml."
+                        "internal_ticket tool is not configured. Configure tools.logical_tools.internal_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
@@ -239,14 +239,14 @@ class ToolRegistry:
                     "external_ticket",
                     "Fetch customer-facing external ticket information",
                     _unavailable_tool(
-                        "external_ticket tool is not configured. Configure tools.ticket_sources.external in config.yml."
+                        "external_ticket tool is not configured. Configure tools.logical_tools.external_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
                     "internal_ticket",
                     "Fetch internal management ticket information",
                     _unavailable_tool(
-                        "internal_ticket tool is not configured. Configure tools.ticket_sources.internal in config.yml."
+                        "internal_ticket tool is not configured. Configure tools.logical_tools.internal_ticket in config.yml."
                     ),
                 ),
                 ToolSpec(
