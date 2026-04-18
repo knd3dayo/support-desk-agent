@@ -128,7 +128,7 @@ support_ope_agents:
   # tools:
   #   # 外部 MCP 定義ファイルへのパスです。
   #   # logical_tools のどれかで provider: mcp を使う場合は必須です。
-  #   mcp_manifest_path:
+  #   mcp_manifest_path:mcp.json
   #
   #   # MCP 呼び出しの既定タイムアウト秒です。
   #   mcp_timeout_seconds: 30

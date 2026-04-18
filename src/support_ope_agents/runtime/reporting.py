@@ -169,6 +169,8 @@ def build_support_improvement_report(
         *_report_item("Evaluator", evaluation.evaluator_name, "SuperVisor ではなく、instruction と structured output schema に基づいて評価する客観評価エージェントです。"),
         *_report_item("Evaluation rubric", evaluation.instruction_excerpt or "n/a", "Evaluator instruction の冒頭要約です。"),
         "",
+        *_render_ticket_fetch_error_section(state),
+        "",
         "## 問い合わせ内容",
         "問い合わせ原文または整形後の主訴です。調査対象の起点として参照します。",
         str(state.get("raw_issue") or "n/a"),
@@ -362,6 +364,44 @@ def _ticket_lookup_detail(state: CaseState, *, config: AppConfig, ticket_kind: s
     if status == "未実行または判定不可":
         return "n/a"
     return status
+
+
+def _ticket_lookup_raw_error(state: CaseState, *, ticket_kind: str) -> str | None:
+    agent_errors = cast(list[dict[str, str]], state.get("agent_errors") or [])
+    relevant_errors = [
+        item
+        for item in agent_errors
+        if str(item.get("phase") or "").startswith(f"{ticket_kind}_ticket_")
+    ]
+    if not relevant_errors:
+        return None
+    message = str(relevant_errors[0].get("message") or "")
+    stripped = message.strip("\n")
+    return stripped or None
+
+
+def _render_ticket_fetch_error_section(state: CaseState) -> list[str]:
+    lines: list[str] = []
+    for ticket_kind in ("external", "internal"):
+        raw_error = _ticket_lookup_raw_error(state, ticket_kind=ticket_kind)
+        if raw_error is None:
+            continue
+        if not lines:
+            lines.extend(
+                [
+                    "## チケット取得エラー詳細",
+                    "チケット取得に失敗した場合の生エラーメッセージです。整形や要約をせず、そのまま出力します。",
+                ]
+            )
+        lines.extend(
+            [
+                f"### {ticket_kind.title()} ticket raw error",
+                "```text",
+                raw_error,
+                "```",
+            ]
+        )
+    return lines
 
 
 def _render_control_summary(control_catalog: dict[str, object], runtime_audit: dict[str, object]) -> list[str]:

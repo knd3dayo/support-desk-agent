@@ -6,7 +6,7 @@ from typing import Any
 from xml.sax.saxutils import escape
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.mcp_overrides import McpToolClient, McpToolInfo
+from support_ope_agents.tools.mcp_client import McpToolClient, McpToolInfo
 
 
 def _normalize_scalar(value: Any) -> Any:

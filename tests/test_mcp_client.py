@@ -6,8 +6,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from support_ope_agents.config import McpManifest
 from support_ope_agents.config.models import McpToolBinding
-from support_ope_agents.tools.mcp_overrides import McpManifest, McpToolClient
+from support_ope_agents.tools.mcp_client import McpToolClient
 
 
 class McpToolClientTests(unittest.TestCase):

@@ -374,6 +374,7 @@ class SampleIntakeAgent(AbstractAgent):
             decision: McpToolSelectionDecision | None = None
             try:
                 tools_xml = provider.render_tools_xml(binding.server)
+                
                 response = model.invoke(
                     [
                         HumanMessage(

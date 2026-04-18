@@ -52,7 +52,7 @@ from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
-from support_ope_agents.tools.mcp_overrides import McpToolClient
+from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.workflow import (
     ProductionCaseWorkflow,
     WORKFLOW_LABELS,

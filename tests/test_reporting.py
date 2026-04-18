@@ -6,7 +6,7 @@ import unittest
 from pydantic import ValidationError
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _ticket_lookup_detail, _ticket_lookup_status
+from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_ticket_fetch_error_section, _ticket_lookup_detail, _ticket_lookup_status
 from support_ope_agents.models.state import CaseState
 
 
@@ -141,6 +141,31 @@ class ReportingEvaluationTests(unittest.TestCase):
         )
 
         self.assertEqual(detail, "Issue not found: 404")
+
+    def test_render_ticket_fetch_error_section_outputs_raw_error_verbatim(self) -> None:
+        lines = _render_ticket_fetch_error_section(
+            {
+                "agent_errors": [
+                    {
+                        "agent": "IntakeAgent",
+                        "phase": "internal_ticket_lookup",
+                        "message": "Traceback:\n  line 1\nHTTP 404: issue not found\n",
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(
+            lines,
+            [
+                "## チケット取得エラー詳細",
+                "チケット取得に失敗した場合の生エラーメッセージです。整形や要約をせず、そのまま出力します。",
+                "### Internal ticket raw error",
+                "```text",
+                "Traceback:\n  line 1\nHTTP 404: issue not found",
+                "```",
+            ],
+        )
 
     def test_ticket_lookup_detail_reports_skip_reason_when_manifest_missing(self) -> None:
         config = AppConfig.model_validate(

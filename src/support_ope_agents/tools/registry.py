@@ -26,7 +26,7 @@ from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
 from .default_write_shared_memory import build_default_write_shared_memory_tool
 from .default_write_working_memory import build_default_write_working_memory_tool
-from .mcp_overrides import McpToolClient, ToolConfigurationError
+from .mcp_client import McpToolClient, ToolConfigurationError
 
 
 ToolCallable = Callable[..., Any]

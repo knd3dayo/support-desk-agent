@@ -1,22 +1,18 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from pathlib import Path
 from typing import Any
 
 import anyio
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import Connection
 
-from support_ope_agents.config.models import AppConfig, McpToolBinding
+from support_ope_agents.config import AppConfig, McpConfigError, McpManifest, McpServerConfig, McpToolBinding
 
-
-class ToolConfigurationError(ValueError):
-    pass
+ToolConfigurationError = McpConfigError
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,100 +20,6 @@ class McpToolInfo:
     name: str
     description: str
     input_schema: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class McpServerConfig:
-    name: str
-    transport: str
-    command: str | None = None
-    args: tuple[str, ...] = ()
-    env: dict[str, str] | None = None
-    url: str | None = None
-    headers: dict[str, Any] | None = None
-    timeout_seconds: float | None = None
-    sse_read_timeout_seconds: float | None = None
-    terminate_on_close: bool = True
-
-
-def _expand_string(value: str) -> str:
-    return os.path.expanduser(os.path.expandvars(value))
-
-
-def _normalize_string_map(raw: dict[str, Any] | None) -> dict[str, str] | None:
-    if raw is None:
-        return None
-    return {str(key): _expand_string(str(value)) for key, value in raw.items()}
-
-
-class McpManifest:
-    def __init__(self, path: Path, servers: dict[str, McpServerConfig]):
-        self.path = path
-        self.servers = servers
-
-    @classmethod
-    def load(cls, path: Path) -> "McpManifest":
-        if not path.exists():
-            raise ToolConfigurationError(f"MCP manifest was not found: {path}")
-
-        with path.open("r", encoding="utf-8") as handle:
-            raw = json.load(handle)
-
-        raw_servers = raw.get("mcpServers")
-        if not isinstance(raw_servers, dict):
-            raise ToolConfigurationError(f"MCP manifest must contain 'mcpServers': {path}")
-
-        servers: dict[str, McpServerConfig] = {}
-        for name, definition in raw_servers.items():
-            if not isinstance(definition, dict):
-                raise ToolConfigurationError(f"MCP server '{name}' definition must be an object in {path}")
-            if definition.get("disabled") is True:
-                continue
-
-            transport = str(definition.get("type") or ("stdio" if definition.get("command") else "")).strip()
-            if not transport:
-                raise ToolConfigurationError(f"MCP server '{name}' is missing transport type in {path}")
-
-            servers[name] = cls._build_server_config(path, name, transport, definition)
-
-        return cls(path=path, servers=servers)
-
-    @staticmethod
-    def _build_server_config(path: Path, name: str, transport: str, definition: dict[str, Any]) -> McpServerConfig:
-        timeout = definition.get("timeout")
-        sse_timeout = definition.get("sse_read_timeout")
-
-        if transport == "stdio":
-            command = definition.get("command")
-            if not command:
-                raise ToolConfigurationError(f"MCP stdio server '{name}' is missing 'command' in {path}")
-            args = tuple(_expand_string(str(item)) for item in definition.get("args", []))
-            return McpServerConfig(
-                name=name,
-                transport=transport,
-                command=_expand_string(str(command)),
-                args=args,
-                env=_normalize_string_map(definition.get("env")),
-                timeout_seconds=float(timeout) if timeout is not None else None,
-            )
-
-        if transport in {"sse", "streamable-http"}:
-            url = definition.get("url")
-            if not url:
-                raise ToolConfigurationError(f"MCP server '{name}' is missing 'url' in {path}")
-            return McpServerConfig(
-                name=name,
-                transport=transport,
-                url=_expand_string(str(url)),
-                headers=definition.get("headers"),
-                timeout_seconds=float(timeout) if timeout is not None else None,
-                sse_read_timeout_seconds=float(sse_timeout) if sse_timeout is not None else None,
-                terminate_on_close=bool(definition.get("terminate_on_close", True)),
-            )
-
-        raise ToolConfigurationError(
-            f"MCP server '{name}' uses unsupported transport '{transport}' in {path}. Supported: stdio, sse, streamable-http"
-        )
 
 
 class McpToolClient:
