@@ -1008,6 +1008,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("## ランタイム制約影響評価", content)
         self.assertIn("External ticket ID", content)
         self.assertIn("Internal ticket ID", content)
+        self.assertIn("External ticket fetch", content)
+        self.assertIn("Internal ticket fetch", content)
         self.assertIn("### 発火した制御", content)
         self.assertIn("共通 instruction 制約", content)
         self.assertIn("役割別の想定 instruction 制約", content)
@@ -1106,6 +1108,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         self.assertIn("External ticket ID", content)
         self.assertIn("Internal ticket ID", content)
+        self.assertIn("External ticket fetch", content)
+        self.assertIn("Internal ticket fetch", content)
         self.assertNotIn("Adopted sources: none", content)
 
     def test_initialize_case_creates_objective_evaluator_working_memory(self) -> None:

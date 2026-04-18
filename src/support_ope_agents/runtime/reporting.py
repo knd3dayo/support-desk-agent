@@ -10,6 +10,7 @@ from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
+from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
 from support_ope_agents.models.state import CaseState
 from support_ope_agents.models.state_transitions import CaseStatuses
@@ -159,6 +160,10 @@ def build_support_improvement_report(
         *_report_item("Trace ID", trace_id, "今回の実行トレースを追跡するための識別子です。"),
         *_report_item("External ticket ID", str(state.get("external_ticket_id") or "n/a"), "ケースに関連付けられた外部チケットIDです。明示指定がない場合は trace 由来の自動採番が入ります。"),
         *_report_item("Internal ticket ID", str(state.get("internal_ticket_id") or "n/a"), "ケースに関連付けられた内部チケットIDです。明示指定がない場合は trace 由来の自動採番が入ります。"),
+        *_report_item("External ticket fetch", _ticket_lookup_status(state, config=config, ticket_kind="external"), "外部チケット情報の取得が成功したか、失敗したか、未実行だったかを示します。"),
+        *_report_item("Internal ticket fetch", _ticket_lookup_status(state, config=config, ticket_kind="internal"), "内部チケット情報の取得が成功したか、失敗したか、未実行だったかを示します。"),
+        *_report_item("External ticket fetch detail", _ticket_lookup_detail(state, config=config, ticket_kind="external"), "外部チケット取得MCPの結果要約です。成功時は取得要約や保存成果物、失敗時はエラーメッセージ、未実行時は理由を示します。"),
+        *_report_item("Internal ticket fetch detail", _ticket_lookup_detail(state, config=config, ticket_kind="internal"), "内部チケット取得MCPの結果要約です。成功時は取得要約や保存成果物、失敗時はエラーメッセージ、未実行時は理由を示します。"),
         *_report_item("Workspace", case_paths.root, "ケース関連ファイルと成果物を保存した作業ディレクトリです。"),
         *_report_item("Final status", str(state.get("status") or "unknown"), "ワークフロー完了時点の最終ステータスです。"),
         *_report_item("Evaluator", evaluation.evaluator_name, "SuperVisor ではなく、instruction と structured output schema に基づいて評価する客観評価エージェントです。"),
@@ -263,6 +268,100 @@ def _collect_report_artifact_paths(
     if case_paths.evidence_dir.exists():
         collected_paths.update(path for path in case_paths.evidence_dir.rglob("*") if path.is_file())
     return [path.relative_to(case_paths.root).as_posix() for path in sorted(collected_paths)]
+
+
+def _ticket_lookup_status(state: CaseState, *, config: AppConfig, ticket_kind: str) -> str:
+    ticket_id = str(state.get(f"{ticket_kind}_ticket_id") or "").strip()
+    ticket_summaries = cast(dict[str, str], state.get("intake_ticket_context_summary") or {})
+    ticket_artifacts = cast(dict[str, list[str]], state.get("intake_ticket_artifacts") or {})
+    agent_errors = cast(list[dict[str, str]], state.get("agent_errors") or [])
+
+    if ticket_summaries.get(f"{ticket_kind}_ticket") or ticket_artifacts.get(f"{ticket_kind}_ticket"):
+        return "成功"
+
+    relevant_errors = [
+        item
+        for item in agent_errors
+        if str(item.get("phase") or "").startswith(f"{ticket_kind}_ticket_")
+    ]
+    if relevant_errors:
+        message = re.sub(r"\s+", " ", str(relevant_errors[0].get("message") or "").strip())
+        return f"失敗: {message[:120] or 'unknown error'}"
+
+    if not ticket_id:
+        return "未指定"
+
+    resolver = CaseIdResolverService()
+    is_auto_generated = (
+        resolver.is_auto_generated_external_ticket_id(ticket_id)
+        if ticket_kind == "external"
+        else resolver.is_auto_generated_internal_ticket_id(ticket_id)
+    )
+    if is_auto_generated:
+        return "未実行: 自動採番 ID"
+
+    # internal.enabled: true かつ fetch不可の場合は強調して返す
+    enabled = False
+    binding = None
+    if config.runtime.mode == "sample":
+        binding = config.agents.IntakeAgent.ticket_servers.get(ticket_kind)
+        enabled = binding is not None and getattr(binding, "enabled", False)
+        if enabled:
+            if config.tools.mcp_manifest_path is None:
+                return "enabled: true だがfetch不可: MCP manifest 未設定"
+        else:
+            return "未実行: ticket server 無効"
+    else:
+        logical_tool = config.tools.get_logical_tool(f"{ticket_kind}_ticket")
+        enabled = logical_tool is not None and getattr(logical_tool, "enabled", False)
+        if enabled:
+            if logical_tool.provider == "mcp" and config.tools.mcp_manifest_path is None:
+                return "enabled: true だがfetch不可: MCP manifest 未設定"
+        else:
+            return "未実行: logical tool 無効"
+
+    if enabled and not bool(state.get(f"{ticket_kind}_ticket_lookup_enabled")):
+        return "enabled: true だがfetch不可: lookup 無効"
+
+    if enabled:
+        return "enabled: true だがfetch不可: 未実行または判定不可"
+
+    return "未実行または判定不可"
+
+
+def _ticket_lookup_detail(state: CaseState, *, config: AppConfig, ticket_kind: str) -> str:
+    ticket_summaries = cast(dict[str, str], state.get("intake_ticket_context_summary") or {})
+    ticket_artifacts = cast(dict[str, list[str]], state.get("intake_ticket_artifacts") or {})
+    agent_errors = cast(list[dict[str, str]], state.get("agent_errors") or [])
+
+    summary = re.sub(r"\s+", " ", str(ticket_summaries.get(f"{ticket_kind}_ticket") or "").strip())
+    artifacts = [str(path).strip() for path in ticket_artifacts.get(f"{ticket_kind}_ticket") or [] if str(path).strip()]
+    if summary or artifacts:
+        parts: list[str] = []
+        if summary:
+            parts.append(f"summary: {summary[:120]}")
+        if artifacts:
+            parts.append(f"artifacts: {', '.join(artifacts[:2])}")
+        return " | ".join(parts)
+
+    relevant_errors = [
+        item
+        for item in agent_errors
+        if str(item.get("phase") or "").startswith(f"{ticket_kind}_ticket_")
+    ]
+    if relevant_errors:
+        message = re.sub(r"\s+", " ", str(relevant_errors[0].get("message") or "").strip())
+        return message[:200] or "n/a"
+
+    status = _ticket_lookup_status(state, config=config, ticket_kind=ticket_kind)
+    if status == "成功":
+        return "n/a"
+    # enabled: true だがfetch不可の場合は強調して返す
+    if status.startswith("enabled: true だがfetch不可"):
+        return status
+    if status == "未実行または判定不可":
+        return "n/a"
+    return status
 
 
 def _render_control_summary(control_catalog: dict[str, object], runtime_audit: dict[str, object]) -> list[str]:

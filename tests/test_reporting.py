@@ -6,7 +6,7 @@ import unittest
 from pydantic import ValidationError
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria
+from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _ticket_lookup_detail, _ticket_lookup_status
 from support_ope_agents.models.state import CaseState
 
 
@@ -34,6 +34,185 @@ class ReportingEvaluationTests(unittest.TestCase):
 
         self.assertIn("Intake-->>User: 追加情報を依頼", diagram)
         self.assertNotIn("Supervisor->>Knowledge", diagram)
+
+    def test_ticket_lookup_status_reports_success_when_ticket_artifact_exists(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+
+        status = _ticket_lookup_status(
+            {
+                "internal_ticket_id": "2",
+                "intake_ticket_artifacts": {"internal_ticket": ["/tmp/internal_ticket.json"]},
+                "intake_ticket_context_summary": {},
+                "agent_errors": [],
+            },
+            config=config,
+            ticket_kind="internal",
+        )
+
+        self.assertEqual(status, "成功")
+
+    def test_ticket_lookup_detail_reports_summary_and_artifact_on_success(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+
+        detail = _ticket_lookup_detail(
+            {
+                "intake_ticket_context_summary": {"internal_ticket": "Issue 2: internal ticket summary"},
+                "intake_ticket_artifacts": {"internal_ticket": ["/tmp/internal_ticket.json"]},
+                "agent_errors": [],
+            },
+            config=config,
+            ticket_kind="internal",
+        )
+
+        self.assertIn("summary: Issue 2: internal ticket summary", detail)
+        self.assertIn("artifacts: /tmp/internal_ticket.json", detail)
+
+    def test_ticket_lookup_status_reports_failure_from_agent_error(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+
+        status = _ticket_lookup_status(
+            {
+                "internal_ticket_id": "2",
+                "intake_ticket_context_summary": {},
+                "intake_ticket_artifacts": {},
+                "agent_errors": [
+                    {
+                        "agent": "IntakeAgent",
+                        "phase": "internal_ticket_lookup",
+                        "message": "Issue not found: 404",
+                    }
+                ],
+            },
+            config=config,
+            ticket_kind="internal",
+        )
+
+        self.assertEqual(status, "失敗: Issue not found: 404")
+
+    def test_ticket_lookup_detail_reports_error_on_failure(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+
+        detail = _ticket_lookup_detail(
+            {
+                "intake_ticket_context_summary": {},
+                "intake_ticket_artifacts": {},
+                "agent_errors": [
+                    {
+                        "agent": "IntakeAgent",
+                        "phase": "internal_ticket_lookup",
+                        "message": "Issue not found: 404",
+                    }
+                ],
+            },
+            config=config,
+            ticket_kind="internal",
+        )
+
+        self.assertEqual(detail, "Issue not found: 404")
+
+    def test_ticket_lookup_detail_reports_skip_reason_when_manifest_missing(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "runtime": {"mode": "sample"},
+                "agents": {
+                    "IntakeAgent": {
+                        "ticket_servers": {
+                            "internal": {
+                                "enabled": True,
+                                "server": "github",
+                                "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
+                            }
+                        }
+                    }
+                },
+            }
+        )
+
+        detail = _ticket_lookup_detail(
+            {
+                "internal_ticket_id": "2",
+                "internal_ticket_lookup_enabled": True,
+                "intake_ticket_context_summary": {},
+                "intake_ticket_artifacts": {},
+                "agent_errors": [],
+            },
+            config=config,
+            ticket_kind="internal",
+        )
+
+        self.assertEqual(detail, "enabled: true だがfetch不可: MCP manifest 未設定")
+
+    def test_ticket_lookup_status_reports_manifest_missing_for_sample_ticket_lookup(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "runtime": {"mode": "sample"},
+                "agents": {
+                    "IntakeAgent": {
+                        "ticket_servers": {
+                            "internal": {
+                                "enabled": True,
+                                "server": "github",
+                                "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
+                            }
+                        }
+                    }
+                },
+            }
+        )
+
+        status = _ticket_lookup_status(
+            {
+                "internal_ticket_id": "2",
+                "internal_ticket_lookup_enabled": True,
+                "intake_ticket_context_summary": {},
+                "intake_ticket_artifacts": {},
+                "agent_errors": [],
+            },
+            config=config,
+            ticket_kind="internal",
+        )
+
+        self.assertEqual(status, "enabled: true だがfetch不可: MCP manifest 未設定")
 
     def test_sequence_diagram_reflects_reinvestigation_route(self) -> None:
         state: CaseState = {

@@ -53,7 +53,7 @@ support_ope_agents:
         enabled: false
       ticket_servers:
         external:
-          enabled: false
+          enabled: true
           server: github
           description: GitHub 上で管理する顧客向け問い合わせ issue
           # decision XML のルートタグ。通常は既定値のままでよい
