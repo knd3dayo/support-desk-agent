@@ -25,6 +25,13 @@ class ToolConfigurationError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class McpToolInfo:
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
 class McpServerConfig:
     name: str
     transport: str
@@ -123,6 +130,7 @@ class McpToolOverrideResolver:
         self._manifest = manifest
         self._default_timeout_seconds = default_timeout_seconds
         self._tool_name_cache: dict[str, set[str]] = {}
+        self._tool_cache: dict[str, tuple[McpToolInfo, ...]] = {}
 
     @classmethod
     def from_config(cls, config: AppConfig) -> "McpToolOverrideResolver":
@@ -198,25 +206,64 @@ class McpToolOverrideResolver:
         _handler.__name__ = logical_tool_name
         return _handler
 
-    def list_tool_names(self, server_name: str) -> set[str]:
-        if server_name in self._tool_name_cache:
-            return self._tool_name_cache[server_name]
+    def list_tools(self, server_name: str) -> tuple[McpToolInfo, ...]:
+        if server_name in self._tool_cache:
+            return self._tool_cache[server_name]
+
+        if server_name not in self._manifest.servers:
+            available = ", ".join(sorted(self._manifest.servers)) or "<none>"
+            raise ToolConfigurationError(
+                f"unknown MCP server '{server_name}'. manifest={self._manifest.path} available_servers=[{available}]"
+            )
 
         server = self._manifest.servers[server_name]
         try:
-            names = anyio.run(self._list_tool_names_async, server)
+            tools = anyio.run(self._list_tools_async, server)
         except Exception as exc:
             raise ToolConfigurationError(
                 f"Failed to query MCP server '{server_name}' from manifest={self._manifest.path}: {exc}"
             ) from exc
 
-        self._tool_name_cache[server_name] = names
-        return names
+        self._tool_cache[server_name] = tools
+        self._tool_name_cache[server_name] = {tool.name for tool in tools}
+        return tools
 
-    async def _list_tool_names_async(self, server: McpServerConfig) -> set[str]:
+    def list_tool_names(self, server_name: str) -> set[str]:
+        if server_name in self._tool_name_cache:
+            return self._tool_name_cache[server_name]
+        return {tool.name for tool in self.list_tools(server_name)}
+
+    def call_tool(self, server_name: str, tool_name: str, arguments: dict[str, Any]) -> str:
+        available_tools = self.list_tool_names(server_name)
+        if tool_name not in available_tools:
+            tools_text = ", ".join(sorted(available_tools)) or "<none>"
+            raise ToolConfigurationError(
+                f"unknown MCP tool '{tool_name}' for server='{server_name}'. available_tools=[{tools_text}]"
+            )
+        try:
+            result = anyio.run(self._call_tool_async, server_name, tool_name, arguments)
+        except Exception as exc:
+            raise ToolConfigurationError(
+                f"Failed to call MCP tool '{tool_name}' on server='{server_name}': {exc}"
+            ) from exc
+        return self._serialize_call_result(result)
+
+    async def _list_tools_async(self, server: McpServerConfig) -> tuple[McpToolInfo, ...]:
         async with self._session_for(server) as session:
             result = await session.list_tools()
-        return {tool.name for tool in result.tools}
+        tools: list[McpToolInfo] = []
+        for tool in result.tools:
+            input_schema = getattr(tool, "inputSchema", None) or getattr(tool, "input_schema", None) or {}
+            if not isinstance(input_schema, dict):
+                input_schema = {}
+            tools.append(
+                McpToolInfo(
+                    name=str(getattr(tool, "name", "") or ""),
+                    description=str(getattr(tool, "description", "") or ""),
+                    input_schema=input_schema,
+                )
+            )
+        return tuple(tools)
 
     async def _call_tool_async(self, server_name: str, tool_name: str, arguments: dict[str, Any]) -> Any:
         server = self._manifest.servers[server_name]

@@ -51,6 +51,7 @@ from support_ope_agents.runtime.service_support import sync_case_title_from_stat
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
+from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
 from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
 from support_ope_agents.workflow import (
     ProductionCaseWorkflow,
@@ -73,7 +74,7 @@ def build_runtime_context(config_path: str) -> ProductionRuntimeContext:
     instruction_loader = InstructionLoader(config, memory_store, runtime_harness_manager)
     mcp_override_resolver = (
         McpToolOverrideResolver.from_config(config)
-        if config.tools.has_enabled_mcp_tools()
+        if config.tools.has_enabled_mcp_tools() or config.tools.mcp_manifest_path is not None
         else None
     )
     tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
@@ -108,6 +109,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             write_shared_memory_tool=intake_tools["write_shared_memory"],
             write_working_memory_tool=intake_tools.get("write_working_memory"),
             runtime_harness_manager=context.runtime_harness_manager,
+            ticket_mcp_provider=(XmlMcpToolsetProvider(context.tool_registry._mcp_override_resolver) if getattr(context.tool_registry, "_mcp_override_resolver", None) is not None else None),
         )
         self._approval_executor = ApprovalAgent(
             record_approval_decision_tool=approval_tools["record_approval_decision"],
@@ -123,8 +125,14 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
         )
         self._investigate_executor = InvestigateAgent(
             config=context.config,
+            detect_log_format_tool=investigate_tools.get("detect_log_format"),
+            search_documents_tool=investigate_tools.get("search_documents"),
+            external_ticket_tool=investigate_tools.get("external_ticket"),
+            internal_ticket_tool=investigate_tools.get("internal_ticket"),
             read_shared_memory_tool=investigate_tools.get("read_shared_memory") or supervisor_tools.get("read_shared_memory"),
             write_shared_memory_tool=investigate_tools.get("write_shared_memory") or supervisor_tools.get("write_shared_memory"),
+            write_working_memory_tool=investigate_tools.get("write_working_memory"),
+            write_draft_tool=investigate_tools.get("write_draft"),
         )
         self._supervisor_executor = SupervisorPhaseExecutor(
             supervisor_tools["read_shared_memory"],

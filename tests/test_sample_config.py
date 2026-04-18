@@ -30,22 +30,20 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(settings.resolve_constraint_mode(INVESTIGATE_AGENT), "default")
         self.assertEqual(settings.resolve_constraint_mode(SUPERVISOR_AGENT), "default")
 
-    def test_support_ope_agents_sample_configures_github_issue_tools(self) -> None:
+    def test_support_ope_agents_sample_configures_github_ticket_servers(self) -> None:
         config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-        logical_tools = raw["support_ope_agents"]["tools"]["logical_tools"]
-        external_ticket = logical_tools["external_ticket"]
-        internal_ticket = logical_tools["internal_ticket"]
+        ticket_servers = raw["support_ope_agents"]["agents"]["IntakeAgent"]["ticket_servers"]
+        external_ticket = ticket_servers["external"]
+        internal_ticket = ticket_servers["internal"]
 
         self.assertEqual(external_ticket["server"], "github")
-        self.assertEqual(external_ticket["tool"], "get_issue")
-        self.assertEqual(external_ticket["argument_map"], {"ticket_id": "issue_number"})
-        self.assertEqual(external_ticket["integer_arguments"], ["issue_number"])
         self.assertEqual(internal_ticket["server"], "github")
-        self.assertEqual(internal_ticket["tool"], "get_issue")
-        self.assertEqual(internal_ticket["argument_map"], {"ticket_id": "issue_number"})
-        self.assertEqual(internal_ticket["integer_arguments"], ["issue_number"])
+        self.assertIn("repo", external_ticket["arguments"])
+        self.assertIn("repo", internal_ticket["arguments"])
+        self.assertEqual(external_ticket["candidate_matching"]["candidate_id_fields"], ["number", "issue_number", "id", "key"])
+        self.assertEqual(internal_ticket["candidate_matching"]["min_combined_similarity"], 0.35)
 
     def test_load_config_allows_env_override_for_llm_model_and_base_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

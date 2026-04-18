@@ -45,6 +45,7 @@ from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.mcp_overrides import McpToolOverrideResolver
+from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
     build_plan_steps,
@@ -64,13 +65,9 @@ def build_runtime_context(config_path: str) -> SampleRuntimeContext:
     memory_store = CaseMemoryStore(config)
     runtime_harness_manager = RuntimeHarnessManager(config)
     instruction_loader = InstructionLoader(config, memory_store, runtime_harness_manager)
-    mcp_override_resolver = (
-        McpToolOverrideResolver.from_config(config)
-        if config.tools.has_enabled_mcp_tools()
-        else None
-    )
+    mcp_override_resolver = McpToolOverrideResolver.from_config(config) if config.tools.mcp_manifest_path is not None else None
     tool_registry = ToolRegistry(config, mcp_override_resolver=mcp_override_resolver)
-    return SampleRuntimeContext(
+    context = SampleRuntimeContext(
         config,
         memory_store,
         runtime_harness_manager,
@@ -78,13 +75,20 @@ def build_runtime_context(config_path: str) -> SampleRuntimeContext:
         tool_registry,
         CaseIdResolverService(),
     )
+    context.mcp_override_resolver = mcp_override_resolver
+    return context
 
 
 class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
     def __init__(self, context: SampleRuntimeContext):
         super().__init__(context)
         self._migrate_legacy_traces()
-        self._intake_executor = SampleIntakeAgent(config=context.config)
+        ticket_mcp_provider = (
+            XmlMcpToolsetProvider(cast(McpToolOverrideResolver, context.mcp_override_resolver))
+            if getattr(context, "mcp_override_resolver", None) is not None
+            else None
+        )
+        self._intake_executor = SampleIntakeAgent(config=context.config, ticket_mcp_provider=ticket_mcp_provider)
         self._approval_executor = SampleApprovalAgent()
         self._ticket_update_executor = SampleTicketUpdateAgent()
         self._investigate_executor = SampleInvestigateAgent(config=context.config)

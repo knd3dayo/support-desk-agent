@@ -6,6 +6,7 @@ import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
@@ -15,10 +16,14 @@ from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.config.models import TicketCandidateMatchingSettings, TicketServerBindingSettings
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
+from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
+from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
 # IntakeAgentはケースの初期受け入れと分類を担当するエージェントで、
@@ -56,6 +61,7 @@ class IntakeAgent(AbstractAgent):
     write_shared_memory_tool: Callable[..., Any]
     write_working_memory_tool: Callable[..., Any] | None = None
     runtime_harness_manager: RuntimeHarnessManager | None = None
+    ticket_mcp_provider: XmlMcpToolsetProvider | None = None
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -277,6 +283,9 @@ class IntakeAgent(AbstractAgent):
         settings = self.config.tools.get_logical_tool(f"{ticket_kind}_ticket")
         return not (settings is not None and not settings.enabled)
 
+    def _ticket_binding(self, ticket_kind: str) -> TicketServerBindingSettings | None:
+        return self.config.agents.IntakeAgent.ticket_servers.get(ticket_kind)
+
     @staticmethod
     def _is_ticket_tool_unavailable_error(error: Exception) -> bool:
         message = str(error)
@@ -298,6 +307,41 @@ class IntakeAgent(AbstractAgent):
         if payload:
             return json.dumps(payload, ensure_ascii=False)
         return raw_result
+
+    def _build_ticket_tool_prompt(
+        self,
+        *,
+        ticket_kind: str,
+        raw_issue: str,
+        ticket_id: str,
+        binding: TicketServerBindingSettings,
+        tools_xml: str,
+    ) -> str:
+        static_arguments = json.dumps(binding.arguments, ensure_ascii=False, sort_keys=True)
+        description = binding.description or f"{ticket_kind} ticket lookup"
+        return (
+            "あなたは問い合わせ受付の production IntakeAgent です。\n"
+            "これから MCP server 配下のツール一覧を見て、チケット取得に使う tool 群を選択してください。\n"
+            "tool 名は必ず一覧に存在するものだけを使ってください。推測や創作は禁止です。\n"
+            "get_tool は必須です。list_tool は ticket が見つからない場合の候補提示用です。\n"
+            "もし添付ファイル取得ツールもあれば、それも attachment_tool として選択してください。無ければ skip にしてください。\n"
+            "戻り値は XML のみで、説明文やコードフェンスを付けないでください。\n"
+            "\n"
+            f"期待する XML タグ名: <{binding.decision_tag}>...</{binding.decision_tag}>\n"
+            f"ticket kind: {ticket_kind}\n"
+            f"ticket id: {ticket_id}\n"
+            f"server name: {binding.server}\n"
+            f"server purpose: {description}\n"
+            f"static arguments: {static_arguments}\n"
+            f"customer issue:\n{raw_issue}\n"
+            "\n"
+            "available tools:\n"
+            f"{tools_xml}\n"
+        )
+
+    @staticmethod
+    def _parse_tool_decision(raw_text: str, *, decision_tag: str = "decision") -> McpToolSelectionDecision:
+        return parse_mcp_tool_selection_xml(raw_text, decision_tag=decision_tag)
 
     @staticmethod
     def _attachment_filename(item: dict[str, object], fallback_prefix: str, index: int) -> str:
@@ -336,18 +380,165 @@ class IntakeAgent(AbstractAgent):
         path.write_text(json.dumps(item, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return str(path)
 
-    def _hydrate_ticket_context(
+    @staticmethod
+    def _first_present_value(item: dict[str, Any], field_names: list[str]) -> str:
+        for field_name in field_names:
+            value = str(item.get(field_name) or "").strip()
+            if value:
+                return value
+        return ""
+
+    def _candidate_label(self, *, item: dict[str, Any], matching: TicketCandidateMatchingSettings) -> str:
+        number = self._first_present_value(item, matching.candidate_id_fields)
+        title = self._first_present_value(item, matching.candidate_text_fields)
+        state = str(item.get("state") or item.get("status") or "").strip()
+        parts = [part for part in [number, title, state] if part]
+        return " / ".join(parts)
+
+    @staticmethod
+    def _normalize_similarity_text(value: str) -> str:
+        return re.sub(r"[^0-9A-Za-z]+", "", value).lower()
+
+    @classmethod
+    def _ticket_id_similarity_for_fields(
+        cls,
+        *,
+        expected_ticket_id: str,
+        candidate: dict[str, Any],
+        field_names: list[str],
+    ) -> float:
+        expected = cls._normalize_similarity_text(expected_ticket_id)
+        if not expected:
+            return 0.0
+        ratios = []
+        for field_name in field_names:
+            value = str(candidate.get(field_name) or "")
+            normalized = cls._normalize_similarity_text(value)
+            if not normalized:
+                continue
+            ratios.append(SequenceMatcher(None, expected, normalized).ratio())
+        return max(ratios, default=0.0)
+
+    @staticmethod
+    def _text_tokens(value: str) -> set[str]:
+        lowered = value.lower()
+        tokens = set(re.findall(r"[0-9a-z_\-]{2,}", lowered))
+        if tokens:
+            return tokens
+        compact = re.sub(r"\s+", "", lowered)
+        if len(compact) < 2:
+            return set()
+        return {compact[index : index + 2] for index in range(len(compact) - 1)}
+
+    @classmethod
+    def _content_similarity_for_fields(
+        cls,
+        *,
+        raw_issue: str,
+        candidate: dict[str, Any],
+        field_names: list[str],
+    ) -> float:
+        candidate_text = " ".join(str(candidate.get(field_name) or "").strip() for field_name in field_names).strip()
+        if not candidate_text:
+            return 0.0
+        raw_tokens = cls._text_tokens(raw_issue)
+        candidate_tokens = cls._text_tokens(candidate_text)
+        overlap_score = 0.0
+        if raw_tokens and candidate_tokens:
+            overlap_score = len(raw_tokens & candidate_tokens) / max(len(raw_tokens), 1)
+        sequence_score = SequenceMatcher(None, raw_issue.lower(), candidate_text.lower()).ratio()
+        return max(overlap_score, sequence_score)
+
+    @classmethod
+    def _rank_ticket_candidates(
+        cls,
+        *,
+        matching: TicketCandidateMatchingSettings,
+        ticket_id: str,
+        raw_issue: str,
+        candidates: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        scored: list[tuple[float, float, dict[str, Any]]] = []
+        for candidate in candidates:
+            id_score = cls._ticket_id_similarity_for_fields(
+                expected_ticket_id=ticket_id,
+                candidate=candidate,
+                field_names=matching.candidate_id_fields,
+            )
+            content_score = cls._content_similarity_for_fields(
+                raw_issue=raw_issue,
+                candidate=candidate,
+                field_names=matching.candidate_text_fields,
+            )
+            combined_score = (id_score * 0.55) + (content_score * 0.45)
+            if (
+                id_score >= matching.min_id_similarity
+                or content_score >= matching.min_content_similarity
+                or combined_score >= matching.min_combined_similarity
+            ):
+                scored.append((combined_score, id_score, candidate))
+        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [candidate for _, _, candidate in scored]
+
+    @staticmethod
+    def _extract_candidate_items(raw_result: str) -> list[dict[str, Any]]:
+        try:
+            parsed = json.loads(raw_result)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+        if isinstance(parsed, dict):
+            for key in ("items", "issues", "results"):
+                value = parsed.get(key)
+                if isinstance(value, list):
+                    return [item for item in value if isinstance(item, dict)]
+        return []
+
+    def _candidate_followup_question(
         self,
         *,
+        binding: TicketServerBindingSettings,
         ticket_kind: str,
         ticket_id: str,
-        tool: Callable[..., Any],
-        workspace_path: str,
-    ) -> tuple[str, list[str]]:
+        raw_issue: str,
+        raw_result: str,
+    ) -> tuple[str, str] | None:
+        candidates = self._extract_candidate_items(raw_result)
+        if not candidates:
+            return None
+        matching = binding.candidate_matching
+        ranked_candidates = self._rank_ticket_candidates(
+            matching=matching,
+            ticket_id=ticket_id,
+            raw_issue=raw_issue,
+            candidates=candidates,
+        )
+        if not ranked_candidates:
+            return None
+        labels = [
+            self._candidate_label(item=item, matching=matching)
+            for item in ranked_candidates[: matching.max_question_candidates]
+        ]
+        labels = [label for label in labels if label]
+        if not labels:
+            return None
+        field_name = f"{ticket_kind}_ticket_confirmation"
+        question = (
+            f"指定された {ticket_kind} ticket id '{ticket_id}' は見つかりませんでした。"
+            f" このチケットですか？ 候補: {' | '.join(labels)}"
+        )
+        return field_name, question
+
+    @staticmethod
+    def _is_not_found_error(error: Exception) -> bool:
+        normalized = str(error).lower()
+        return any(token in normalized for token in ["not found", "404", "issue not found"])
+
+    def _hydrate_ticket_context_from_raw_result(self, *, ticket_kind: str, workspace_path: str, raw_result: str) -> tuple[str, list[str]]:
         intake_dir = (Path(workspace_path).expanduser().resolve() / self.config.data_paths.artifacts_subdir / "intake")
         intake_dir.mkdir(parents=True, exist_ok=True)
 
-        raw_result = self._invoke_tool(tool, ticket_id=ticket_id)
         try:
             parsed = json.loads(raw_result)
         except json.JSONDecodeError:
@@ -372,6 +563,17 @@ class IntakeAgent(AbstractAgent):
         response_path.write_text(raw_result, encoding="utf-8")
         artifact_paths.append(str(response_path))
         return raw_result, artifact_paths
+
+    def _hydrate_ticket_context(
+        self,
+        *,
+        ticket_kind: str,
+        ticket_id: str,
+        tool: Callable[..., Any],
+        workspace_path: str,
+    ) -> tuple[str, list[str]]:
+        raw_result = self._invoke_tool(tool, ticket_id=ticket_id)
+        return self._hydrate_ticket_context_from_raw_result(ticket_kind=ticket_kind, workspace_path=workspace_path, raw_result=raw_result)
 
     def prepare_state(self, state: CaseState) -> CaseState:
         raw_issue = str(state.get("raw_issue") or "").strip()
@@ -405,10 +607,109 @@ class IntakeAgent(AbstractAgent):
 
         ticket_summaries = cast(dict[str, str], update.get("intake_ticket_context_summary") or {})
         ticket_artifacts = cast(dict[str, list[str]], update.get("intake_ticket_artifacts") or {})
+        followup_questions = cast(dict[str, str], update.get("intake_followup_questions") or {})
+        agent_errors = cast(list[dict[str, str]], update.get("agent_errors") or [])
+        model = build_chat_openai_model(self.config, temperature=0)
         for ticket_kind, tool in (("external", self.external_ticket_tool), ("internal", self.internal_ticket_tool)):
             ticket_id = str(update.get(f"{ticket_kind}_ticket_id") or "").strip()
             if not ticket_id or not self._ticket_lookup_requested(update, ticket_kind):
                 continue
+
+            binding = self._ticket_binding(ticket_kind)
+            if binding is not None and binding.enabled and self.ticket_mcp_provider is not None:
+                decision: McpToolSelectionDecision | None = None
+                try:
+                    tools_xml = self.ticket_mcp_provider.render_tools_xml(binding.server)
+                    response = model.invoke(
+                        [
+                            {
+                                "role": "user",
+                                "content": self._build_ticket_tool_prompt(
+                                    ticket_kind=ticket_kind,
+                                    raw_issue=raw_issue,
+                                    ticket_id=ticket_id,
+                                    binding=binding,
+                                    tools_xml=tools_xml,
+                                ),
+                            }
+                        ]
+                    )
+                    decision = self._parse_tool_decision(str(getattr(response, "content", response)), decision_tag=binding.decision_tag)
+                    if decision.get_tool_name not in self.ticket_mcp_provider.list_tool_names(binding.server):
+                        raise ValueError(f"selected MCP tool does not exist: {decision.get_tool_name}")
+                    if decision.list_tool_name.lower() != "skip" and decision.list_tool_name not in self.ticket_mcp_provider.list_tool_names(binding.server):
+                        raise ValueError(f"selected MCP tool does not exist: {decision.list_tool_name}")
+                    if (
+                        decision.attachment_tool_name.lower() != "skip"
+                        and decision.attachment_tool_name not in self.ticket_mcp_provider.list_tool_names(binding.server)
+                    ):
+                        raise ValueError(f"selected MCP tool does not exist: {decision.attachment_tool_name}")
+                    raw_result = self.ticket_mcp_provider.call_tool(
+                        binding.server,
+                        decision.get_tool_name,
+                        decision.get_arguments,
+                        static_arguments=binding.arguments,
+                    )
+                    summary, artifact_paths = self._hydrate_ticket_context_from_raw_result(
+                        ticket_kind=ticket_kind,
+                        workspace_path=workspace_path,
+                        raw_result=raw_result,
+                    )
+                    ticket_summaries[f"{ticket_kind}_ticket"] = summary
+                    ticket_artifacts[f"{ticket_kind}_ticket"] = artifact_paths
+                    if decision.attachment_tool_name.lower() != "skip":
+                        attachment_result = self.ticket_mcp_provider.call_tool(
+                            binding.server,
+                            decision.attachment_tool_name,
+                            decision.attachment_arguments or {},
+                            static_arguments=binding.arguments,
+                        )
+                        attachment_summary, attachment_paths = self._hydrate_ticket_context_from_raw_result(
+                            ticket_kind=f"{ticket_kind}_ticket_attachments",
+                            workspace_path=workspace_path,
+                            raw_result=attachment_result,
+                        )
+                        ticket_summaries[f"{ticket_kind}_ticket_attachments"] = attachment_summary
+                        ticket_artifacts[f"{ticket_kind}_ticket_attachments"] = attachment_paths
+                    continue
+                except Exception as error:
+                    update[f"{ticket_kind}_ticket_lookup_enabled"] = False
+                    if self._is_not_found_error(error) and decision is not None and decision.list_tool_name.lower() != "skip":
+                        try:
+                            list_raw_result = self.ticket_mcp_provider.call_tool(
+                                binding.server,
+                                decision.list_tool_name,
+                                decision.list_arguments or {},
+                                static_arguments=binding.arguments,
+                            )
+                            candidate_question = self._candidate_followup_question(
+                                binding=binding,
+                                ticket_kind=ticket_kind,
+                                ticket_id=ticket_id,
+                                raw_issue=raw_issue,
+                                raw_result=list_raw_result,
+                            )
+                            if candidate_question is not None:
+                                field_name, question = candidate_question
+                                followup_questions[field_name] = question
+                                ticket_summaries[f"{ticket_kind}_ticket"] = question
+                                continue
+                        except Exception as candidate_error:
+                            agent_errors.append(
+                                {
+                                    "agent": "IntakeAgent",
+                                    "phase": f"{ticket_kind}_ticket_candidates",
+                                    "message": str(candidate_error),
+                                }
+                            )
+                    agent_errors.append(
+                        {
+                            "agent": "IntakeAgent",
+                            "phase": f"{ticket_kind}_ticket_lookup",
+                            "message": str(error),
+                        }
+                    )
+                    continue
 
             if not self._ticket_tool_is_enabled(ticket_kind):
                 update[f"{ticket_kind}_ticket_lookup_enabled"] = False
@@ -431,6 +732,8 @@ class IntakeAgent(AbstractAgent):
 
         update["intake_ticket_context_summary"] = ticket_summaries
         update["intake_ticket_artifacts"] = ticket_artifacts
+        update["intake_followup_questions"] = followup_questions
+        update["agent_errors"] = agent_errors
         return cast("CaseState", update)
 
     CLASSIFY_PROMPT = "Classify the intake issue for customer support workflow routing and investigation planning."
@@ -492,12 +795,23 @@ class IntakeAgent(AbstractAgent):
         incident_timeframe = str(update.get("intake_incident_timeframe") or "")
 
         missing_fields = cast(list[str], update.get("intake_missing_fields") or [])
-        followup_questions: dict[str, str] = {}
+        existing_followup_questions = dict(cast(dict[str, str], update.get("intake_followup_questions") or {}))
+        followup_questions: dict[str, str] = dict(existing_followup_questions)
         if update.get("intake_rework_required") and missing_fields:
-            followup_questions = self._build_followup_questions(missing_fields)
+            followup_questions.update(self._build_followup_questions(missing_fields))
             update = StateTransitionHelper.waiting_for_customer_input(
                 update,
-                next_action="不足情報をユーザーへ確認し、追加入力後に Intake を再実行する",
+                next_action=(
+                    "不足情報またはチケット候補をユーザーへ確認し、追加入力後に Intake を再実行する"
+                    if existing_followup_questions
+                    else "不足情報をユーザーへ確認し、追加入力後に Intake を再実行する"
+                ),
+            )
+            update["intake_followup_questions"] = followup_questions
+        elif existing_followup_questions:
+            update = StateTransitionHelper.waiting_for_customer_input(
+                update,
+                next_action="チケット候補をユーザーへ確認し、正しい ticket id を回答してもらう",
             )
             update["intake_followup_questions"] = followup_questions
         else:

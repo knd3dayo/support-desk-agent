@@ -227,6 +227,42 @@ support_ope_agents:
   #     pii_mask:
   #       # true の場合のみ Intake で PII マスキングを実行します。
   #       enabled: false
+  #     # external / internal ticket を MCP server から動的に解決する設定です。
+  #     # tools.logical_tools.external_ticket / internal_ticket を使う従来方式より優先されます。
+  #     # MCP tool 名はここに書かず、Agent が manifest 上のツール一覧から選択します。
+  #     ticket_servers:
+  #       external:
+  #         enabled: false
+  #         server: github
+  #         description: GitHub 上で管理する顧客向け問い合わせ issue
+  #         # XML 応答で使うルートタグ名です。通常は既定値のままで構いません。
+  #         decision_tag: decision
+  #         arguments:
+  #           owner: your-github-org
+  #           repo: support-ope-external-tickets
+  #         candidate_matching:
+  #           # Zendesk や Redmine では id / key / ticket_id などへ調整します。
+  #           candidate_id_fields: [number, issue_number, id, key]
+  #           candidate_text_fields: [title, body, summary, description]
+  #           min_id_similarity: 0.45
+  #           min_content_similarity: 0.2
+  #           min_combined_similarity: 0.35
+  #           max_question_candidates: 3
+  #       internal:
+  #         enabled: false
+  #         server: github
+  #         description: GitHub 上で管理する内部管理 issue
+  #         decision_tag: decision
+  #         arguments:
+  #           owner: your-github-org
+  #           repo: support-ope-internal-tickets
+  #         candidate_matching:
+  #           candidate_id_fields: [number, issue_number, id, key]
+  #           candidate_text_fields: [title, body, summary, description]
+  #           min_id_similarity: 0.45
+  #           min_content_similarity: 0.2
+  #           min_combined_similarity: 0.35
+  #           max_question_candidates: 3
   #
   #   # 調査統合 Agent の設定です。
   #   # 仕様確認、ログ解析、ドラフト作成を 1 つの Agent に集約します。

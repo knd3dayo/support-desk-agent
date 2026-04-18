@@ -44,7 +44,7 @@ API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ
 
 起動時に `--config` を省略すると `config.yml` を見にいくため、通常は `--config config-sample.yml` または `--config config-prodction.yml` を明示指定してください。
 
-sample config で MCP manifest が未設定の場合、API 起動スクリプトは UI テストを止めないために `external_ticket` と `internal_ticket` を一時的に無効化した設定を自動生成して起動します。実 MCP 連携を含めて試したい場合は、sample config の `tools.mcp_manifest_path` を有効化するか、起動時に `MCP_MANIFEST_PATH=/path/to/manifest.json` を渡してください。GitHub MCP を使う場合は、manifest 側で `github` server を定義し、`GITHUB_PERSONAL_ACCESS_TOKEN` を環境変数で渡してください。
+sample config で MCP manifest が未設定の場合、API 起動スクリプトは UI テストを止めないためにチケット MCP lookup を実行しないまま起動します。実 MCP 連携を含めて試したい場合は、sample config の `tools.mcp_manifest_path` を有効化するか、起動時に `MCP_MANIFEST_PATH=/path/to/manifest.json` を渡してください。GitHub MCP を使う場合は、manifest 側で `github` server を定義し、`GITHUB_PERSONAL_ACCESS_TOKEN` を環境変数で渡してください。
 
 ポートを変えたい場合は環境変数で上書きできます。
 
@@ -83,12 +83,12 @@ python -m support_ope_agents.cli action \
   --config /home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml
 ```
 
-ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、InvestigateAgent は external / internal ticket の実参照をスキップします。GitHub MCP を使う sample config では、`--external-ticket-id` と `--internal-ticket-id` には config に設定した各 repository の GitHub Issue 番号を指定してください。
+ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、IntakeAgent の MCP lookup はスキップします。GitHub MCP を使う sample config では、`--external-ticket-id` と `--internal-ticket-id` には config に設定した各 repository の GitHub Issue 番号を指定してください。
 
 ## 4. 補足
 
 - この sample は実 LLM / 実 MCP 前提です。`LLM_API_KEY` と、sample config の `github` server を解決できる MCP 実行環境を事前に用意してください
-- sample config の `tools.logical_tools.external_ticket.arguments.repo` と `tools.logical_tools.internal_ticket.arguments.repo` に、利用する GitHub repository を設定してください
+- sample config の `agents.IntakeAgent.ticket_servers.external.arguments.repo` と `agents.IntakeAgent.ticket_servers.internal.arguments.repo` に、利用する GitHub repository を設定してください
 - LangChain ドキュメントの path は `/home/user/oss/langchain-ai/langchain` を前提にしています
 - sample config は `constraint_mode: default` を既定にしています。`instruction_only` は instruction 側の制御だけが残るため、sample では回答や再調査の誘導が強く見えることがあります。
 - `InvestigateAgent.result_mode: raw_backend` は取得 payload の詳細度を上げる設定です。制約の強さを変えたい場合は `constraint_mode` を agent ごとに調整してください。

@@ -140,6 +140,38 @@ class IntakePiiMaskSettings(StrictConfigModel):
     enabled: bool = False
 
 
+class TicketCandidateMatchingSettings(StrictConfigModel):
+    candidate_id_fields: list[str] = Field(default_factory=lambda: ["number", "issue_number", "id", "key"])
+    candidate_text_fields: list[str] = Field(default_factory=lambda: ["title", "body", "summary", "description"])
+    min_id_similarity: float = Field(default=0.45, ge=0.0, le=1.0)
+    min_content_similarity: float = Field(default=0.2, ge=0.0, le=1.0)
+    min_combined_similarity: float = Field(default=0.35, ge=0.0, le=1.0)
+    max_question_candidates: int = Field(default=3, ge=1, le=10)
+
+
+class TicketServerBindingSettings(StrictConfigModel):
+    enabled: bool = False
+    server: str = ""
+    description: str = ""
+    decision_tag: str = "decision"
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    candidate_matching: TicketCandidateMatchingSettings = Field(default_factory=TicketCandidateMatchingSettings)
+
+    @model_validator(mode="after")
+    def _validate_enabled_server(self) -> "TicketServerBindingSettings":
+        if self.enabled and not self.server.strip():
+            raise ValueError("enabled ticket server binding requires 'server'")
+        return self
+
+
+class IntakeTicketServerSettings(StrictConfigModel):
+    external: TicketServerBindingSettings = Field(default_factory=TicketServerBindingSettings)
+    internal: TicketServerBindingSettings = Field(default_factory=TicketServerBindingSettings)
+
+    def get(self, ticket_kind: str) -> TicketServerBindingSettings | None:
+        return getattr(self, ticket_kind, None)
+
+
 ConstraintMode = Literal["default", "instruction_only", "runtime_only", "bypass"]
 KnowledgeSearchStrategy = Literal["deepagents", "hybrid", "backend_only"]
 RuntimeMode = Literal["production", "sample"]
@@ -153,6 +185,7 @@ class IntakeAgentSettings(StrictConfigModel):
     model: str | None = None
     constraint_mode: ConstraintMode | None = None
     pii_mask: IntakePiiMaskSettings = Field(default_factory=IntakePiiMaskSettings)
+    ticket_servers: IntakeTicketServerSettings = Field(default_factory=IntakeTicketServerSettings)
 
 
 class AgentSettings(StrictConfigModel):

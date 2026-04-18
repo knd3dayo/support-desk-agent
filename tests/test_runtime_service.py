@@ -742,7 +742,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         service = self._build_service(config)
 
         with patch(
-            "support_ope_agents.agents.knowledge_retriever_agent._invoke_deepagents_search",
+            "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
             return_value={
                 "ai-platform-poc": {
                     "source_name": "ai-platform-poc",

@@ -33,7 +33,14 @@ class CaseWorkflow:
 
         graph.add_edge(START, "receive_case")
         graph.add_edge("receive_case", "intake_subgraph")
-        graph.add_edge("intake_subgraph", "supervisor_subgraph")
+        graph.add_conditional_edges(
+            "intake_subgraph",
+            self._route_after_intake,
+            {
+                "supervisor_subgraph": "supervisor_subgraph",
+                "__end__": END,
+            },
+        )
         graph.add_edge("supervisor_subgraph", "wait_for_approval")
         graph.add_conditional_edges(
             "wait_for_approval",
@@ -54,8 +61,12 @@ class CaseWorkflow:
             "receive_case",
             "intake_prepare",
             "intake_classify",
+            "intake_mcp_tickets",
             "intake_finalize",
         ]
+
+        if str(state.get("status") or "") == CaseStatuses.WAITING_CUSTOMER_INPUT:
+            return tuple(path)
 
         path.append("investigation")
         after_investigation = self._route_after_investigation(state)
@@ -96,6 +107,12 @@ class CaseWorkflow:
         if decision == "reinvestigate":
             return "investigation"
         return "__end__"
+
+
+    def _route_after_intake(self, state: CaseState) -> str:
+        if str(state.get("status") or "") == CaseStatuses.WAITING_CUSTOMER_INPUT:
+            return "__end__"
+        return "supervisor_subgraph"
 
 
     def _route_after_investigation(self, state: CaseState) -> str:
