@@ -114,7 +114,7 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
 
     app = FastAPI(title="support-ope-agents API", version="0.1.0", lifespan=lifespan)
     base_dir = Path(config_path).resolve().parent
-    default_cases_root = Path(cases_root).expanduser().resolve() if cases_root else base_dir / "work" / "cases"
+    default_cases_root = Path(cases_root).expanduser().resolve() if cases_root else base_dir / "work"
 
     if context.config.interfaces.cors_allowed_origins:
         app.add_middleware(

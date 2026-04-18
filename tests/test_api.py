@@ -70,7 +70,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         self._classify_model_patcher.start()
         self._tmpdir = tempfile.TemporaryDirectory()
         self.repo_root = Path(self._tmpdir.name)
-        self.cases_root = self.repo_root / "work" / "cases"
+        self.cases_root = self.repo_root / "work"
         self.case_path = self.cases_root / "CASE-API-001"
         self.case_path.mkdir(parents=True, exist_ok=True)
         (self.case_path / ".support-ope-case-id").write_text("CASE-API-001\n", encoding="utf-8")

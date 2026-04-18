@@ -1056,6 +1056,27 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertRegex(content, r"- IntakeAgent: \d{1,3} / 100 - ")
         self.assertNotIn("## このリポジトリが扱うこと", content)
 
+    def test_generate_support_improvement_report_lists_evidence_files(self) -> None:
+        evidence_dir = self.workspace_path / ".evidence"
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        (evidence_dir / "vdp.log").write_text("2025-10-21T20:55:12 ERROR sample\n", encoding="utf-8")
+
+        result = self.service.action(
+            prompt="このログのフォーマットを教えてください。",
+            workspace_path=str(self.workspace_path),
+            case_id="CASE-TEST-011-EVIDENCE",
+        )
+
+        report = self.service.generate_support_improvement_report(
+            case_id="CASE-TEST-011-EVIDENCE",
+            trace_id=str(result["trace_id"]),
+            workspace_path=str(self.workspace_path),
+        )
+
+        content = Path(str(report["report_path"])).read_text(encoding="utf-8")
+
+        self.assertIn(".evidence/vdp.log", content)
+
     def test_action_writes_intake_working_memory(self) -> None:
         self.service.action(
             prompt="ai-chat-utilの機能一覧を出して",

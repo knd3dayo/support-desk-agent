@@ -66,7 +66,10 @@ class SampleSupervisorAgent(AbstractAgent):
         if not investigation_summary:
             if self.investigate_executor is not None and raw_issue:
                 try:
-                    investigation_result = self.investigate_executor.execute(query=raw_issue)
+                    investigation_result = self.investigate_executor.execute(
+                        query=raw_issue,
+                        workspace_path=str(update.get("workspace_path") or "").strip() or None,
+                    )
                     investigation_summary = self._extract_investigation_summary(investigation_result)
                 except Exception:
                     investigation_summary = self._fallback_investigation_summary(raw_issue)

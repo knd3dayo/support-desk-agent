@@ -95,7 +95,12 @@ def build_support_improvement_report(
     context_text = memory_store.read_text(case_paths.shared_context)
     progress_text = memory_store.read_text(case_paths.shared_progress)
     summary_text = memory_store.read_text(case_paths.shared_summary)
-    artifact_paths = [path.relative_to(case_paths.root).as_posix() for path in memory_store.list_artifacts(case_id, workspace_path)]
+    artifact_paths = _collect_report_artifact_paths(
+        case_id=case_id,
+        workspace_path=workspace_path,
+        memory_store=memory_store,
+        case_paths=case_paths,
+    )
 
     evaluator_instruction = instruction_loader.load(case_id, OBJECTIVE_EVALUATOR)
     shared_memory = {
@@ -253,6 +258,19 @@ def build_support_improvement_report(
     report_path = case_paths.report_dir / f"support-improvement-{trace_id}.md"
     report_path.write_text(content, encoding="utf-8")
     return EvaluationReportResult(report_path=report_path, sequence_diagram=evaluation.sequence_diagram, content=content)
+
+
+def _collect_report_artifact_paths(
+    *,
+    case_id: str,
+    workspace_path: str,
+    memory_store: CaseMemoryStore,
+    case_paths: Any,
+) -> list[str]:
+    collected_paths = set(memory_store.list_artifacts(case_id, workspace_path))
+    if case_paths.evidence_dir.exists():
+        collected_paths.update(path for path in case_paths.evidence_dir.rglob("*") if path.is_file())
+    return [path.relative_to(case_paths.root).as_posix() for path in sorted(collected_paths)]
 
 
 def _render_control_summary(control_catalog: dict[str, object], runtime_audit: dict[str, object]) -> list[str]:
