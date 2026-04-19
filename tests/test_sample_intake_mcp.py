@@ -6,10 +6,31 @@ from pathlib import Path
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel
 
 from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
+
+
+class _IssueNumberArgs(BaseModel):
+    issue_number: int
+
+
+class _SearchIssuesArgs(BaseModel):
+    q: str
+
+
+class _FakeLangChainTool:
+    def __init__(self, name: str, description: str, args_schema: type[BaseModel], handler) -> None:
+        self.name = name
+        self.description = description
+        self.args_schema = args_schema
+        self._handler = handler
+
+    def invoke(self, arguments: dict[str, object]) -> str:
+        payload = self.args_schema.model_validate(arguments)
+        return self._handler(payload.model_dump())
 
 
 class _FakeResolver:
@@ -37,8 +58,66 @@ class _FakeResolver:
     def list_tool_names(self, server_name: str) -> set[str]:
         return {tool.name for tool in self.list_tools(server_name)}
 
-    def call_tool(self, server_name: str, tool_name: str, arguments: dict[str, object]) -> str:
-        self.calls.append((server_name, tool_name, arguments))
+    def get_langchain_tools(self, server_name: str):
+        return (
+            _FakeLangChainTool("get_issue", "Get a GitHub issue", _IssueNumberArgs, lambda arguments: self.call_tool(server_name, "get_issue", arguments)),
+            _FakeLangChainTool("search_issues", "Search GitHub issues", _SearchIssuesArgs, lambda arguments: self.call_tool(server_name, "search_issues", arguments)),
+            _FakeLangChainTool(
+                "get_issue_attachments",
+                "Get attachment metadata for a GitHub issue",
+                _IssueNumberArgs,
+                lambda arguments: self.call_tool(server_name, "get_issue_attachments", arguments),
+            ),
+        )
+
+    def get_agent_tools(self, server_name: str, *, static_arguments=None, on_tool_call=None):
+        wrapped_tools = []
+        for tool in self.get_langchain_tools(server_name):
+            args_schema = getattr(tool, "args_schema", None)
+
+            def _call_tool(*, _tool=tool, **kwargs):
+                filtered_arguments = {key: value for key, value in kwargs.items() if value is not None}
+                serialized_result = self.call_tool(
+                    server_name,
+                    _tool.name,
+                    filtered_arguments,
+                    static_arguments=static_arguments,
+                )
+                if on_tool_call is not None:
+                    on_tool_call(
+                        {
+                            "tool_name": _tool.name,
+                            "arguments": filtered_arguments,
+                            "raw_result": serialized_result,
+                        }
+                    )
+                return serialized_result
+
+            tool_kwargs = {
+                "func": _call_tool,
+                "name": tool.name,
+                "description": tool.description,
+            }
+            if args_schema is not None:
+                tool_kwargs["args_schema"] = args_schema
+                tool_kwargs["infer_schema"] = False
+            wrapped_tools.append(StructuredTool.from_function(**tool_kwargs))
+        return tuple(wrapped_tools)
+
+    def render_tools_xml(self, server_name: str) -> str:
+        return f"<tools server=\"{server_name}\"></tools>"
+
+    def call_tool(
+        self,
+        server_name: str,
+        tool_name: str,
+        arguments: dict[str, object],
+        *,
+        static_arguments: dict[str, object] | None = None,
+    ) -> str:
+        merged_arguments = dict(static_arguments or {})
+        merged_arguments.update(arguments)
+        self.calls.append((server_name, tool_name, merged_arguments))
         if self.raise_not_found_once and tool_name == "get_issue":
             self.raise_not_found_once = False
             raise ValueError("Issue not found: 404")
@@ -136,8 +215,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_hydrates_ticket_context_with_xml_selected_tool(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
-        agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
+        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             raw_result = tools["get_issue"].invoke({"issue_number": "123"})
@@ -196,8 +274,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_invalid_xml_tool_selection_disables_lookup_and_records_error(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
-        agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
+        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
@@ -225,8 +302,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
         config = self._build_config()
         resolver = _FakeResolver()
         resolver.raise_not_found_once = True
-        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
-        agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
+        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             try:
@@ -273,17 +349,25 @@ class SampleIntakeMcpTests(unittest.TestCase):
         config = self._build_config()
 
         class _LowMatchResolver(_FakeResolver):
-            def call_tool(self, server_name: str, tool_name: str, arguments: dict[str, object]) -> str:
-                self.calls.append((server_name, tool_name, arguments))
+            def call_tool(
+                self,
+                server_name: str,
+                tool_name: str,
+                arguments: dict[str, object],
+                *,
+                static_arguments: dict[str, object] | None = None,
+            ) -> str:
+                merged_arguments = dict(static_arguments or {})
+                merged_arguments.update(arguments)
+                self.calls.append((server_name, tool_name, merged_arguments))
                 if tool_name == "get_issue":
                     raise ValueError("Issue not found: 404")
                 if tool_name == "search_issues":
                     return '{"items":[{"number":12,"title":"Billing question","state":"open"},{"number":45,"title":"Password reset request","state":"open"}]}'
-                return super().call_tool(server_name, tool_name, arguments)
+                return super().call_tool(server_name, tool_name, arguments, static_arguments=static_arguments)
 
         resolver = _LowMatchResolver()
-        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
-        agent = SampleIntakeAgent(config=config, ticket_mcp_provider=provider)
+        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             try:

@@ -4,7 +4,6 @@ import argparse
 import json
 import re
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
@@ -13,20 +12,18 @@ from xml.etree import ElementTree
 
 from langchain_core.messages import AIMessage
 from langchain_core.messages import HumanMessage
-from langchain_core.tools import StructuredTool
 from langchain.agents import create_agent
 from langgraph.graph import END, START, StateGraph
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.config.models import TicketCandidateMatchingSettings, TicketServerBindingSettings
+from support_ope_agents.config.models import TicketServerBindingSettings
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
-from support_ope_agents.tools.mcp_client import McpToolInfo
-from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
+from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
 from support_ope_agents.models.state import CaseState
@@ -47,7 +44,7 @@ class TicketLookupAgentResult(BaseModel):
 @dataclass(slots=True)
 class SampleIntakeAgent(AbstractAgent):
     config: AppConfig
-    ticket_mcp_provider: XmlMcpToolsetProvider | None = None
+    ticket_mcp_client: McpToolClient | None = None
 
     @staticmethod
     def _default_issue() -> str:
@@ -115,78 +112,14 @@ class SampleIntakeAgent(AbstractAgent):
         return self.config.tools.ticket_sources.get(ticket_kind)
 
     @staticmethod
-    def _field_spec_for_schema(property_name: str, property_schema: dict[str, Any]) -> tuple[Any, Any]:
-        description = str(property_schema.get("description") or property_name)
-        schema_type = str(property_schema.get("type") or "string")
-        python_type: type[Any]
-        if schema_type == "integer":
-            python_type = int
-        elif schema_type == "number":
-            python_type = float
-        elif schema_type == "boolean":
-            python_type = bool
-        else:
-            python_type = str
-        return python_type, Field(description=description)
-
-    def _build_ticket_lookup_tool(
-        self,
-        *,
-        binding: TicketServerBindingSettings,
-        tool_info: McpToolInfo,
-        run_state: dict[str, Any],
-    ) -> StructuredTool:
-        provider = self.ticket_mcp_provider
-        if provider is None:
-            raise ValueError("ticket MCP provider is not configured")
-
-        properties = tool_info.input_schema.get("properties") if isinstance(tool_info.input_schema, dict) else None
-        required_fields = set(tool_info.input_schema.get("required") or []) if isinstance(tool_info.input_schema, dict) else set()
-        field_definitions: dict[str, Any] = {}
-        if isinstance(properties, dict):
-            for property_name, property_schema in properties.items():
-                if not isinstance(property_schema, dict):
-                    property_schema = {}
-                python_type, field = self._field_spec_for_schema(str(property_name), property_schema)
-                if str(property_name) not in required_fields:
-                    python_type = python_type | None
-                    field = Field(default=None, description=field.description)
-                field_definitions[str(property_name)] = (python_type, field)
-        args_schema = create_model(f"{tool_info.name.title().replace('_', '')}Args", **field_definitions)
-
-        def _call_tool(**kwargs: Any) -> str:
-            filtered_arguments = {key: value for key, value in kwargs.items() if value is not None}
-            raw_result = provider.call_tool(
-                binding.server,
-                tool_info.name,
-                filtered_arguments,
-                static_arguments=binding.arguments,
-            )
-            run_state["tool_calls"].append(
-                {
-                    "tool_name": tool_info.name,
-                    "arguments": filtered_arguments,
-                    "raw_result": raw_result,
-                }
-            )
+    def _serialize_tool_result(raw_result: Any) -> str:
+        if isinstance(raw_result, str):
             return raw_result
-
-        return StructuredTool.from_function(
-            func=_call_tool,
-            name=tool_info.name,
-            description=tool_info.description or tool_info.name,
-            args_schema=args_schema,
-            infer_schema=False,
-        )
-
-    def _build_ticket_lookup_tools(self, *, binding: TicketServerBindingSettings, run_state: dict[str, Any]) -> list[StructuredTool]:
-        provider = self.ticket_mcp_provider
-        if provider is None:
-            return []
-        return [
-            self._build_ticket_lookup_tool(binding=binding, tool_info=tool_info, run_state=run_state)
-            for tool_info in provider.list_tools(binding.server)
-        ]
+        if hasattr(raw_result, "model_dump"):
+            return json.dumps(raw_result.model_dump(mode="json", exclude_none=True), ensure_ascii=False)
+        if isinstance(raw_result, (dict, list)):
+            return json.dumps(raw_result, ensure_ascii=False)
+        return str(raw_result)
 
     @staticmethod
     def _parse_ticket_lookup_result(raw_text: str) -> TicketLookupAgentResult:
@@ -214,13 +147,17 @@ class SampleIntakeAgent(AbstractAgent):
         raw_issue: str,
         ticket_id: str,
     ) -> tuple[TicketLookupAgentResult, dict[str, Any]]:
-        provider = self.ticket_mcp_provider
-        if provider is None:
+        mcp_client = self.ticket_mcp_client
+        if mcp_client is None:
             raise ValueError("ticket MCP provider is not configured")
         model = build_chat_openai_model(self.config, temperature=0)
-        tools_xml = provider.render_tools_xml(binding.server)
+        tools_xml = mcp_client.render_tools_xml(binding.server)
         run_state: dict[str, Any] = {"tool_calls": []}
-        tools = self._build_ticket_lookup_tools(binding=binding, run_state=run_state)
+        tools = mcp_client.get_agent_tools(
+            binding.server,
+            static_arguments=binding.arguments,
+            on_tool_call=run_state["tool_calls"].append,
+        )
         agent = create_agent(
             model,
             tools,
@@ -305,7 +242,7 @@ class SampleIntakeAgent(AbstractAgent):
 
     def hydrate_ticket_contexts(self, state: dict[str, Any]) -> dict[str, Any]:
         update = dict(state)
-        if self.ticket_mcp_provider is None:
+        if self.ticket_mcp_client is None:
             return update
 
         raw_issue = str(update.get("raw_issue") or "").strip()
@@ -462,7 +399,8 @@ def main() -> int:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    agent = SampleIntakeAgent(config=config)
+    ticket_mcp_client = McpToolClient.from_config(config) if config.tools.mcp_manifest_path is not None else None
+    agent = SampleIntakeAgent(config=config, ticket_mcp_client=ticket_mcp_client)
     result = agent.execute(raw_issue=args.issue)
     print(format_result(result))
     return 0

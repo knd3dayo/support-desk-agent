@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage
 
 from support_ope_agents.agents.production.intake_agent import IntakeAgent
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
+from support_ope_agents.config.models import TicketServerBindingSettings
 
 
 class _FakeResolver:
@@ -33,13 +33,25 @@ class _FakeResolver:
     def list_tool_names(self, server_name: str) -> set[str]:
         return {tool.name for tool in self.list_tools(server_name)}
 
-    def call_tool(self, server_name: str, tool_name: str, arguments: dict[str, object]) -> str:
-        self.calls.append((server_name, tool_name, arguments))
+    def render_tools_xml(self, server_name: str) -> str:
+        return f'<tools server="{server_name}"><tool><name>get_issue</name></tool></tools>'
+
+    def call_tool(
+        self,
+        server_name: str,
+        tool_name: str,
+        arguments: dict[str, object],
+        *,
+        static_arguments: dict[str, object] | None = None,
+    ) -> str:
+        merged_arguments = dict(static_arguments or {})
+        merged_arguments.update(arguments)
+        self.calls.append((server_name, tool_name, merged_arguments))
         if self.raise_not_found_once and tool_name == "get_issue":
             self.raise_not_found_once = False
             raise ValueError("Issue not found: 404")
         if tool_name == "search_issues":
-            return '{"items":[{"number":121,"title":"Login failure incident","state":"open"},{"number":123,"title":"Login 500 on production","state":"open"}]}'
+            return '{"items":[{"number":"999-1","title":"ログイン時の500エラー","state":"open"},{"number":123,"title":"Login 500 on production","state":"open"}]}'
         if tool_name == "get_issue_attachments":
             return '{"attachments":[{"filename":"error.png","content":"binary-ish"}]}'
         return '{"title":"Issue 123","state":"open","body":"Customer impact details"}'
@@ -284,21 +296,10 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},
-                "tools": {
-                    "mcp_manifest_path": "/tmp/test-mcp.json",
-                    "ticket_sources": {
-                        "external": {
-                            "enabled": True,
-                            "server": "github",
-                            "decision_tag": "ticket_decision",
-                            "arguments": {"owner": "acme", "repo": "external-support"},
-                        }
-                    }
-                },
+                "tools": {"mcp_manifest_path": "/tmp/test-mcp.json"},
                 "agents": {},
             }
         )
-        provider = XmlMcpToolsetProvider(backend=_FakeResolver())  # type: ignore[arg-type]
         agent = IntakeAgent(
             config=config,
             pii_mask_tool=lambda *_args, **_kwargs: "",
@@ -306,7 +307,7 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
             internal_ticket_tool=lambda *_args, **_kwargs: "",
             classify_ticket_tool=lambda *_args, **_kwargs: "",
             write_shared_memory_tool=lambda *_args, **_kwargs: "",
-            ticket_mcp_provider=provider,
+            ticket_mcp_client=_FakeResolver(),  # type: ignore[arg-type]
         )
         model = _FakeChatModel(
             [
@@ -315,7 +316,16 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("support_ope_agents.agents.production.intake_agent.build_chat_openai_model", return_value=model):
+            with patch("support_ope_agents.agents.production.intake_agent.build_chat_openai_model", return_value=model), patch.object(
+                agent,
+                "_ticket_binding",
+                return_value=TicketServerBindingSettings(
+                    enabled=True,
+                    server="github",
+                    decision_tag="ticket_decision",
+                    arguments={"owner": "acme", "repo": "external-support"},
+                ),
+            ):
                 result = agent.hydrate_tickets(
                     {
                         "raw_issue": "ログイン時の 500 エラーを調査してください",
@@ -340,18 +350,18 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
                 "interfaces": {},
                 "tools": {
                     "mcp_manifest_path": "/tmp/test-mcp.json",
-                    "ticket_sources": {
-                        "external": {
+                    "logical_tools": {
+                        "external_ticket": {
                             "enabled": True,
+                            "provider": "mcp",
                             "server": "github",
                             "arguments": {"owner": "acme", "repo": "external-support"},
                         }
-                    }
+                    },
                 },
                 "agents": {},
             }
         )
-        provider = XmlMcpToolsetProvider(backend=resolver)  # type: ignore[arg-type]
         agent = IntakeAgent(
             config=config,
             pii_mask_tool=lambda *_args, **_kwargs: "",
@@ -359,7 +369,7 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
             internal_ticket_tool=lambda *_args, **_kwargs: "",
             classify_ticket_tool=lambda *_args, **_kwargs: "",
             write_shared_memory_tool=lambda *_args, **_kwargs: "",
-            ticket_mcp_provider=provider,
+            ticket_mcp_client=resolver,  # type: ignore[arg-type]
         )
         model = _FakeChatModel(
             [

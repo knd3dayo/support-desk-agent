@@ -86,6 +86,10 @@ class ToolRegistry:
     def list_roles(self) -> Iterable[str]:
         return DEFAULT_AGENT_ROLES
 
+    @staticmethod
+    def _uses_server_only_ticket_binding(logical_tool_name: str, setting) -> bool:
+        return logical_tool_name in {"external_ticket", "internal_ticket"} and not str(setting.tool or "").strip()
+
     def _build_role_tools(self) -> dict[str, list[ToolSpec]]:
         return {
             SUPERVISOR_AGENT: [
@@ -374,11 +378,13 @@ class ToolRegistry:
                     f"tools.logical_tools.{logical_tool_name} is not allowed to use provider='mcp'. "
                     f"mcp_overrideable_tools=[{allowed}]"
                 )
-            binding = McpToolBinding(server=str(setting.server), tool=str(setting.tool))
             if self._mcp_tool_client is None:
                 raise ToolConfigurationError(
                     f"tools.logical_tools.{logical_tool_name} requires an MCP client, but tools.mcp_manifest_path is not configured"
                 )
+            if self._uses_server_only_ticket_binding(logical_tool_name, setting):
+                continue
+            binding = McpToolBinding(server=str(setting.server), tool=str(setting.tool))
             self._mcp_tool_client.validate_logical_tool(logical_tool_name=logical_tool_name, binding=binding)
 
     def _resolve_tool_configuration(self, tool: ToolSpec) -> ToolSpec | None:
@@ -418,6 +424,14 @@ class ToolRegistry:
         if self._mcp_tool_client is None:
             raise ToolConfigurationError(
                 f"tools.logical_tools.{tool.name} requested MCP provider, but no MCP client is configured"
+            )
+        if self._uses_server_only_ticket_binding(tool.name, setting):
+            return ToolSpec(
+                name=tool.name,
+                description=tool.description,
+                handler=tool.handler,
+                provider=f"mcp:{str(setting.server or '')}",
+                target=None,
             )
         binding = McpToolBinding(server=str(setting.server), tool=str(setting.tool))
         return ToolSpec(

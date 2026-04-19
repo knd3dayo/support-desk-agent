@@ -18,7 +18,7 @@ from support_ope_agents.config.models import AppConfig, TicketServerBindingSetti
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
-from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
+from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.langchain import build_chat_openai_model
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml
@@ -37,7 +37,7 @@ class SampleTicketUpdateState(TypedDict, total=False):
 @dataclass(slots=True)
 class SampleTicketUpdateAgent(AbstractAgent):
     config: AppConfig | None = None
-    ticket_mcp_provider: XmlMcpToolsetProvider | None = None
+    ticket_mcp_client: McpToolClient | None = None
     prepare_ticket_update_tool: Any | None = None
 
     def _invoke_tool(self, tool: Any, *args: object, **kwargs: object) -> str:
@@ -279,13 +279,13 @@ class SampleTicketUpdateAgent(AbstractAgent):
         return "\n".join(part for part in parts if part)
 
     def _lookup_ticket_context(self, *, state: dict[str, Any], ticket_kind: str, ticket_id: str) -> tuple[str | None, tuple[str, str] | None]:
-        if self.config is None or self.ticket_mcp_provider is None:
+        if self.config is None or self.ticket_mcp_client is None:
             return None, None
         binding = self._ticket_binding(ticket_kind)
         if binding is None or not binding.enabled or not ticket_id or self._is_auto_generated_ticket_id(ticket_kind, ticket_id):
             return None, None
         model = build_chat_openai_model(self.config, temperature=0)
-        tools_xml = self.ticket_mcp_provider.render_tools_xml(binding.server)
+        tools_xml = self.ticket_mcp_client.render_tools_xml(binding.server)
         response = model.invoke(
             [
                 {
@@ -300,14 +300,14 @@ class SampleTicketUpdateAgent(AbstractAgent):
             ]
         )
         decision = self._parse_tool_decision(self._extract_text(response), decision_tag=binding.decision_tag)
-        available_tool_names = self.ticket_mcp_provider.list_tool_names(binding.server)
+        available_tool_names = self.ticket_mcp_client.list_tool_names(binding.server)
         if decision.get_tool_name not in available_tool_names:
             raise ValueError(f"selected MCP tool does not exist: {decision.get_tool_name}")
         if decision.list_tool_name.lower() != "skip" and decision.list_tool_name not in available_tool_names:
             raise ValueError(f"selected MCP tool does not exist: {decision.list_tool_name}")
         raw_issue = self._lookup_context_text(state)
         try:
-            raw_result = self.ticket_mcp_provider.call_tool(
+            raw_result = self.ticket_mcp_client.call_tool(
                 binding.server,
                 decision.get_tool_name,
                 decision.get_arguments,
@@ -316,7 +316,7 @@ class SampleTicketUpdateAgent(AbstractAgent):
         except Exception as error:
             if self._is_not_found_error(error) and decision.list_tool_name.lower() != "skip":
                 try:
-                    list_raw_result = self.ticket_mcp_provider.call_tool(
+                    list_raw_result = self.ticket_mcp_client.call_tool(
                         binding.server,
                         decision.list_tool_name,
                         decision.list_arguments or {},

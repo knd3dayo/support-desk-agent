@@ -52,7 +52,6 @@ from support_ope_agents.runtime.service_support import sync_case_title_from_stat
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
-from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.workflow import (
     ProductionCaseWorkflow,
@@ -102,6 +101,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
         approval_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(APPROVAL_AGENT)}
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
         ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
+        ticket_mcp_client = McpToolClient.from_config(context.config) if context.config.tools.mcp_manifest_path is not None else None
         self._intake_executor = IntakeAgent(
             config=context.config,
             pii_mask_tool=intake_tools["pii_mask"],
@@ -111,7 +111,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             write_shared_memory_tool=intake_tools["write_shared_memory"],
             write_working_memory_tool=intake_tools.get("write_working_memory"),
             runtime_harness_manager=context.runtime_harness_manager,
-            ticket_mcp_provider=XmlMcpToolsetProvider.from_config(context.config),
+            ticket_mcp_client=ticket_mcp_client,
         )
         self._approval_executor = ApprovalAgent(
             record_approval_decision_tool=approval_tools["record_approval_decision"],
@@ -121,7 +121,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             prepare_ticket_update_tool=ticket_update_tools["prepare_ticket_update"],
             zendesk_reply_tool=ticket_update_tools["zendesk_reply"],
             redmine_update_tool=ticket_update_tools["redmine_update"],
-            ticket_mcp_provider=XmlMcpToolsetProvider.from_config(context.config),
+            ticket_mcp_client=ticket_mcp_client,
         )
         self._back_support_escalation_executor = BackSupportEscalationPhaseExecutor(
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],

@@ -12,7 +12,6 @@ from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTi
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.mcp_client import McpToolInfo
-from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
 
 
 class _FakeResolver:
@@ -76,14 +75,15 @@ def _build_config() -> AppConfig:
             "data_paths": {},
             "interfaces": {},
             "tools": {
-                    "mcp_manifest_path": "/tmp/test-mcp.json",
-                "ticket_sources": {
-                    "external": {
+                "mcp_manifest_path": "/tmp/test-mcp.json",
+                "logical_tools": {
+                    "external_ticket": {
                         "enabled": True,
+                        "provider": "mcp",
                         "server": "github",
                         "arguments": {"owner": "acme", "repo": "external-support"},
                     }
-                }
+                },
             },
             "agents": {},
         }
@@ -93,13 +93,12 @@ def _build_config() -> AppConfig:
 class TicketUpdateAgentTests(unittest.TestCase):
     def test_prepare_update_includes_lookup_summary_in_payload(self) -> None:
         config = _build_config()
-        provider = XmlMcpToolsetProvider(backend=_FakeResolver())  # type: ignore[arg-type]
         agent = TicketUpdateAgent(
             config=config,
             prepare_ticket_update_tool=build_default_prepare_ticket_update_tool(config),
             zendesk_reply_tool=lambda *_args, **_kwargs: "",
             redmine_update_tool=lambda *_args, **_kwargs: "",
-            ticket_mcp_provider=provider,
+            ticket_mcp_client=_FakeResolver(),  # type: ignore[arg-type]
         )
 
         with patch("support_ope_agents.agents.production.ticket_update_agent.build_chat_openai_model", return_value=_FakeChatModel()):
@@ -119,10 +118,9 @@ class TicketUpdateAgentTests(unittest.TestCase):
 
     def test_sample_prepare_update_includes_lookup_summary_in_payload(self) -> None:
         config = _build_config()
-        provider = XmlMcpToolsetProvider(backend=_FakeResolver())  # type: ignore[arg-type]
         agent = SampleTicketUpdateAgent(
             config=config,
-            ticket_mcp_provider=provider,
+            ticket_mcp_client=_FakeResolver(),  # type: ignore[arg-type]
             prepare_ticket_update_tool=build_default_prepare_ticket_update_tool(config),
         )
 
@@ -142,13 +140,12 @@ class TicketUpdateAgentTests(unittest.TestCase):
 
     def test_prepare_update_adds_followup_question_when_ticket_not_found(self) -> None:
         config = _build_config()
-        provider = XmlMcpToolsetProvider(backend=_FakeResolver())  # type: ignore[arg-type]
         agent = TicketUpdateAgent(
             config=config,
             prepare_ticket_update_tool=build_default_prepare_ticket_update_tool(config),
             zendesk_reply_tool=lambda *_args, **_kwargs: "",
             redmine_update_tool=lambda *_args, **_kwargs: "",
-            ticket_mcp_provider=provider,
+            ticket_mcp_client=_FakeResolver(),  # type: ignore[arg-type]
         )
 
         with patch(

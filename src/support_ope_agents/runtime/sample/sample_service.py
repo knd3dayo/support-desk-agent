@@ -47,7 +47,6 @@ from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.mcp_client import McpToolClient
-from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
     build_plan_steps,
@@ -85,12 +84,12 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
     def __init__(self, context: SampleRuntimeContext):
         super().__init__(context)
         self._migrate_legacy_traces()
-        ticket_mcp_provider = XmlMcpToolsetProvider.from_config(context.config)
-        self._intake_executor = SampleIntakeAgent(config=context.config, ticket_mcp_provider=ticket_mcp_provider)
+        ticket_mcp_client = McpToolClient.from_config(context.config) if context.config.tools.mcp_manifest_path is not None else None
+        self._intake_executor = SampleIntakeAgent(config=context.config, ticket_mcp_client=ticket_mcp_client)
         self._approval_executor = SampleApprovalAgent()
         self._ticket_update_executor = SampleTicketUpdateAgent(
             config=context.config,
-            ticket_mcp_provider=ticket_mcp_provider,
+            ticket_mcp_client=ticket_mcp_client,
             prepare_ticket_update_tool=build_default_prepare_ticket_update_tool(context.config),
         )
         self._investigate_executor = SampleInvestigateAgent(config=context.config)

@@ -21,7 +21,7 @@ from support_ope_agents.models.state_transitions import NextActionTexts, StateTr
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.tools.mcp_xml_toolset import XmlMcpToolsetProvider
+from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.langchain import build_chat_openai_model
 from support_ope_agents.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
@@ -61,7 +61,7 @@ class IntakeAgent(AbstractAgent):
     write_shared_memory_tool: Callable[..., Any]
     write_working_memory_tool: Callable[..., Any] | None = None
     runtime_harness_manager: RuntimeHarnessManager | None = None
-    ticket_mcp_provider: XmlMcpToolsetProvider | None = None
+    ticket_mcp_client: McpToolClient | None = None
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -590,10 +590,10 @@ class IntakeAgent(AbstractAgent):
                 continue
 
             binding = self._ticket_binding(ticket_kind)
-            if binding is not None and binding.enabled and self.ticket_mcp_provider is not None:
+            if binding is not None and binding.enabled and self.ticket_mcp_client is not None:
                 decision: McpToolSelectionDecision | None = None
                 try:
-                    tools_xml = self.ticket_mcp_provider.render_tools_xml(binding.server)
+                    tools_xml = self.ticket_mcp_client.render_tools_xml(binding.server)
                     response = model.invoke(
                         [
                             {
@@ -609,16 +609,17 @@ class IntakeAgent(AbstractAgent):
                         ]
                     )
                     decision = self._parse_tool_decision(str(getattr(response, "content", response)), decision_tag=binding.decision_tag)
-                    if decision.get_tool_name not in self.ticket_mcp_provider.list_tool_names(binding.server):
+                    available_tool_names = self.ticket_mcp_client.list_tool_names(binding.server)
+                    if decision.get_tool_name not in available_tool_names:
                         raise ValueError(f"selected MCP tool does not exist: {decision.get_tool_name}")
-                    if decision.list_tool_name.lower() != "skip" and decision.list_tool_name not in self.ticket_mcp_provider.list_tool_names(binding.server):
+                    if decision.list_tool_name.lower() != "skip" and decision.list_tool_name not in available_tool_names:
                         raise ValueError(f"selected MCP tool does not exist: {decision.list_tool_name}")
                     if (
                         decision.attachment_tool_name.lower() != "skip"
-                        and decision.attachment_tool_name not in self.ticket_mcp_provider.list_tool_names(binding.server)
+                        and decision.attachment_tool_name not in available_tool_names
                     ):
                         raise ValueError(f"selected MCP tool does not exist: {decision.attachment_tool_name}")
-                    raw_result = self.ticket_mcp_provider.call_tool(
+                    raw_result = self.ticket_mcp_client.call_tool(
                         binding.server,
                         decision.get_tool_name,
                         decision.get_arguments,
@@ -632,7 +633,7 @@ class IntakeAgent(AbstractAgent):
                     ticket_summaries[f"{ticket_kind}_ticket"] = summary
                     ticket_artifacts[f"{ticket_kind}_ticket"] = artifact_paths
                     if decision.attachment_tool_name.lower() != "skip":
-                        attachment_result = self.ticket_mcp_provider.call_tool(
+                        attachment_result = self.ticket_mcp_client.call_tool(
                             binding.server,
                             decision.attachment_tool_name,
                             decision.attachment_arguments or {},
@@ -650,7 +651,7 @@ class IntakeAgent(AbstractAgent):
                     update[f"{ticket_kind}_ticket_lookup_enabled"] = False
                     if self._is_not_found_error(error) and decision is not None and decision.list_tool_name.lower() != "skip":
                         try:
-                            list_raw_result = self.ticket_mcp_provider.call_tool(
+                            list_raw_result = self.ticket_mcp_client.call_tool(
                                 binding.server,
                                 decision.list_tool_name,
                                 decision.list_arguments or {},
