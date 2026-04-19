@@ -144,8 +144,13 @@ class SampleRuntimeServiceFlowTests(unittest.TestCase):
         shared_summary = case_paths.shared_summary.read_text(encoding="utf-8")
         shared_progress = case_paths.shared_progress.read_text(encoding="utf-8")
         self.assertIn("Issue #2: SSO ログイン時に 500 エラー", shared_context)
+        self.assertIn("Intake category:", shared_context)
+        self.assertIn("Intake urgency:", shared_context)
         self.assertIn("確認結果:", shared_summary)
+        self.assertIn("Judgment rationale:", shared_summary)
+        self.assertIn("Next action:", shared_summary)
         self.assertIn("sample Supervisor が再評価しました", shared_progress)
+        self.assertIn("Intake category:", shared_progress)
 
         history = self.service.context.memory_store.read_chat_history(
             "CASE-SAMPLE-RESUME-001",

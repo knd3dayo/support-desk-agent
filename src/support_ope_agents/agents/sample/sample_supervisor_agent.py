@@ -196,11 +196,34 @@ class SampleSupervisorAgent(AbstractAgent):
         raw_issue = str(state.get("raw_issue") or "").strip()
         ticket_context = self._format_ticket_context(state)
         followup_answers = self._format_followup_answers(state)
+        intake_category = str(state.get("intake_category") or "ambiguous_case").strip() or "ambiguous_case"
+        intake_urgency = str(state.get("intake_urgency") or "medium").strip() or "medium"
+        investigation_focus = str(state.get("intake_investigation_focus") or "問い合わせ内容の事実関係を確認する").strip()
+        classification_reason = str(state.get("intake_classification_reason") or "").strip()
+        escalation_required = self._should_escalate(cast(dict[str, Any], state))
+        next_action = (
+            NextActionTexts.SAMPLE_PREPARE_ESCALATION
+            if escalation_required
+            else NextActionTexts.SAMPLE_PREPARE_DRAFT_FOR_APPROVAL
+        )
+        primary_source = "ticket context" if ticket_context else "customer issue"
+        judgment_rationale_parts = [
+            "取得済みチケット文脈を優先して状況を整理しました。" if ticket_context else "ユーザー問い合わせを優先して状況を整理しました。",
+            "追加確認への回答を反映しました。" if followup_answers else "追加確認への回答は未入力です。",
+        ]
+        if classification_reason:
+            judgment_rationale_parts.append(f"分類理由: {classification_reason}")
+        judgment_rationale = " ".join(part for part in judgment_rationale_parts if part)
         context_sections = [section for section in (raw_issue, ticket_context, followup_answers) if section]
         progress_summary = "追加確認の回答とチケット文脈を踏まえて sample Supervisor が再評価しました。"
 
         context_content = {
             "title": "Shared Context",
+            "bullets": [
+                f"Intake category: {intake_category}",
+                f"Intake urgency: {intake_urgency}",
+                f"Investigation focus: {investigation_focus}",
+            ] + ([f"Classification reason: {classification_reason}"] if classification_reason else []),
             "sections": [
                 {"title": "Current Issue", "summary": raw_issue},
                 {"title": "Ticket Context", "summary": ticket_context},
@@ -209,6 +232,13 @@ class SampleSupervisorAgent(AbstractAgent):
         }
         progress_content = {
             "title": "Shared Progress",
+            "bullets": [
+                "Current phase: INVESTIGATING",
+                f"Intake category: {intake_category}",
+                f"Intake urgency: {intake_urgency}",
+                f"Next action: {next_action}",
+                f"Ticket context recorded: {'yes' if ticket_context else 'no'}",
+            ],
             "sections": [
                 {"title": "Latest Supervisor Review", "summary": progress_summary},
             ],
@@ -216,6 +246,12 @@ class SampleSupervisorAgent(AbstractAgent):
         summary_content = {
             "title": "Shared Summary",
             "summary": investigation_summary.strip(),
+            "bullets": [
+                f"Conclusion: {investigation_summary.strip() or '調査結果を確認してください。'}",
+                f"Judgment rationale: {judgment_rationale}",
+                f"Next action: {next_action}",
+                f"Primary source: {primary_source}",
+            ],
             "sections": [
                 {"title": "Source Context", "summary": "\n\n".join(context_sections)},
             ],

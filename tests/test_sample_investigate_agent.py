@@ -195,6 +195,10 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertEqual(str(written.get("case_id") or ""), "CASE-TEST-SAMPLE-MEMORY-001")
         self.assertEqual(str(written.get("mode") or ""), "replace")
         self.assertIn("captured", json.dumps(written.get("summary_content"), ensure_ascii=False))
+        self.assertIn("Intake category:", json.dumps(written.get("context_content"), ensure_ascii=False))
+        self.assertIn("Intake urgency:", json.dumps(written.get("progress_content"), ensure_ascii=False))
+        self.assertIn("Judgment rationale:", json.dumps(written.get("summary_content"), ensure_ascii=False))
+        self.assertIn("Next action:", json.dumps(written.get("summary_content"), ensure_ascii=False))
 
 
 if __name__ == "__main__":
