@@ -55,6 +55,14 @@ STARTUP_LLM_PROBE_TIMEOUT_SECONDS = 15
 SKIP_STARTUP_LLM_PROBE_ENV = "SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE"
 
 
+def _find_latest_trace_id(messages: list[dict[str, object]]) -> str | None:
+    for message in reversed(messages):
+        trace_id = str(message.get("trace_id") or "").strip()
+        if trace_id:
+            return trace_id
+    return None
+
+
 def _build_startup_probe_model(config: AppConfig) -> ChatOpenAI:
     chat_openai = cast(Any, ChatOpenAI)
     return chat_openai(
@@ -222,12 +230,16 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             messages = service.get_chat_history(case_id=case_id, workspace_path=resolved_workspace)
         except Exception as exc:
             raise map_error(exc) from exc
+        latest_trace_id = _find_latest_trace_id(messages)
+        latest_state = service._load_state(case_id=case_id, trace_id=latest_trace_id, workspace_path=resolved_workspace)
         return ChatHistoryResponse.model_validate(
             {
                 "case_id": case_id,
                 "workspace_path": resolved_workspace,
                 "messages": messages,
                 "conversation_messages": extract_serialized_messages_from_history(messages),
+                "external_ticket_id": str(latest_state.get("external_ticket_id") or "") or None,
+                "internal_ticket_id": str(latest_state.get("internal_ticket_id") or "") or None,
             }
         )
 

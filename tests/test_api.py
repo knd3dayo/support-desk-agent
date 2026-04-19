@@ -360,6 +360,8 @@ class ApiWorkspaceTests(unittest.TestCase):
                 "prompt": "生成AI基盤のアーキテクチャ概要を教えてください。",
                 "workspace_path": str(self.case_path),
                 "case_id": "CASE-API-001",
+                "external_ticket_id": "ext-111",
+                "internal_ticket_id": "int-222",
             },
         )
 
@@ -372,6 +374,8 @@ class ApiWorkspaceTests(unittest.TestCase):
         payload = response.json()
         self.assertTrue(payload["conversation_messages"])
         self.assertEqual(payload["conversation_messages"][0]["type"], "human")
+        self.assertEqual(payload["external_ticket_id"], "EXT-111")
+        self.assertEqual(payload["internal_ticket_id"], "INT-222")
 
     def test_action_endpoint_accepts_explicit_case_and_ticket_ids(self) -> None:
         explicit_case_path = self.cases_root / "CASE-API-EXPLICIT"

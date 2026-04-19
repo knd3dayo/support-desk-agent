@@ -673,8 +673,8 @@ export default function App() {
         setPreview(null);
         setConversationError(null);
         setPendingQuestion(null);
-        setExternalTicketId('');
-        setInternalTicketId('');
+        setExternalTicketId(history.external_ticket_id ?? '');
+        setInternalTicketId(history.internal_ticket_id ?? '');
       });
       await refreshRuntimeAudit(target, findLatestTraceId(history.messages));
       setStatusLine(`${target.case_id} を表示しています。`);
@@ -960,6 +960,8 @@ export default function App() {
       startTransition(() => {
         setMessages(history.messages);
         setConversationMessages(history.conversation_messages);
+        setExternalTicketId(history.external_ticket_id ?? '');
+        setInternalTicketId(history.internal_ticket_id ?? '');
         setWorkspaceView(workspace);
         setCases(sortCasesByUpdatedAt(nextCases));
       });
@@ -1380,22 +1382,22 @@ export default function App() {
         <div className="composer panel-subtle">
           <div className="composer-ticket-grid">
             <label className="composer-field">
-              <span>外部チケットID</span>
+              <span>外部チケットURL</span>
               <input
                 type="text"
                 value={externalTicketId}
                 onChange={(event) => setExternalTicketId(event.target.value)}
-                placeholder="任意: EXT-12345"
+                placeholder="任意: https://example.invalid/tickets/EXT-12345"
                 disabled={busy}
               />
             </label>
             <label className="composer-field">
-              <span>内部チケットID</span>
+              <span>内部チケットURL</span>
               <input
                 type="text"
                 value={internalTicketId}
                 onChange={(event) => setInternalTicketId(event.target.value)}
-                placeholder="任意: INT-67890"
+                placeholder="任意: https://example.invalid/tickets/INT-67890"
                 disabled={busy}
               />
             </label>

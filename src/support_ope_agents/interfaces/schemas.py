@@ -119,6 +119,8 @@ class ChatHistoryResponse(BaseModel):
     workspace_path: str
     messages: list[ChatMessage] = Field(default_factory=list)
     conversation_messages: list[LangChainMessage] = Field(default_factory=list)
+    external_ticket_id: str | None = None
+    internal_ticket_id: str | None = None
 
 
 class WorkspaceEntry(BaseModel):

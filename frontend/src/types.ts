@@ -31,6 +31,8 @@ export type ChatHistoryResponse = {
   workspace_path: string;
   messages: ChatMessage[];
   conversation_messages: LangChainMessage[];
+  external_ticket_id?: string | null;
+  internal_ticket_id?: string | null;
 };
 
 export type WorkspaceEntry = {
