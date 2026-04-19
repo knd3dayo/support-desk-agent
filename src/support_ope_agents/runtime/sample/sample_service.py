@@ -15,6 +15,8 @@ from support_ope_agents.agents.sample.sample_investigate_agent import SampleInve
 from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
+from support_ope_agents.agents.roles import INVESTIGATE_AGENT
+from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
@@ -45,7 +47,9 @@ from support_ope_agents.runtime.service_support import sync_case_title_from_stat
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
+from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
 from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
+from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
@@ -96,6 +100,12 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         self._supervisor_executor = SampleSupervisorAgent(
             investigate_executor=self._investigate_executor,
             back_support_escalation_executor=None,
+            load_instruction=lambda case_id, role: context.instruction_loader.load(
+                case_id,
+                role if role in {SUPERVISOR_AGENT, INVESTIGATE_AGENT} else SUPERVISOR_AGENT,
+            ),
+            read_shared_memory_tool=build_default_read_shared_memory_tool(context.config),
+            write_shared_memory_tool=build_default_write_shared_memory_tool(context.config),
         )
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:

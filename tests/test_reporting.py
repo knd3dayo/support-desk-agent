@@ -372,7 +372,8 @@ class ReportingEvaluationTests(unittest.TestCase):
         diagrams = _build_subgraph_sequence_diagrams(state)
         intake_diagram = next(item for item in diagrams if item.title == "IntakeAgent サブグラフ")
 
-        self.assertIn("Finalize-->>User: 追加情報を依頼", intake_diagram.diagram)
+        self.assertIn("Decision->>RequestInput: 追加確認ルートへ分岐", intake_diagram.diagram)
+        self.assertIn("RequestInput-->>User: 追加情報を依頼", intake_diagram.diagram)
         self.assertEqual(len(diagrams), 1)
 
     def test_subgraph_sequence_diagrams_reflect_rejected_review_loop(self) -> None:

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import inspect
+import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 from langgraph.graph import END, START, StateGraph
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
+from support_ope_agents.agents.roles import INVESTIGATE_AGENT
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
+from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.util.formatting import format_result
 
@@ -22,6 +26,9 @@ if TYPE_CHECKING:
 class SampleSupervisorAgent(AbstractAgent):
     investigate_executor: "SampleInvestigateAgent | None" = None
     back_support_escalation_executor: "SampleBackSupportEscalationAgent | None" = None
+    load_instruction: Callable[[str, str], str] | None = None
+    read_shared_memory_tool: Callable[..., Any] | None = None
+    write_shared_memory_tool: Callable[..., Any] | None = None
 
     @staticmethod
     def _extract_investigation_summary(result: Any) -> str:
@@ -58,6 +65,190 @@ class SampleSupervisorAgent(AbstractAgent):
         summary = investigation_summary.strip() or "サンプル調査を実行しました。"
         return f"お問い合わせありがとうございます。\n\n{summary}\n\n必要であれば追加の確認事項もご案内できます。"
 
+    @staticmethod
+    def _invoke_tool(tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
+        result = tool(*args, **kwargs)
+        if inspect.isawaitable(result):
+            resolved = run_awaitable_sync(cast(Any, result))
+            return str(resolved)
+        return str(result)
+
+    @staticmethod
+    def _parse_memory(raw_result: str) -> dict[str, str]:
+        try:
+            parsed = json.loads(raw_result)
+        except json.JSONDecodeError:
+            return {"context": "", "progress": "", "summary": ""}
+        if not isinstance(parsed, dict):
+            return {"context": "", "progress": "", "summary": ""}
+        return {
+            "context": str(parsed.get("context") or ""),
+            "progress": str(parsed.get("progress") or ""),
+            "summary": str(parsed.get("summary") or ""),
+        }
+
+    def _read_shared_memory(self, state: "CaseState") -> dict[str, str]:
+        if self.read_shared_memory_tool is None:
+            return {"context": "", "progress": "", "summary": ""}
+
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        if not case_id or not workspace_path:
+            return {"context": "", "progress": "", "summary": ""}
+
+        try:
+            raw_result = self._invoke_tool(
+                self.read_shared_memory_tool,
+                case_id=case_id,
+                workspace_path=workspace_path,
+            )
+        except Exception:
+            return {"context": "", "progress": "", "summary": ""}
+        return self._parse_memory(raw_result)
+
+    @staticmethod
+    def _format_followup_answers(state: "CaseState") -> str:
+        answers = cast(dict[str, Any], state.get("customer_followup_answers") or {})
+        if not answers:
+            return ""
+
+        lines: list[str] = []
+        for key, record in answers.items():
+            if not isinstance(record, dict):
+                continue
+            answer = str(record.get("answer") or "").strip()
+            if not answer:
+                continue
+            question = str(record.get("question") or "").strip()
+            if question:
+                lines.append(f"- {key}: question={question} / answer={answer}")
+            else:
+                lines.append(f"- {key}: {answer}")
+        if not lines:
+            return ""
+        return "追加確認への回答:\n" + "\n".join(lines)
+
+    @staticmethod
+    def _format_ticket_context(state: "CaseState") -> str:
+        ticket_context = cast(dict[str, Any], state.get("intake_ticket_context_summary") or {})
+        if not ticket_context:
+            return ""
+
+        labels = {
+            "external_ticket": "外部チケット要約",
+            "internal_ticket": "内部チケット要約",
+            "external_ticket_attachments": "外部チケット添付",
+            "internal_ticket_attachments": "内部チケット添付",
+        }
+        lines = [
+            f"- {labels.get(key, key)}: {str(value).strip()}"
+            for key, value in ticket_context.items()
+            if str(value).strip()
+        ]
+        if not lines:
+            return ""
+        return "取得済みチケット文脈:\n" + "\n".join(lines)
+
+    @staticmethod
+    def _has_ticket_followup_answer(state: "CaseState") -> bool:
+        answers = cast(dict[str, Any], state.get("customer_followup_answers") or {})
+        return any("ticket" in str(key) for key in answers)
+
+    @staticmethod
+    def _format_shared_memory_snapshot(memory: dict[str, str]) -> str:
+        sections: list[str] = []
+        for key, label in (("context", "共有メモリ context"), ("progress", "共有メモリ progress"), ("summary", "共有メモリ summary")):
+            value = str(memory.get(key) or "").strip()
+            if not value:
+                continue
+            sections.append(f"{label}:\n{value}")
+        return "\n\n".join(sections)
+
+    def _build_investigation_query(self, state: "CaseState") -> str:
+        raw_issue = str(state.get("raw_issue") or "").strip()
+        followup_section = self._format_followup_answers(state)
+        ticket_context_section = self._format_ticket_context(state)
+        shared_memory_section = self._format_shared_memory_snapshot(self._read_shared_memory(state))
+
+        extra_sections = [section for section in (followup_section, ticket_context_section, shared_memory_section) if section]
+        if not extra_sections:
+            return raw_issue
+
+        preface = ""
+        if self._has_ticket_followup_answer(state) and ticket_context_section:
+            preface = (
+                "追加確認でチケット候補への回答が返っています。"
+                "取得済みチケット情報を優先して確認し、現在状況と次アクションをユーザー向けに整理してください。"
+            )
+
+        parts = [part for part in (preface, f"元の問い合わせ:\n{raw_issue}" if raw_issue else "", *extra_sections) if part]
+        return "\n\n".join(parts)
+
+    def _write_shared_memory(self, state: "CaseState", investigation_summary: str) -> None:
+        if self.write_shared_memory_tool is None:
+            return
+
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        if not case_id or not workspace_path:
+            return
+
+        raw_issue = str(state.get("raw_issue") or "").strip()
+        ticket_context = self._format_ticket_context(state)
+        followup_answers = self._format_followup_answers(state)
+        context_sections = [section for section in (raw_issue, ticket_context, followup_answers) if section]
+        progress_summary = "追加確認の回答とチケット文脈を踏まえて sample Supervisor が再評価しました。"
+
+        context_content = {
+            "title": "Shared Context",
+            "sections": [
+                {"title": "Current Issue", "summary": raw_issue},
+                {"title": "Ticket Context", "summary": ticket_context},
+                {"title": "Customer Follow-up Answers", "summary": followup_answers},
+            ],
+        }
+        progress_content = {
+            "title": "Shared Progress",
+            "sections": [
+                {"title": "Latest Supervisor Review", "summary": progress_summary},
+            ],
+        }
+        summary_content = {
+            "title": "Shared Summary",
+            "summary": investigation_summary.strip(),
+            "sections": [
+                {"title": "Source Context", "summary": "\n\n".join(context_sections)},
+            ],
+        }
+
+        try:
+            self._invoke_tool(
+                self.write_shared_memory_tool,
+                case_id=case_id,
+                workspace_path=workspace_path,
+                context_content=context_content,
+                progress_content=progress_content,
+                summary_content=summary_content,
+                mode="replace",
+            )
+        except Exception:
+            return
+
+    def _build_instruction_text(self, case_id: str, state: "CaseState") -> str:
+        if self.load_instruction is None or not case_id:
+            return ""
+
+        instructions = [
+            self.load_instruction(case_id, SUPERVISOR_AGENT).strip(),
+            self.load_instruction(case_id, INVESTIGATE_AGENT).strip(),
+        ]
+        if self._has_ticket_followup_answer(state):
+            instructions.append(
+                "追加確認の回答を受け取った場合は、まず取得済みのチケット要約と既知の文脈を見直し、"
+                "確認できた状況をそのままユーザーへ返せる粒度で整理してください。"
+            )
+        return "\n\n".join(part for part in instructions if part)
+
     def execute_investigation(self, state: "CaseState") -> "CaseState":
         update = cast("CaseState", StateTransitionHelper.supervisor_investigating(state))
 
@@ -66,17 +257,31 @@ class SampleSupervisorAgent(AbstractAgent):
         if not investigation_summary:
             if self.investigate_executor is not None and raw_issue:
                 try:
+                    case_id = str(update.get("case_id") or "").strip()
+                    investigation_query = self._build_investigation_query(update)
+                    instruction_text = self._build_instruction_text(case_id, update)
                     investigation_result = self.investigate_executor.execute(
-                        query=raw_issue,
+                        query=investigation_query,
                         workspace_path=str(update.get("workspace_path") or "").strip() or None,
+                        instruction_text=instruction_text or None,
                     )
                     investigation_summary = self._extract_investigation_summary(investigation_result)
+                except TypeError:
+                    try:
+                        investigation_result = self.investigate_executor.execute(
+                            query=investigation_query,
+                            workspace_path=str(update.get("workspace_path") or "").strip() or None,
+                        )
+                        investigation_summary = self._extract_investigation_summary(investigation_result)
+                    except Exception:
+                        investigation_summary = self._fallback_investigation_summary(raw_issue)
                 except Exception:
                     investigation_summary = self._fallback_investigation_summary(raw_issue)
             else:
                 investigation_summary = self._fallback_investigation_summary(raw_issue)
 
         update["investigation_summary"] = investigation_summary
+        self._write_shared_memory(update, investigation_summary)
         update["escalation_required"] = self._should_escalate(cast(dict[str, Any], update))
         if update["escalation_required"]:
             update["escalation_reason"] = str(update.get("escalation_reason") or "追加確認のためバックサポートへ問い合わせます。")

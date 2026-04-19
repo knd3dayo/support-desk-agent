@@ -62,12 +62,14 @@ class CaseWorkflow:
             "intake_prepare",
             "intake_classify",
             "intake_mcp_tickets",
-            "intake_finalize",
+            "intake_ticket_followup_decision",
         ]
 
         if str(state.get("status") or "") == CaseStatuses.WAITING_CUSTOMER_INPUT:
+            path.append("intake_request_customer_input")
             return tuple(path)
 
+        path.append("intake_finalize")
         path.append("investigation")
         after_investigation = self._route_after_investigation(state)
         if after_investigation == "escalation_review":

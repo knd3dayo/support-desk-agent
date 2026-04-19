@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,34 @@ class _WorkspaceAwareInvestigateExecutor:
     def execute(self, *, query: str, workspace_path: str | None = None) -> dict[str, object]:
         del query
         return {"output": f"workspace={workspace_path or 'missing'}"}
+
+
+class _CapturingInvestigateExecutor:
+    def __init__(self) -> None:
+        self.query: str = ""
+        self.instruction_text: str = ""
+        self.workspace_path: str | None = None
+
+    def execute(
+        self,
+        *,
+        query: str,
+        workspace_path: str | None = None,
+        instruction_text: str | None = None,
+    ) -> dict[str, object]:
+        self.query = query
+        self.instruction_text = instruction_text or ""
+        self.workspace_path = workspace_path
+        return {"output": "captured"}
+
+
+class _CapturingSharedMemoryWriter:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(self, **kwargs: object) -> str:
+        self.calls.append(dict(kwargs))
+        return json.dumps({"ok": True}, ensure_ascii=False)
 
 
 class SampleInvestigateAgentTests(unittest.TestCase):
@@ -65,6 +94,91 @@ class SampleInvestigateAgentTests(unittest.TestCase):
             )
 
         self.assertEqual(str(result.get("investigation_summary") or ""), f"workspace={tmpdir}")
+
+    def test_supervisor_builds_ticket_aware_query_from_followup_context(self) -> None:
+        executor = _CapturingInvestigateExecutor()
+        supervisor = SampleSupervisorAgent(investigate_executor=executor)
+
+        result = supervisor.execute_investigation(
+            {
+                "case_id": "CASE-TEST-SAMPLE-TICKET-001",
+                "workspace_path": "/tmp/sample-case",
+                "raw_issue": "顧客がログイン時の 500 エラーについて問い合わせています。",
+                "customer_followup_answers": {
+                    "internal_ticket_confirmation": {
+                        "question": "候補は Issue #2 で正しいですか?",
+                        "answer": "はい。Issue #2 の件です。"
+                    }
+                },
+                "intake_ticket_context_summary": {
+                    "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、暫定回避策は再認証です。"
+                },
+            }
+        )
+
+        self.assertEqual(str(result.get("investigation_summary") or ""), "captured")
+        self.assertIn("顧客がログイン時の 500 エラー", executor.query)
+        self.assertIn("はい。Issue #2 の件です。", executor.query)
+        self.assertIn("Issue #2: SSO ログイン時に 500 エラー", executor.query)
+
+    def test_supervisor_passes_loaded_instruction_text_to_investigation(self) -> None:
+        executor = _CapturingInvestigateExecutor()
+        supervisor = SampleSupervisorAgent(
+            investigate_executor=executor,
+            load_instruction=lambda case_id, role: f"instruction:{case_id}:{role}",
+        )
+
+        supervisor.execute_investigation(
+            {
+                "case_id": "CASE-TEST-SAMPLE-INSTRUCTION-001",
+                "workspace_path": "/tmp/sample-case",
+                "raw_issue": "チケットの状況を確認したいです。",
+            }
+        )
+
+        self.assertIn("instruction:CASE-TEST-SAMPLE-INSTRUCTION-001", executor.instruction_text)
+
+    def test_supervisor_reads_and_updates_shared_memory_for_ticket_followup(self) -> None:
+        executor = _CapturingInvestigateExecutor()
+        writer = _CapturingSharedMemoryWriter()
+        supervisor = SampleSupervisorAgent(
+            investigate_executor=executor,
+            read_shared_memory_tool=lambda **_kwargs: json.dumps(
+                {
+                    "context": "既知事実: 認証基盤で再現あり",
+                    "progress": "前回調査: 候補チケットを確認中",
+                    "summary": "Issue #2 が有力候補",
+                },
+                ensure_ascii=False,
+            ),
+            write_shared_memory_tool=writer,
+        )
+
+        result = supervisor.execute_investigation(
+            {
+                "case_id": "CASE-TEST-SAMPLE-MEMORY-001",
+                "workspace_path": "/tmp/sample-case",
+                "raw_issue": "ログイン時の 500 エラーについて調査してください。",
+                "customer_followup_answers": {
+                    "internal_ticket_confirmation": {
+                        "question": "候補は Issue #2 で正しいですか?",
+                        "answer": "はい。Issue #2 で合っています。",
+                    }
+                },
+                "intake_ticket_context_summary": {
+                    "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。"
+                },
+            }
+        )
+
+        self.assertEqual(str(result.get("investigation_summary") or ""), "captured")
+        self.assertIn("Issue #2 が有力候補", executor.query)
+        self.assertIn("認証基盤で再現あり", executor.query)
+        self.assertEqual(len(writer.calls), 1)
+        written = writer.calls[0]
+        self.assertEqual(str(written.get("case_id") or ""), "CASE-TEST-SAMPLE-MEMORY-001")
+        self.assertEqual(str(written.get("mode") or ""), "replace")
+        self.assertIn("captured", json.dumps(written.get("summary_content"), ensure_ascii=False))
 
 
 if __name__ == "__main__":

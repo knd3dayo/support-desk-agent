@@ -402,6 +402,84 @@ class SampleIntakeMcpTests(unittest.TestCase):
         self.assertIn("URL または識別子の再確認", str(questions["external_ticket_confirmation"]))
         self.assertEqual(str(result.get("status") or ""), "WAITING_CUSTOMER_INPUT")
 
+    def test_existing_ticket_confirmation_answer_allows_progress_without_reasking(self) -> None:
+        config = self._build_config()
+        resolver = _FakeResolver()
+        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+
+        def _scenario(tools) -> str:
+            tools["get_issue"].invoke({"issue_number": "2"})
+            return (
+                "<result><content>Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。</content>"
+                "<suggestion>候補は Issue #2 です。正しい ticket か確認してください。</suggestion></result>"
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                side_effect=self._react_agent_factory(_scenario),
+            ), patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                return_value=_FakeChatModel([]),
+            ):
+                result = agent.create_node().invoke(
+                    {
+                        "raw_issue": "ログイン時の 500 エラーを調査してください",
+                        "workspace_path": tmpdir,
+                        "external_ticket_id": "2",
+                        "external_ticket_lookup_enabled": True,
+                        "customer_followup_answers": {
+                            "external_ticket_confirmation": {
+                                "question": "候補は Issue #2 で正しいですか?",
+                                "answer": "内容を教えて",
+                            }
+                        },
+                    }
+                )
+
+        self.assertEqual(result.get("intake_followup_questions") or {}, {})
+        self.assertNotEqual(str(result.get("status") or ""), "WAITING_CUSTOMER_INPUT")
+
+    def test_rejected_ticket_confirmation_requests_correct_ticket_id(self) -> None:
+        config = self._build_config()
+        resolver = _FakeResolver()
+        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+
+        def _scenario(tools) -> str:
+            tools["get_issue"].invoke({"issue_number": "2"})
+            return (
+                "<result><content>Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。</content>"
+                "<suggestion>候補は Issue #2 です。正しい ticket か確認してください。</suggestion></result>"
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                side_effect=self._react_agent_factory(_scenario),
+            ), patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                return_value=_FakeChatModel([]),
+            ):
+                result = agent.create_node().invoke(
+                    {
+                        "raw_issue": "ログイン時の 500 エラーを調査してください",
+                        "workspace_path": tmpdir,
+                        "external_ticket_id": "2",
+                        "external_ticket_lookup_enabled": True,
+                        "customer_followup_answers": {
+                            "external_ticket_confirmation": {
+                                "question": "候補は Issue #2 で正しいですか?",
+                                "answer": "違います",
+                            }
+                        },
+                    }
+                )
+
+        questions = result.get("intake_followup_questions") or {}
+        self.assertIn("external_ticket_confirmation", questions)
+        self.assertIn("正しい external ticket の URL または識別子", str(questions["external_ticket_confirmation"]))
+        self.assertEqual(str(result.get("status") or ""), "WAITING_CUSTOMER_INPUT")
+
 
 if __name__ == "__main__":
     unittest.main()

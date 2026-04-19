@@ -46,6 +46,16 @@ class SampleIntakeAgent(AbstractAgent):
     config: AppConfig
     ticket_mcp_client: McpToolClient | None = None
 
+    _TICKET_REJECTION_MARKERS = (
+        "違う",
+        "違います",
+        "別",
+        "いいえ",
+        "not",
+        "no",
+        "誤り",
+    )
+
     @staticmethod
     def _default_issue() -> str:
         return "ログインできず、昨日の夕方から 500 エラーが発生しているため確認してください。"
@@ -240,6 +250,117 @@ class SampleIntakeAgent(AbstractAgent):
         path.write_text(raw_result, encoding="utf-8")
         return [str(path)]
 
+    @classmethod
+    def _ticket_confirmation_answer(cls, state: dict[str, Any], ticket_kind: str) -> str:
+        answers = cast(dict[str, Any], state.get("customer_followup_answers") or {})
+        record = answers.get(f"{ticket_kind}_ticket_confirmation")
+        if not isinstance(record, dict):
+            return ""
+        return str(record.get("answer") or "").strip()
+
+    @classmethod
+    def _answer_rejects_ticket_candidate(cls, answer: str) -> bool:
+        normalized = answer.strip().lower()
+        if not normalized:
+            return False
+        return any(marker in normalized for marker in cls._TICKET_REJECTION_MARKERS)
+
+    def _resolve_ticket_followup_question(
+        self,
+        *,
+        state: dict[str, Any],
+        ticket_kind: str,
+        lookup_result: TicketLookupAgentResult,
+    ) -> str | None:
+        suggestion = lookup_result.suggestion.strip()
+        if not suggestion:
+            return None
+
+        confirmation_answer = self._ticket_confirmation_answer(state, ticket_kind)
+        if confirmation_answer and not self._answer_rejects_ticket_candidate(confirmation_answer):
+            return None
+        if confirmation_answer:
+            return f"候補チケットは違うとのことなので、正しい {ticket_kind} ticket の URL または識別子を教えてください。"
+        return suggestion
+
+    def _hydrate_single_ticket_context(
+        self,
+        *,
+        update: dict[str, Any],
+        raw_issue: str,
+        workspace_path: str,
+        ticket_kind: str,
+        ticket_summaries: dict[str, str],
+        ticket_artifacts: dict[str, list[str]],
+        followup_questions: dict[str, str],
+        agent_errors: list[dict[str, str]],
+    ) -> None:
+        ticket_id = str(update.get(f"{ticket_kind}_ticket_id") or "").strip()
+        lookup_enabled = bool(update.get(f"{ticket_kind}_ticket_lookup_enabled"))
+        if not ticket_id or not lookup_enabled:
+            return
+
+        binding = self._ticket_binding(ticket_kind)
+        if binding is None or not binding.enabled:
+            update[f"{ticket_kind}_ticket_lookup_enabled"] = False
+            return
+
+        try:
+            lookup_result, run_state = self._run_ticket_lookup_agent(
+                binding=binding,
+                ticket_kind=ticket_kind,
+                raw_issue=raw_issue,
+                ticket_id=ticket_id,
+            )
+            tool_calls = cast(list[dict[str, Any]], run_state.get("tool_calls") or [])
+            artifact_paths = list(ticket_artifacts.get(f"{ticket_kind}_ticket") or [])
+            if lookup_result.content:
+                ticket_summaries[f"{ticket_kind}_ticket"] = lookup_result.content
+                if tool_calls:
+                    artifact_paths.extend(self._write_ticket_artifact(
+                        workspace_path=workspace_path,
+                        ticket_kind=ticket_kind,
+                        raw_result=str(tool_calls[-1].get("raw_result") or lookup_result.content),
+                    ))
+            if lookup_result.attachment_urls:
+                ticket_summaries[f"{ticket_kind}_ticket_attachments"] = "\n".join(lookup_result.attachment_urls)
+                downloaded_paths = self._download_ticket_attachments(
+                    workspace_path=workspace_path,
+                    ticket_kind=ticket_kind,
+                    attachment_urls=lookup_result.attachment_urls,
+                )
+                ticket_artifacts[f"{ticket_kind}_ticket_attachments"] = downloaded_paths
+                artifact_paths.extend(downloaded_paths)
+            if artifact_paths:
+                ticket_artifacts[f"{ticket_kind}_ticket"] = artifact_paths
+
+            followup_question = self._resolve_ticket_followup_question(
+                state=update,
+                ticket_kind=ticket_kind,
+                lookup_result=lookup_result,
+            )
+            if followup_question:
+                followup_questions[f"{ticket_kind}_ticket_confirmation"] = followup_question
+            else:
+                followup_questions.pop(f"{ticket_kind}_ticket_confirmation", None)
+
+            if lookup_result.suggestion and not lookup_result.content:
+                ticket_summaries[f"{ticket_kind}_ticket"] = lookup_result.suggestion
+                update[f"{ticket_kind}_ticket_lookup_enabled"] = False
+                return
+
+            if not lookup_result.content and not lookup_result.suggestion:
+                raise ValueError("ticket lookup agent returned neither content nor suggestion")
+        except Exception as error:
+            update[f"{ticket_kind}_ticket_lookup_enabled"] = False
+            agent_errors.append(
+                {
+                    "agent": "SampleIntakeAgent",
+                    "phase": f"{ticket_kind}_ticket_lookup",
+                    "message": str(error),
+                }
+            )
+
     def hydrate_ticket_contexts(self, state: dict[str, Any]) -> dict[str, Any]:
         update = dict(state)
         if self.ticket_mcp_client is None:
@@ -256,67 +377,34 @@ class SampleIntakeAgent(AbstractAgent):
         agent_errors = cast(list[dict[str, str]], update.get("agent_errors") or [])
 
         for ticket_kind in ("external", "internal"):
-            ticket_id = str(update.get(f"{ticket_kind}_ticket_id") or "").strip()
-            lookup_enabled = bool(update.get(f"{ticket_kind}_ticket_lookup_enabled"))
-            if not ticket_id or not lookup_enabled:
-                continue
-
-            binding = self._ticket_binding(ticket_kind)
-            if binding is None or not binding.enabled:
-                update[f"{ticket_kind}_ticket_lookup_enabled"] = False
-                continue
-
-            try:
-                lookup_result, run_state = self._run_ticket_lookup_agent(
-                    binding=binding,
-                    ticket_kind=ticket_kind,
-                    raw_issue=raw_issue,
-                    ticket_id=ticket_id,
-                )
-                tool_calls = cast(list[dict[str, Any]], run_state.get("tool_calls") or [])
-                artifact_paths = list(ticket_artifacts.get(f"{ticket_kind}_ticket") or [])
-                if lookup_result.content:
-                    ticket_summaries[f"{ticket_kind}_ticket"] = lookup_result.content
-                    if tool_calls:
-                        artifact_paths.extend(self._write_ticket_artifact(
-                            workspace_path=workspace_path,
-                            ticket_kind=ticket_kind,
-                            raw_result=str(tool_calls[-1].get("raw_result") or lookup_result.content),
-                        ))
-                if lookup_result.attachment_urls:
-                    ticket_summaries[f"{ticket_kind}_ticket_attachments"] = "\n".join(lookup_result.attachment_urls)
-                    downloaded_paths = self._download_ticket_attachments(
-                        workspace_path=workspace_path,
-                        ticket_kind=ticket_kind,
-                        attachment_urls=lookup_result.attachment_urls,
-                    )
-                    ticket_artifacts[f"{ticket_kind}_ticket_attachments"] = downloaded_paths
-                    artifact_paths.extend(downloaded_paths)
-                if artifact_paths:
-                    ticket_artifacts[f"{ticket_kind}_ticket"] = artifact_paths
-                if lookup_result.suggestion:
-                    followup_questions[f"{ticket_kind}_ticket_confirmation"] = lookup_result.suggestion
-                    if not lookup_result.content:
-                        ticket_summaries[f"{ticket_kind}_ticket"] = lookup_result.suggestion
-                        update[f"{ticket_kind}_ticket_lookup_enabled"] = False
-                        continue
-                if not lookup_result.content and not lookup_result.suggestion:
-                    raise ValueError("ticket lookup agent returned neither content nor suggestion")
-            except Exception as error:
-                update[f"{ticket_kind}_ticket_lookup_enabled"] = False
-                agent_errors.append(
-                    {
-                        "agent": "SampleIntakeAgent",
-                        "phase": f"{ticket_kind}_ticket_lookup",
-                        "message": str(error),
-                    }
-                )
+            self._hydrate_single_ticket_context(
+                update=update,
+                raw_issue=raw_issue,
+                workspace_path=workspace_path,
+                ticket_kind=ticket_kind,
+                ticket_summaries=ticket_summaries,
+                ticket_artifacts=ticket_artifacts,
+                followup_questions=followup_questions,
+                agent_errors=agent_errors,
+            )
 
         update["intake_ticket_context_summary"] = ticket_summaries
         update["intake_ticket_artifacts"] = ticket_artifacts
         update["intake_followup_questions"] = followup_questions
         update["agent_errors"] = agent_errors
         return update
+
+    @staticmethod
+    def route_after_ticket_followup_decision(state: dict[str, Any]) -> str:
+        if state.get("intake_followup_questions"):
+            return "request_customer_input"
+        return "finalize"
+
+    def request_customer_input(self, state: dict[str, Any]) -> dict[str, Any]:
+        return StateTransitionHelper.waiting_for_customer_input(
+            dict(state),
+            next_action="チケット候補をユーザーへ確認し、正しい ticket id を回答してもらう",
+        )
 
     def prepare_state(self, state: dict[str, Any]) -> dict[str, Any]:
         raw_issue = str(state.get("raw_issue") or "").strip()
@@ -352,12 +440,6 @@ class SampleIntakeAgent(AbstractAgent):
 
     def finalize_state(self, state: dict[str, Any]) -> dict[str, Any]:
         update = dict(state)
-        if update.get("intake_followup_questions"):
-            update = StateTransitionHelper.waiting_for_customer_input(
-                update,
-                next_action="チケット候補をユーザーへ確認し、正しい ticket id を回答してもらう",
-            )
-            return update
         update["next_action"] = NextActionTexts.START_SUPERVISOR_INVESTIGATION
         return update
 
@@ -366,11 +448,28 @@ class SampleIntakeAgent(AbstractAgent):
         graph.add_node("intake_prepare", lambda state: cast(CaseState, self.prepare_state(cast(dict[str, Any], state))))
         graph.add_node("intake_classify", lambda state: cast(CaseState, self.classify_issue(cast(dict[str, Any], state))))
         graph.add_node("intake_mcp_tickets", lambda state: cast(CaseState, self.hydrate_ticket_contexts(cast(dict[str, Any], state))))
+        graph.add_node(
+            "intake_ticket_followup_decision",
+            lambda state: cast(CaseState, dict(cast(dict[str, Any], state))),
+        )
+        graph.add_node(
+            "intake_request_customer_input",
+            lambda state: cast(CaseState, self.request_customer_input(cast(dict[str, Any], state))),
+        )
         graph.add_node("intake_finalize", lambda state: cast(CaseState, self.finalize_state(cast(dict[str, Any], state))))
         graph.add_edge(START, "intake_prepare")
         graph.add_edge("intake_prepare", "intake_classify")
         graph.add_edge("intake_classify", "intake_mcp_tickets")
-        graph.add_edge("intake_mcp_tickets", "intake_finalize")
+        graph.add_edge("intake_mcp_tickets", "intake_ticket_followup_decision")
+        graph.add_conditional_edges(
+            "intake_ticket_followup_decision",
+            lambda state: self.route_after_ticket_followup_decision(cast(dict[str, Any], state)),
+            {
+                "request_customer_input": "intake_request_customer_input",
+                "finalize": "intake_finalize",
+            },
+        )
+        graph.add_edge("intake_request_customer_input", END)
         graph.add_edge("intake_finalize", END)
         return graph.compile()
 

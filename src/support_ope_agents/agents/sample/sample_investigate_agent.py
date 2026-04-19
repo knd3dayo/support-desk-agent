@@ -38,8 +38,8 @@ class SampleInvestigateAgent(AbstractAgent):
     def _default_query() -> str:
         return "調査すべき内容をここに記載してください"
 
-    def _build_system_prompt(self, query: str) -> str:
-        return (
+    def _build_system_prompt(self, query: str, instruction_text: str = "") -> str:
+        prompt = (
             """
             あなたはサポートケースの調査担当エージェントです。
             ケースの内容に基づいて、関連するログやドキュメントを調査し、サポート担当者が問題を理解しやすいように要約してください。
@@ -56,6 +56,10 @@ class SampleInvestigateAgent(AbstractAgent):
             {query}
             """
         ).format(query=query)
+        instruction = instruction_text.strip()
+        if instruction:
+            prompt = f"{prompt}\n\n追加 instruction:\n{instruction}"
+        return prompt
 
     @staticmethod
     def _find_evidence_log_file(workspace_path: str) -> Path | None:
@@ -131,7 +135,7 @@ class SampleInvestigateAgent(AbstractAgent):
 
         return "".join(parts)
 
-    def create_sub_agent(self, *, query: str | None = None) -> Any:
+    def create_sub_agent(self, *, query: str | None = None, instruction_text: str = "") -> Any:
         settings = self.config.agents.InvestigateAgent
         effective_query = (query or self._default_query()).strip()
 
@@ -147,7 +151,7 @@ class SampleInvestigateAgent(AbstractAgent):
         agent = create_deep_agent(
             model=build_chat_openai_model(self.config),
             backend=backend,
-            system_prompt=self._build_system_prompt(effective_query),
+            system_prompt=self._build_system_prompt(effective_query, instruction_text=instruction_text),
             tools=[],
             name="investigate-agent",
         )
@@ -156,12 +160,12 @@ class SampleInvestigateAgent(AbstractAgent):
     def create_node(self) -> Any:
         return self.create_sub_agent(query=self._default_query())
 
-    def execute(self, *, query: str, workspace_path: str | None = None) -> Any:
+    def execute(self, *, query: str, workspace_path: str | None = None, instruction_text: str | None = None) -> Any:
         effective_query = query.strip() or self._default_query()
         log_summary = self._summarize_workspace_log(workspace_path)
 
         try:
-            sub_agent = self.create_sub_agent(query=effective_query)
+            sub_agent = self.create_sub_agent(query=effective_query, instruction_text=instruction_text or "")
             result = sub_agent.invoke(
                 {
                     "messages": [

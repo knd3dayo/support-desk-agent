@@ -823,18 +823,22 @@ def _build_subgraph_sequence_diagrams(
         "    participant Prepare as intake_prepare",
         "    participant Mask as intake_mask",
         "    participant Hydrate as intake_hydrate_tickets",
+        "    participant Decision as intake_ticket_followup_decision",
         "    participant Classify as intake_classify",
+        "    participant RequestInput as intake_request_customer_input",
         "    participant Finalize as intake_finalize",
         "    User->>Intake: 問い合わせ入力",
         "    Intake->>Prepare: 初期状態を準備",
         "    Prepare->>Mask: PII マスキング",
         "    Mask->>Hydrate: チケット文脈を補完",
         "    Hydrate->>Classify: 問い合わせ分類",
-        "    Classify->>Finalize: 次フェーズを決定",
+        "    Classify->>Decision: 追加確認の要否を判定",
     ]
     if "wait_for_customer_input" in path:
-        intake_lines.append("    Finalize-->>User: 追加情報を依頼")
+        intake_lines.append("    Decision->>RequestInput: 追加確認ルートへ分岐")
+        intake_lines.append("    RequestInput-->>User: 追加情報を依頼")
     elif "investigation" in path:
+        intake_lines.append("    Decision->>Finalize: 調査可能ルートへ分岐")
         intake_lines.append("    Finalize->>Supervisor: 調査フェーズへ引き継ぎ")
 
     diagrams = [
