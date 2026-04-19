@@ -39,6 +39,7 @@ class SampleIntakeClassification(BaseModel):
 class TicketLookupAgentResult(BaseModel):
     content: str = ""
     suggestion: str = ""
+    next_action: str = ""
     attachment_urls: list[str] = Field(default_factory=list)
 
 @dataclass(slots=True)
@@ -89,14 +90,44 @@ class SampleIntakeAgent(AbstractAgent):
             "tool 名や引数は必ず利用可能な tool 定義に従ってください。推測や創作は禁止です。\n"
             "最終出力は XML のみで、説明文やコードフェンスを付けないでください。\n"
             "添付ファイル URL が取得できた場合は、その URL を <attachments><attachment>...</attachment></attachments> に列挙してください。\n"
+            "次に取るべき制御は <next_action> で明示してください。許可される値は proceed / confirm_ticket / request_ticket_id です。\n"
+            "- proceed: ticket を特定できており、追加確認なしで後続処理へ進めてよい\n"
+            "- confirm_ticket: ticket 候補の確認が必要\n"
+            "- request_ticket_id: 正しい ticket URL または識別子の再入力が必要\n"
+            "proceed の場合、<suggestion> は原則空にしてください。\n"
+            "ticket 本文に title や body がある場合、content にはユーザーへそのまま説明できる粒度で要約を書いてください。\n"
+            "特に issue body に『背景』『観測された問題』『期待する挙動』『改善候補』のような節がある場合は、それらを優先して短く要約してください。\n"
+            "content には内部調査手順の一般論ではなく、その ticket 固有の内容を優先して書いてください。\n"
             "\n"
             "期待する XML 形式:\n"
             "<result>\n"
             "  <content>取得できた ticket の要約。取得できなければ空文字でも可</content>\n"
             "  <suggestion>次に取るべき行動。候補提示や確認事項があればここへ書く</suggestion>\n"
+            "  <next_action>proceed | confirm_ticket | request_ticket_id</next_action>\n"
             "  <attachments>\n"
             "    <attachment>https://example.invalid/path/to/file</attachment>\n"
             "  </attachments>\n"
+            "</result>\n"
+            "\n"
+            "出力例1: ticket を特定できて内容も取得できた場合\n"
+            "<result>\n"
+            "  <content>Issue #2 は、仕様問い合わせに対して直接回答できず shared memory 記録も欠落する問題です。背景として過去の改善レポートがあり、主な論点は『直接回答できていない』『shared memory に分類や緊急度が残っていない』『Supervisor の判断根拠が共有サマリーに残っていない』の3点です。期待する挙動は、仕様問い合わせへ直接回答し、構造化項目と判断根拠を shared memory に残すことです。</content>\n"
+            "  <suggestion></suggestion>\n"
+            "  <next_action>proceed</next_action>\n"
+            "</result>\n"
+            "\n"
+            "出力例2: 候補確認が必要な場合\n"
+            "<result>\n"
+            "  <content>Issue #121 は Login failure incident、Issue #123 は Login 500 on production です。</content>\n"
+            "  <suggestion>候補は Issue #121 または Issue #123 です。正しい ticket か確認してください。</suggestion>\n"
+            "  <next_action>confirm_ticket</next_action>\n"
+            "</result>\n"
+            "\n"
+            "出力例3: 再入力が必要な場合\n"
+            "<result>\n"
+            "  <content></content>\n"
+            "  <suggestion>正しい ticket URL または識別子を教えてください。</suggestion>\n"
+            "  <next_action>request_ticket_id</next_action>\n"
             "</result>\n"
             "\n"
             f"ticket kind: {ticket_kind}\n"
@@ -138,6 +169,7 @@ class SampleIntakeAgent(AbstractAgent):
         root = ElementTree.fromstring(xml_text)
         content_node = root.find("content")
         suggestion_node = root.find("suggestion")
+        next_action_node = root.find("next_action")
         attachment_urls = [
             str(node.text or "").strip()
             for node in root.findall("./attachments/attachment")
@@ -146,6 +178,7 @@ class SampleIntakeAgent(AbstractAgent):
         return TicketLookupAgentResult(
             content=str(content_node.text or "").strip() if content_node is not None else "",
             suggestion=str(suggestion_node.text or "").strip() if suggestion_node is not None else "",
+            next_action=str(next_action_node.text or "").strip().lower() if next_action_node is not None else "",
             attachment_urls=attachment_urls,
         )
 
@@ -273,7 +306,10 @@ class SampleIntakeAgent(AbstractAgent):
         lookup_result: TicketLookupAgentResult,
     ) -> str | None:
         suggestion = lookup_result.suggestion.strip()
-        if not suggestion:
+        next_action = lookup_result.next_action.strip().lower()
+        if next_action == "proceed":
+            return None
+        if not suggestion and next_action != "request_ticket_id":
             return None
 
         confirmation_answer = self._ticket_confirmation_answer(state, ticket_kind)
@@ -281,6 +317,8 @@ class SampleIntakeAgent(AbstractAgent):
             return None
         if confirmation_answer:
             return f"候補チケットは違うとのことなので、正しい {ticket_kind} ticket の URL または識別子を教えてください。"
+        if next_action == "request_ticket_id":
+            return suggestion or f"正しい {ticket_kind} ticket の URL または識別子を教えてください。"
         return suggestion
 
     def _hydrate_single_ticket_context(

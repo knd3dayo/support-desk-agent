@@ -212,6 +212,25 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
         return _factory
 
+    def test_ticket_tool_prompt_includes_next_action_examples_and_body_guidance(self) -> None:
+        config = self._build_config()
+        agent = SampleIntakeAgent(config=config, ticket_mcp_client=_FakeResolver())  # type: ignore[arg-type]
+
+        prompt = agent._build_ticket_tool_prompt(
+            ticket_kind="external",
+            raw_issue="現在の調査状況を教えて",
+            ticket_id="2",
+            binding=config.tools.ticket_sources.get("external"),
+            tools_xml="<tools></tools>",
+        )
+
+        self.assertIn("<next_action>", prompt)
+        self.assertIn("proceed</next_action>", prompt)
+        self.assertIn("confirm_ticket", prompt)
+        self.assertIn("request_ticket_id", prompt)
+        self.assertIn("背景", prompt)
+        self.assertIn("期待する挙動", prompt)
+
     def test_hydrates_ticket_context_with_xml_selected_tool(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
@@ -223,6 +242,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
                 "<result>"
                 f"<content>{raw_result}</content>"
                 "<suggestion></suggestion>"
+                "<next_action>proceed</next_action>"
                 "<attachments>"
                 "<attachment>https://example.invalid/files/error-screenshot.png</attachment>"
                 "</attachments>"
@@ -313,7 +333,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
                 "<result><content></content><suggestion>"
                 "指定された external ticket '999' は見つかりませんでした。"
                 " このチケットですか？ 候補: 121 / Login failure incident / open | 123 / Login 500 on production / open"
-                "</suggestion></result>"
+                "</suggestion><next_action>confirm_ticket</next_action></result>"
             )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -377,7 +397,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
             return (
                 "<result><content></content><suggestion>"
                 "ticket が見つからないため、URL または識別子の再確認が必要です。"
-                "</suggestion></result>"
+                "</suggestion><next_action>request_ticket_id</next_action></result>"
             )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -411,7 +431,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
             tools["get_issue"].invoke({"issue_number": "2"})
             return (
                 "<result><content>Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。</content>"
-                "<suggestion>候補は Issue #2 です。正しい ticket か確認してください。</suggestion></result>"
+                "<suggestion></suggestion><next_action>proceed</next_action></result>"
             )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -449,7 +469,8 @@ class SampleIntakeMcpTests(unittest.TestCase):
             tools["get_issue"].invoke({"issue_number": "2"})
             return (
                 "<result><content>Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。</content>"
-                "<suggestion>候補は Issue #2 です。正しい ticket か確認してください。</suggestion></result>"
+                "<suggestion>候補は Issue #2 です。正しい ticket か確認してください。</suggestion>"
+                "<next_action>confirm_ticket</next_action></result>"
             )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -478,6 +499,39 @@ class SampleIntakeMcpTests(unittest.TestCase):
         questions = result.get("intake_followup_questions") or {}
         self.assertIn("external_ticket_confirmation", questions)
         self.assertIn("正しい external ticket の URL または識別子", str(questions["external_ticket_confirmation"]))
+        self.assertEqual(str(result.get("status") or ""), "WAITING_CUSTOMER_INPUT")
+
+    def test_found_ticket_with_legacy_suggestion_still_waits_for_confirmation_without_next_action(self) -> None:
+        config = self._build_config()
+        resolver = _FakeResolver()
+        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+
+        def _scenario(tools) -> str:
+            tools["get_issue"].invoke({"issue_number": "2"})
+            return (
+                "<result><content>Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。</content>"
+                "<suggestion>候補は Issue #2 です。正しい ticket か確認してください。</suggestion></result>"
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                side_effect=self._react_agent_factory(_scenario),
+            ), patch(
+                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                return_value=_FakeChatModel([]),
+            ):
+                result = agent.create_node().invoke(
+                    {
+                        "raw_issue": "ログイン時の 500 エラーを調査してください",
+                        "workspace_path": tmpdir,
+                        "external_ticket_id": "2",
+                        "external_ticket_lookup_enabled": True,
+                    }
+                )
+
+        questions = result.get("intake_followup_questions") or {}
+        self.assertIn("external_ticket_confirmation", questions)
         self.assertEqual(str(result.get("status") or ""), "WAITING_CUSTOMER_INPUT")
 
 

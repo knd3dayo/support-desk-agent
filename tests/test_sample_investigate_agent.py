@@ -9,6 +9,9 @@ from unittest.mock import patch
 from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.instructions.loader import InstructionLoader
+from support_ope_agents.memory.file_store import CaseMemoryStore
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 
 
 class _FakeSubAgent:
@@ -80,6 +83,19 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("vdp.log", summary)
         self.assertIn("vdpcachedatasource not found", summary)
         self.assertIn("補足情報", summary)
+
+    def test_default_instructions_prioritize_ticket_body_for_detail_questions(self) -> None:
+        config = self._build_config()
+        memory_store = CaseMemoryStore(config)
+        loader = InstructionLoader(config, memory_store, RuntimeHarnessManager(config))
+
+        investigate_instruction = loader.load("CASE-TEST", "InvestigateAgent")
+        supervisor_instruction = loader.load("CASE-TEST", "SuperVisorAgent")
+
+        self.assertIn("ticket 固有の背景", investigate_instruction)
+        self.assertIn("内容を教えて", investigate_instruction)
+        self.assertIn("取得済み ticket context", supervisor_instruction)
+        self.assertIn("ticket の要点", supervisor_instruction)
 
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
         supervisor = SampleSupervisorAgent(investigate_executor=_WorkspaceAwareInvestigateExecutor())
