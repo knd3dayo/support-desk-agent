@@ -120,6 +120,21 @@ export type ControlCatalogResponse = {
   }>;
 };
 
+export type RuntimeConstraintPolicy = {
+  policy_id: string;
+  value: string | number | boolean | null;
+  effect_summary: string;
+};
+
+export type RuntimeConstraintEntry = {
+  role: string;
+  constraint_mode: string;
+  instruction_enabled: boolean;
+  runtime_enabled: boolean;
+  summary_constraints_enabled: boolean;
+  policies: RuntimeConstraintPolicy[];
+};
+
 export type RuntimeAuditDecision = {
   control_point_id: string;
   category: string;

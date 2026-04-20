@@ -142,6 +142,17 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertEqual(payload["app_name"], "Support Desk")
         self.assertFalse(payload["auth_required"])
 
+    def test_runtime_constraints_endpoint_returns_constraint_entries(self) -> None:
+        response = self.client.get("/runtime-constraints")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIsInstance(payload, list)
+        self.assertGreater(len(payload), 0)
+        self.assertIn("role", payload[0])
+        self.assertIn("constraint_mode", payload[0])
+        self.assertIn("policies", payload[0])
+
     def test_describe_agents_surfaces_backend_failure_details(self) -> None:
         with patch.object(
             ProductionRuntimeService,

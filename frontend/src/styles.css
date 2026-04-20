@@ -370,6 +370,8 @@ input {
 
 .sidebar-tab-icon-sessions::before,
 .sidebar-tab-icon-sessions::after,
+.sidebar-tab-icon-constraints::before,
+.sidebar-tab-icon-constraints::after,
 .sidebar-tab-icon-control::before,
 .sidebar-tab-icon-control::after,
 .sidebar-tab-icon-files::before,
@@ -391,6 +393,24 @@ input {
   height: 1.8px;
   background: currentColor;
   box-shadow: 0 4px 0 currentColor;
+}
+
+.sidebar-tab-icon-constraints::before {
+  inset: 2px;
+  border: 1.6px solid currentColor;
+  border-radius: 5px;
+}
+
+.sidebar-tab-icon-constraints::after {
+  left: 5px;
+  top: 4px;
+  width: 8px;
+  height: 9px;
+  border-left: 1.8px solid currentColor;
+  border-right: 1.8px solid currentColor;
+  border-bottom: 1.8px solid currentColor;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  box-shadow: 0 3px 0 -1px currentColor;
 }
 
 .sidebar-tab-icon-control::before {
@@ -466,6 +486,94 @@ input {
 .sidebar-tree-view {
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.constraint-list-view {
+  display: grid;
+  gap: 12px;
+}
+
+.constraint-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 22px;
+}
+
+.constraint-card-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.constraint-card-header strong {
+  display: block;
+  font-size: 0.96rem;
+}
+
+.constraint-card-header span {
+  color: rgba(16, 33, 47, 0.58);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.constraint-flag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.constraint-flag {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+}
+
+.constraint-flag.is-enabled {
+  background: rgba(25, 115, 86, 0.12);
+  color: #135a43;
+}
+
+.constraint-flag.is-disabled {
+  background: rgba(154, 73, 39, 0.12);
+  color: #8c4625;
+}
+
+.constraint-policy-list {
+  display: grid;
+  gap: 10px;
+}
+
+.constraint-policy-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(16, 33, 47, 0.06);
+}
+
+.constraint-policy-item strong {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.constraint-policy-item span,
+.constraint-policy-empty {
+  color: rgba(16, 33, 47, 0.58);
+  font-size: 0.78rem;
+}
+
+.constraint-policy-item p,
+.constraint-policy-empty {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.constraint-empty-state {
+  padding-top: 4px;
 }
 
 .panel-actions {

@@ -5,6 +5,7 @@ import type {
   GenerateReportResponse,
   InitCaseResponse,
   RuntimeAuditResponse,
+  RuntimeConstraintEntry,
   RuntimeEnvelope,
   UiConfigResponse,
   WorkspaceBrowseResponse,
@@ -104,6 +105,10 @@ export function loadUiConfig(): Promise<UiConfigResponse> {
 
 export function loadControlCatalog(): Promise<ControlCatalogResponse> {
   return requestJson<ControlCatalogResponse>('/control-catalog');
+}
+
+export function loadRuntimeConstraints(): Promise<RuntimeConstraintEntry[]> {
+  return requestJson<RuntimeConstraintEntry[]>('/runtime-constraints');
 }
 
 export function createCase(prompt: string): Promise<InitCaseResponse> {

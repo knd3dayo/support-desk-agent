@@ -365,6 +365,14 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
     def describe_control_catalog(_: None = Depends(require_auth)) -> dict[str, object]:
         return service.describe_control_catalog()
 
+    @app.get("/runtime-constraints")
+    def list_runtime_constraints(_: None = Depends(require_auth)) -> list[dict[str, object]]:
+        catalog = service.describe_control_catalog()
+        runtime_constraints = catalog.get("runtime_constraints")
+        if isinstance(runtime_constraints, list):
+            return [item for item in runtime_constraints if isinstance(item, dict)]
+        return []
+
     @app.get("/cases/{case_id}/runtime-audit")
     def describe_runtime_audit(
         case_id: str,

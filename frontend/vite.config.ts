@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
         '/health': apiProxyTarget,
         '/ui-config': apiProxyTarget,
         '/control-catalog': apiProxyTarget,
+        '/runtime-constraints': apiProxyTarget,
         '/cases': apiProxyTarget,
         '/init-case': apiProxyTarget,
         '/plan': apiProxyTarget,

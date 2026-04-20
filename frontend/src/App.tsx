@@ -13,6 +13,7 @@ import {
   loadFile,
   loadHistory,
   loadRawFileBlob,
+  loadRuntimeConstraints,
   loadRuntimeAudit,
   loadUiConfig,
   renderedPreviewUrl,
@@ -29,6 +30,7 @@ import type {
   LangChainMessage,
   RuntimeEnvelope,
   RuntimeAuditResponse,
+  RuntimeConstraintEntry,
   WorkspaceBrowseResponse,
   WorkspaceEntry,
   WorkspaceFileResponse,
@@ -42,7 +44,7 @@ type PendingQuestion = {
 };
 
 type SubmissionStage = 'creating-case' | 'uploading-files' | 'running-workflow' | 'syncing-results';
-type SidebarView = 'sessions' | 'control' | 'files';
+type SidebarView = 'sessions' | 'constraints' | 'control' | 'files';
 
 const submissionStageCopy: Record<SubmissionStage, { title: string; detail: string }> = {
   'creating-case': {
@@ -97,6 +99,21 @@ function countActiveControlPoints(runtimeAudit: RuntimeAuditResponse | null): nu
     return null;
   }
   return new Set(runtimeAudit.active_control_point_ids).size;
+}
+
+function formatConstraintMode(mode: string): string {
+  switch (mode) {
+    case 'default':
+      return '標準';
+    case 'runtime_only':
+      return '実行時のみ';
+    case 'instruction_only':
+      return '指示のみ';
+    case 'bypass':
+      return '制約なし';
+    default:
+      return mode;
+  }
 }
 
 function MermaidBlock({ chart }: { chart: string }) {
@@ -541,6 +558,9 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [workspaceCollapsed, setWorkspaceCollapsed] = useState(true);
   const [controlCatalog, setControlCatalog] = useState<ControlCatalogResponse | null>(null);
+  const [runtimeConstraints, setRuntimeConstraints] = useState<RuntimeConstraintEntry[] | null>(null);
+  const [runtimeConstraintsLoading, setRuntimeConstraintsLoading] = useState(false);
+  const [runtimeConstraintsError, setRuntimeConstraintsError] = useState<string | null>(null);
   const [runtimeAudit, setRuntimeAudit] = useState<RuntimeAuditResponse | null>(null);
   const chatStageRef = useRef<HTMLElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -601,6 +621,13 @@ export default function App() {
     });
   }, [messages, isAwaitingResponse, submissionStage, pendingQuestion]);
 
+  useEffect(() => {
+    if (activeSidebarView !== 'constraints') {
+      return;
+    }
+    void refreshRuntimeConstraints();
+  }, [activeSidebarView, selectedCase?.case_id]);
+
   async function refreshCases() {
     try {
       const nextCases = sortCasesByUpdatedAt(await listCases());
@@ -633,6 +660,26 @@ export default function App() {
     } catch {
       setControlCatalog(null);
     }
+  }
+
+  async function refreshRuntimeConstraints() {
+    setRuntimeConstraintsLoading(true);
+    setRuntimeConstraintsError(null);
+
+    try {
+      setRuntimeConstraints(await loadRuntimeConstraints());
+    } catch (error) {
+      setRuntimeConstraints([]);
+      setRuntimeConstraintsError(getErrorMessage(error, 'ランタイム制約一覧の取得に失敗しました。'));
+    } finally {
+      setRuntimeConstraintsLoading(false);
+    }
+  }
+
+  async function openRuntimeConstraintsView() {
+    setSidebarCollapsed(false);
+    setActiveSidebarView('constraints');
+    setWorkspaceCollapsed(true);
   }
 
   async function refreshRuntimeAudit(target: CaseSummary, traceId: string | null | undefined) {
@@ -696,6 +743,8 @@ export default function App() {
       setDraftPrompt('');
       setQueuedFiles([]);
       setRuntimeAudit(null);
+      setRuntimeConstraints(null);
+      setRuntimeConstraintsError(null);
       setExternalTicketId('');
       setInternalTicketId('');
     });
@@ -1010,6 +1059,11 @@ export default function App() {
       title: 'ケース一覧',
       description: 'ケースごとの会話履歴をここで切り替えます。',
     },
+    constraints: {
+      label: 'Runtime Constraints',
+      title: 'ランタイム制約一覧',
+      description: '各エージェントの制約モードと有効状態をケース切替にあわせて再取得して表示します。',
+    },
     control: {
       label: 'Control View',
       title: '制御一覧と実行時監査',
@@ -1090,6 +1144,17 @@ export default function App() {
             <span className="sidebar-tab-text">履歴</span>
           </button>
           <button
+            className={`sidebar-tab ${activeSidebarView === 'constraints' ? 'active' : ''}`}
+            type="button"
+            onClick={() => void openRuntimeConstraintsView()}
+            aria-label="ランタイム制約一覧を表示"
+            aria-pressed={activeSidebarView === 'constraints'}
+            title="ランタイム制約一覧"
+          >
+            <span className="sidebar-tab-icon sidebar-tab-icon-constraints" aria-hidden="true" />
+            <span className="sidebar-tab-text">制約</span>
+          </button>
+          <button
             className={`sidebar-tab ${activeSidebarView === 'control' ? 'active' : ''}`}
             type="button"
             onClick={() => {
@@ -1156,6 +1221,68 @@ export default function App() {
                   ))}
                 </div>
               </>
+            ) : null}
+
+            {activeSidebarView === 'constraints' ? (
+              <div className="constraint-list-view">
+                {runtimeConstraintsLoading ? (
+                  <div className="empty-state compact constraint-empty-state">
+                    <h3>ランタイム制約を取得しています。</h3>
+                    <p>設定済みの制約モードとポリシーを読み込んでいます。</p>
+                  </div>
+                ) : null}
+
+                {!runtimeConstraintsLoading && runtimeConstraintsError ? (
+                  <div className="empty-state compact constraint-empty-state">
+                    <h3>ランタイム制約一覧を取得できませんでした。</h3>
+                    <p>{runtimeConstraintsError}</p>
+                  </div>
+                ) : null}
+
+                {!runtimeConstraintsLoading && !runtimeConstraintsError && runtimeConstraints?.length ? (
+                  runtimeConstraints.map((item) => (
+                    <section key={item.role} className="constraint-card panel-subtle">
+                      <div className="constraint-card-header">
+                        <div>
+                          <strong>{item.role}</strong>
+                          <span>{formatConstraintMode(item.constraint_mode)}</span>
+                        </div>
+                      </div>
+                      <div className="constraint-flag-list">
+                        <span className={`constraint-flag ${item.instruction_enabled ? 'is-enabled' : 'is-disabled'}`}>
+                          指示読み込み: {item.instruction_enabled ? '有効' : '無効'}
+                        </span>
+                        <span className={`constraint-flag ${item.runtime_enabled ? 'is-enabled' : 'is-disabled'}`}>
+                          実行時制約: {item.runtime_enabled ? '有効' : '無効'}
+                        </span>
+                        <span className={`constraint-flag ${item.summary_constraints_enabled ? 'is-enabled' : 'is-disabled'}`}>
+                          要約制約: {item.summary_constraints_enabled ? '有効' : '無効'}
+                        </span>
+                      </div>
+                      <div className="constraint-policy-list">
+                        {item.policies.length > 0 ? (
+                          item.policies.map((policy) => (
+                            <div key={`${item.role}-${policy.policy_id}`} className="constraint-policy-item">
+                              <strong>{policy.policy_id}</strong>
+                              <span>{policy.value === null ? '未設定' : `設定値: ${String(policy.value)}`}</span>
+                              <p>{policy.effect_summary}</p>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="constraint-policy-empty">このロール固有のポリシーはありません。</p>
+                        )}
+                      </div>
+                    </section>
+                  ))
+                ) : null}
+
+                {!runtimeConstraintsLoading && !runtimeConstraintsError && runtimeConstraints?.length === 0 ? (
+                  <div className="empty-state compact constraint-empty-state">
+                    <h3>ランタイム制約は定義されていません。</h3>
+                    <p>現在の設定では一覧表示できる制約がありません。</p>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
 
             {activeSidebarView === 'control' ? (
