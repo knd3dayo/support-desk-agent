@@ -32,13 +32,13 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(settings.resolve_constraint_mode(INVESTIGATE_AGENT), "default")
         self.assertEqual(settings.resolve_constraint_mode(SUPERVISOR_AGENT), "default")
 
-    def test_support_ope_agents_sample_configures_github_ticket_sources(self) -> None:
+    def test_support_ope_agents_sample_configures_github_ticket_logical_tools(self) -> None:
         config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-        ticket_sources = raw["support_ope_agents"]["tools"]["ticket_sources"]
-        external_ticket = ticket_sources["external"]
-        internal_ticket = ticket_sources["internal"]
+        logical_tools = raw["support_ope_agents"]["tools"]["logical_tools"]
+        external_ticket = logical_tools["external_ticket"]
+        internal_ticket = logical_tools["internal_ticket"]
 
         self.assertEqual(external_ticket["server"], "github")
         self.assertEqual(internal_ticket["server"], "github")
@@ -147,6 +147,7 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(external_ticket.provider, "mcp")
         self.assertEqual(external_ticket.server, "github")
         self.assertEqual(external_ticket.arguments, {"repo": "external-support"})
+        self.assertEqual(external_ticket.candidate_matching.max_question_candidates, 3)
 
     def test_sample_runtime_context_validates_enabled_ticket_sources_on_startup(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

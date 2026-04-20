@@ -15,9 +15,14 @@ support_ope_agents:
     mode: sample
 
   tools:
-    ticket_sources:
-      external:
+    logical_tools:
+      # logical_tools は任意差し替えを許す tool だけを置きます。
+      # external/internal ticket も現在はこちらで設定します。
+      # write_shared_memory / read_shared_memory / write_working_memory / write_draft /
+      # detect_log_format などの内部用 tool はここから MCP へ差し替えできません。
+      external_ticket:
         enabled: true
+        provider: mcp
         server: github
         description: GitHub 上で管理する顧客向け問い合わせ issue
         arguments:
@@ -38,8 +43,9 @@ support_ope_agents:
           min_content_similarity: 0.2
           min_combined_similarity: 0.35
           max_question_candidates: 3
-      internal:
+      internal_ticket:
         enabled: true
+        provider: mcp
         server: github
         description: GitHub 上で管理する内部管理 issue
         arguments:
@@ -60,11 +66,6 @@ support_ope_agents:
           min_content_similarity: 0.2
           min_combined_similarity: 0.35
           max_question_candidates: 3
-    logical_tools:
-      # logical_tools は任意差し替えを許す tool だけを置きます。
-      # external/internal ticket は ticket_sources で設定します。
-      # write_shared_memory / read_shared_memory / write_working_memory / write_draft /
-      # detect_log_format などの内部用 tool はここから MCP へ差し替えできません。
       search_documents:
         enabled: true
         provider: builtin

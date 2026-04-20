@@ -307,6 +307,7 @@ class LogicalToolSettings(StrictConfigModel):
     argument_map: dict[str, str] = Field(default_factory=dict)
     integer_arguments: list[str] = Field(default_factory=list)
     description: str = ""
+    candidate_matching: TicketCandidateMatchingSettings = Field(default_factory=TicketCandidateMatchingSettings)
 
     @staticmethod
     def _is_ticket_lookup_tool(name: str | None) -> bool:
@@ -326,6 +327,8 @@ class LogicalToolSettings(StrictConfigModel):
             raise ValueError(
                 "logical tool with provider='builtin' cannot define 'arguments', 'argument_map', or 'integer_arguments'"
             )
+        if self._is_ticket_lookup_tool(None):
+            return self
         return self
 
 
@@ -369,6 +372,7 @@ class ToolSettings(StrictConfigModel):
                 server=str(logical_tool.server or ""),
                 description=logical_tool.description,
                 arguments=dict(logical_tool.arguments),
+                candidate_matching=logical_tool.candidate_matching,
             )
 
         return TicketSourceSettings(

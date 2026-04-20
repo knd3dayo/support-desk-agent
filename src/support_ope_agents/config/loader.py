@@ -63,6 +63,9 @@ def _migrate_legacy_ticket_sources(tools: dict[str, Any]) -> dict[str, Any]:
         arguments = binding.get("arguments")
         if isinstance(arguments, dict):
             migrated["arguments"] = arguments
+        candidate_matching = binding.get("candidate_matching")
+        if isinstance(candidate_matching, dict):
+            migrated["candidate_matching"] = candidate_matching
         logical_tools[logical_tool_name] = migrated
 
     return tools

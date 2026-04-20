@@ -127,7 +127,7 @@ support_ope_agents:
   # logical_tools では、任意差し替えを許す論理ツールだけを定義します。
   # write_shared_memory / read_shared_memory / write_working_memory / write_draft / detect_log_format など、
   # workflow 内部の状態管理に結びついたツールは logical_tools から MCP へ差し替えできません。
-  # external_ticket / internal_ticket は logical_tools ではなく ticket_sources で定義します。
+  # external_ticket / internal_ticket も logical_tools で定義します。
   # tools:
   #   # 外部 MCP 定義ファイルへのパスです。
   #   # logical_tools のどれかで provider: mcp を使う場合は必須です。
@@ -147,26 +147,25 @@ support_ope_agents:
   #   libreoffice_command:
   #
   #   # 論理ツールごとの有効化と供給元です。
-  #   # ここには classify_ticket / search_documents / prepare_ticket_update /
-  #   # zendesk_reply / redmine_update のような差し替え対象だけを書きます。
+  #   # search_documents / run_python_analysis / external_ticket / internal_ticket /
+  #   # prepare_ticket_update / zendesk_reply / redmine_update などの差し替え対象を書きます。
   #   logical_tools:
   #     # まず InvestigateAgent で使う文書検索を有効化します。
   #     search_documents:
   #       enabled: true
   #       provider: builtin
   #
-  #   # 複数 Agent で共有する ticket 取得元です。
-  #   # IntakeAgent はこの設定を使って、manifest 上の tool 一覧から適切な ticket 取得 tool を選びます。
-  #   # TicketUpdateAgent などから同じ取得元を使いたい場合も、こちらを参照します。
-  #   # provider / tool はここでは不要です。server と arguments だけを指定します。
-  #   # CLI / API 起動時には enabled な ticket_sources について list_tools を実行し、
-  #   # 接続できない場合や server 名が誤っている場合は fail-fast で起動を止めます。
-  #   ticket_sources:
-  #     external:
+  #     # 複数 Agent で共有する外部 ticket 取得元です。
+  #     # IntakeAgent はこの設定を使って、manifest 上の tool 一覧から適切な ticket 取得 tool を選びます。
+  #     # TicketUpdateAgent などから同じ取得元を使いたい場合も、こちらを参照します。
+  #     # provider は mcp を指定し、server と arguments で接続先を定義します。
+  #     # CLI / API 起動時には enabled な external_ticket / internal_ticket について list_tools を実行し、
+  #     # 接続できない場合や server 名が誤っている場合は fail-fast で起動を止めます。
+  #     external_ticket:
   #       enabled: false
+  #       provider: mcp
   #       server: github
   #       description: GitHub 上で管理する顧客向け問い合わせ issue
-  #       decision_tag: decision
   #       arguments:
   #         owner: your-github-org
   #         repo: support-ope-external-tickets
@@ -177,11 +176,11 @@ support_ope_agents:
   #         min_content_similarity: 0.2
   #         min_combined_similarity: 0.35
   #         max_question_candidates: 3
-  #     internal:
+  #     internal_ticket:
   #       enabled: false
+  #       provider: mcp
   #       server: github
   #       description: GitHub 上で管理する内部管理 issue
-  #       decision_tag: decision
   #       arguments:
   #         owner: your-github-org
   #         repo: support-ope-internal-tickets
