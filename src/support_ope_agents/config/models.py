@@ -346,7 +346,7 @@ class ToolSettings(StrictConfigModel):
             raise ValueError(
                 "tools.mcp_manifest_path is required when enabled logical tools use MCP"
             )
-        for logical_tool_name in self.logical_tools:
+        for logical_tool_name, setting in self.logical_tools.items():
             if logical_tool_name in INTERNAL_ONLY_LOGICAL_TOOLS:
                 raise ValueError(
                     f"tools.logical_tools.{logical_tool_name} is internal-only and cannot be configured from config.yml"
@@ -355,6 +355,10 @@ class ToolSettings(StrictConfigModel):
                 allowed = ", ".join(sorted(CONFIGURABLE_LOGICAL_TOOLS))
                 raise ValueError(
                     f"tools.logical_tools.{logical_tool_name} is not configurable. configurable_tools=[{allowed}]"
+                )
+            if logical_tool_name in {"external_ticket", "internal_ticket"} and str(setting.tool or "").strip():
+                raise ValueError(
+                    f"tools.logical_tools.{logical_tool_name}.tool is legacy and no longer supported. Use tools.ticket_sources.{logical_tool_name.removesuffix('_ticket')} instead"
                 )
         return self
 

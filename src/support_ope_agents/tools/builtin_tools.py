@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime
 import json
 import mimetypes
 import re
@@ -25,6 +26,7 @@ from PIL import Image
 from pptx import Presentation
 
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.tools.default_infer_log_pattern import build_default_infer_log_pattern_tool
 from support_ope_agents.util.langchain import build_chat_openai_model, stringify_response_content
 
 
@@ -64,6 +66,8 @@ def _ensure_existing_paths(paths: list[str]) -> list[Path]:
             raise FileNotFoundError(f"File was not found: {path}")
         resolved.append(path)
     return resolved
+
+
 def _truncate_text(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
@@ -278,6 +282,131 @@ def _detect_log_format_from_lines(lines: list[str]) -> dict[str, Any]:
     }
 
 
+def _parse_timestamp_value(raw_value: str, time_format: str | None = None) -> datetime | None:
+    value = raw_value.strip()
+    if not value:
+        return None
+    if time_format:
+        try:
+            return datetime.strptime(value, time_format)
+        except ValueError:
+            return None
+
+    normalized = value.replace(",", ".")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        pass
+
+    candidates = (
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y/%m/%d %H:%M:%S.%f",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y%m%d %H:%M:%S",
+    )
+    for candidate in candidates:
+        try:
+            return datetime.strptime(normalized, candidate)
+        except ValueError:
+            continue
+    return None
+
+
+def _sanitize_output_component(value: str) -> str:
+    collapsed = re.sub(r"[^0-9A-Za-z._-]+", "-", value.strip())
+    sanitized = collapsed.strip("-._")
+    return sanitized or "value"
+
+
+def _extract_log_records_in_time_range(
+    text: str,
+    *,
+    header_pattern: str,
+    timestamp_start: int,
+    timestamp_end: int,
+    range_start: str,
+    range_end: str,
+    time_format: str | None = None,
+) -> dict[str, Any]:
+    if timestamp_start < 0 or timestamp_end <= timestamp_start:
+        raise ValueError("timestamp_start and timestamp_end must define a valid non-empty slice")
+
+    start_time = _parse_timestamp_value(range_start, time_format)
+    end_time = _parse_timestamp_value(range_end, time_format)
+    if start_time is None or end_time is None:
+        raise ValueError("range_start and range_end must be parseable timestamps")
+    if start_time > end_time:
+        raise ValueError("range_start must be earlier than or equal to range_end")
+
+    compiled = re.compile(header_pattern)
+    lines = text.splitlines()
+    records: list[dict[str, Any]] = []
+    current_record: dict[str, Any] | None = None
+    unmatched_preamble: list[str] = []
+
+    for line_number, line in enumerate(lines, start=1):
+        if compiled.search(line):
+            if current_record is not None:
+                records.append(current_record)
+            current_record = {
+                "start_line": line_number,
+                "lines": [line],
+                "header_line": line,
+            }
+            continue
+        if current_record is not None:
+            cast(list[str], current_record["lines"]).append(line)
+        else:
+            unmatched_preamble.append(line)
+
+    if current_record is not None:
+        records.append(current_record)
+
+    extracted_records: list[dict[str, Any]] = []
+    parse_failures: list[dict[str, Any]] = []
+    for record in records:
+        header_line = str(record["header_line"])
+        timestamp_text = header_line[timestamp_start:timestamp_end]
+        parsed_timestamp = _parse_timestamp_value(timestamp_text, time_format)
+        if parsed_timestamp is None:
+            parse_failures.append(
+                {
+                    "start_line": record["start_line"],
+                    "timestamp_text": timestamp_text,
+                    "header_line": header_line,
+                }
+            )
+            continue
+        if start_time <= parsed_timestamp <= end_time:
+            extracted_records.append(
+                {
+                    "start_line": record["start_line"],
+                    "end_line": record["start_line"] + len(cast(list[str], record["lines"])) - 1,
+                    "timestamp": parsed_timestamp.isoformat(),
+                    "text": "\n".join(cast(list[str], record["lines"])),
+                }
+            )
+
+    return {
+        "total_lines": len(lines),
+        "matched_record_count": len(extracted_records),
+        "record_count": len(records),
+        "parse_failure_count": len(parse_failures),
+        "parse_failures": parse_failures[:10],
+        "records": extracted_records,
+        "unmatched_preamble_line_count": len(unmatched_preamble),
+        "time_range": {
+            "start": start_time.isoformat(),
+            "end": end_time.isoformat(),
+        },
+    }
+
+
 def _search_log_with_patterns(
     text: str,
     *,
@@ -309,6 +438,8 @@ def _search_log_with_patterns(
 
 
 def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
+    infer_log_pattern = build_default_infer_log_pattern_tool(config)
+
     async def analyze_image_files(
         file_list: list[str],
         prompt: str,
@@ -519,6 +650,61 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
         }
         return json.dumps(result, ensure_ascii=False)
 
+    async def infer_log_header_pattern(
+        file_path: str,
+        sample_line_limit: int = 100,
+    ) -> str:
+        return infer_log_pattern(file_path=file_path, sample_line_limit=sample_line_limit)
+
+    async def extract_log_time_range(
+        file_path: str,
+        workspace_path: str,
+        header_pattern: str,
+        timestamp_start: int,
+        timestamp_end: int,
+        range_start: str,
+        range_end: str,
+        time_format: str | None = None,
+        output_subdir: str = "log_extracts",
+        output_filename: str | None = None,
+    ) -> str:
+        source_path = _ensure_existing_paths([file_path])[0]
+        workspace_root = Path(workspace_path).expanduser().resolve()
+        text = _extract_text_from_path(source_path)
+        extraction = _extract_log_records_in_time_range(
+            text,
+            header_pattern=header_pattern,
+            timestamp_start=timestamp_start,
+            timestamp_end=timestamp_end,
+            range_start=range_start,
+            range_end=range_end,
+            time_format=time_format,
+        )
+
+        artifacts_dir = workspace_root / config.data_paths.artifacts_subdir / output_subdir.strip("/")
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        derived_filename = output_filename or (
+            f"{source_path.stem}_{_sanitize_output_component(range_start)}_{_sanitize_output_component(range_end)}{source_path.suffix or '.log'}"
+        )
+        output_path = artifacts_dir / derived_filename
+        rendered = "\n\n".join(str(record["text"]) for record in extraction["records"])
+        output_path.write_text(rendered + ("\n" if rendered else ""), encoding="utf-8")
+
+        result = {
+            "status": "matched" if extraction["matched_record_count"] else "unavailable",
+            "file_path": str(source_path),
+            "workspace_path": str(workspace_root),
+            "output_path": str(output_path),
+            "header_pattern": header_pattern,
+            "timestamp_start": timestamp_start,
+            "timestamp_end": timestamp_end,
+            "time_format": time_format,
+            "range_start": range_start,
+            "range_end": range_end,
+            **extraction,
+        }
+        return json.dumps(result, ensure_ascii=False)
+
     return {
         "analyze_image_files": BuiltinTool("analyze_image_files", "Analyze local image files", analyze_image_files),
         "analyze_pdf_files": BuiltinTool("analyze_pdf_files", "Analyze local PDF files", analyze_pdf_files),
@@ -549,5 +735,15 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
             "detect_log_format_and_search",
             "Detect log format from the first lines, generate regex patterns, and search the log",
             detect_log_format_and_search,
+        ),
+        "infer_log_header_pattern": BuiltinTool(
+            "infer_log_header_pattern",
+            "Infer a log header regex and timestamp slice from the first lines of a log file",
+            infer_log_header_pattern,
+        ),
+        "extract_log_time_range": BuiltinTool(
+            "extract_log_time_range",
+            "Extract records in a timestamp range from a log file and save them into the workspace artifacts",
+            extract_log_time_range,
         ),
     }

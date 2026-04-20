@@ -26,6 +26,7 @@ from support_ope_agents.models.state_transitions import NextActionTexts, StateTr
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 from support_ope_agents.models.state import CaseState
 
 
@@ -60,6 +61,20 @@ class SampleIntakeAgent(AbstractAgent):
     @staticmethod
     def _default_issue() -> str:
         return "ログインできず、昨日の夕方から 500 エラーが発生しているため確認してください。"
+
+    @staticmethod
+    def _extract_incident_timeframe(text: str) -> str:
+        patterns = (
+            r"\b\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2})?\b",
+            r"\b\d{4}/\d{1,2}/\d{1,2}(?:\s+\d{1,2}:\d{2})?\b",
+            r"\b\d{1,2}:\d{2}\b",
+            r"(今日|昨日|一昨日|今朝|昨夜|本日|昨日の夜|本日午前|本日午後|午前|午後|深夜|夕方|朝方)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(0).strip()
+        return ""
 
     def _build_classification_prompt(self, raw_issue: str) -> str:
         return (
@@ -474,6 +489,10 @@ class SampleIntakeAgent(AbstractAgent):
         update["intake_urgency"] = classification.urgency
         update["intake_investigation_focus"] = classification.investigation_focus
         update["intake_classification_reason"] = classification.reason
+        extracted_timeframe = self._extract_incident_timeframe(raw_issue)
+        existing_timeframe = str(update.get("intake_incident_timeframe") or "").strip()
+        update["intake_incident_timeframe"] = extracted_timeframe or existing_timeframe
+        apply_derived_log_extract_range(update, str(update.get("intake_incident_timeframe") or ""), config=self.config)
         return update
 
     def finalize_state(self, state: dict[str, Any]) -> dict[str, Any]:

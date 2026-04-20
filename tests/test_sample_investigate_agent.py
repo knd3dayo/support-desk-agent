@@ -19,9 +19,21 @@ class _FakeSubAgent:
         return {"output": "ドキュメント補足: Denodo の一般的な構成説明です。"}
 
 
+class _FakeNoopSubAgent:
+    def invoke(self, _payload: object) -> dict[str, object]:
+        return {"output": "補足なし"}
+
+
 class _WorkspaceAwareInvestigateExecutor:
-    def execute(self, *, query: str, workspace_path: str | None = None) -> dict[str, object]:
-        del query
+    def execute(
+        self,
+        *,
+        query: str,
+        workspace_path: str | None = None,
+        instruction_text: str | None = None,
+        state: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        del query, instruction_text, state
         return {"output": f"workspace={workspace_path or 'missing'}"}
 
 
@@ -37,10 +49,12 @@ class _CapturingInvestigateExecutor:
         query: str,
         workspace_path: str | None = None,
         instruction_text: str | None = None,
+        state: dict[str, object] | None = None,
     ) -> dict[str, object]:
         self.query = query
         self.instruction_text = instruction_text or ""
         self.workspace_path = workspace_path
+        del state
         return {"output": "captured"}
 
 
@@ -96,6 +110,51 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("内容を教えて", investigate_instruction)
         self.assertIn("取得済み ticket context", supervisor_instruction)
         self.assertIn("ticket の要点", supervisor_instruction)
+
+    def test_execute_extracts_log_fragment_when_incident_timeframe_exists(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "vdp.log").write_text(
+                "100 [main] INFO 2025-10-21T20:32:35.845 start\n"
+                "200 [main] ERROR 2025-10-21T20:55:12.313 failure\n"
+                "com.example.CacheException: boom\n",
+                encoding="utf-8",
+            )
+            with patch.object(agent, "create_sub_agent", return_value=_FakeNoopSubAgent()):
+                with patch.object(
+                    agent,
+                    "_invoke_tool",
+                    side_effect=[
+                        json.dumps(
+                            {
+                                "header_pattern": r"^\d+\s+\[[^\]]+\]\s+(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\d{4}-\d{2}-\d{2}T",
+                                "timestamp_start": 16,
+                                "timestamp_end": 39,
+                                "timestamp_format": "%Y-%m-%dT%H:%M:%S.%f",
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "output_path": f"{tmpdir}/.artifacts/log_extracts/vdp.log",
+                                "matched_record_count": 1,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    ],
+                ):
+                    result = agent.execute(
+                        query="ログを調べて",
+                        workspace_path=tmpdir,
+                        state={"intake_incident_timeframe": "2025-10-21 20:55 頃"},
+                    )
+
+        summary = str(result)
+        self.assertIn("指定時間帯", summary)
+        self.assertIn("log_extracts", summary)
 
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
         supervisor = SampleSupervisorAgent(investigate_executor=_WorkspaceAwareInvestigateExecutor())

@@ -51,6 +51,7 @@ from support_ope_agents.tools.default_read_shared_memory import build_default_re
 from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
 from support_ope_agents.tools.mcp_client import McpToolClient
+from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 from support_ope_agents.workflow import (
     WORKFLOW_LABELS,
     build_plan_steps,
@@ -678,6 +679,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             }
             if record_key == "intake_incident_timeframe":
                 resumed_state["intake_incident_timeframe"] = normalized_additional_input
+                apply_derived_log_extract_range(resumed_state, normalized_additional_input, config=self.context.config)
         resumed_state["customer_followup_answers"] = answer_records
         resumed_state["next_action"] = NextActionTexts.RESUME_INTAKE
 

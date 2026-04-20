@@ -31,6 +31,19 @@ class _FakeStructuredClassifier:
         )
 
 
+class _IncidentStructuredClassifier:
+    def with_structured_output(self, _schema: object) -> "_IncidentStructuredClassifier":
+        return self
+
+    def invoke(self, _messages: object) -> SampleIntakeClassification:
+        return SampleIntakeClassification(
+            category="incident_investigation",
+            urgency="high",
+            investigation_focus="ログの発生時間帯を確認する",
+            reason="test fixture",
+        )
+
+
 class _DeterministicInvestigateExecutor:
     def execute(
         self,
@@ -38,8 +51,9 @@ class _DeterministicInvestigateExecutor:
         query: str,
         workspace_path: str | None = None,
         instruction_text: str | None = None,
+        state: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        del workspace_path, instruction_text
+        del workspace_path, instruction_text, state
         return {"output": f"確認結果: {query}"}
 
 
@@ -187,6 +201,22 @@ class SampleRuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(str(state.get("status") or ""), "WAITING_APPROVAL")
         self.assertIn("Issue #2: SSO ログイン時に 500 エラー", str(state.get("draft_response") or ""))
         self.assertFalse(bool(resumed.get("requires_customer_input")))
+
+    def test_action_derives_log_extract_range_from_incident_timeframe(self) -> None:
+        with patch(
+            "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+            return_value=_IncidentStructuredClassifier(),
+        ):
+            result = self.service.action(
+                prompt="2026-04-10 10:15 に障害が発生し、gateway error が出ています。",
+                workspace_path=str(self.workspace_path),
+                case_id="CASE-SAMPLE-TIMEFRAME-001",
+            )
+
+        state = result["state"]
+        self.assertEqual(str(state.get("intake_incident_timeframe") or ""), "2026-04-10 10:15")
+        self.assertEqual(str(state.get("log_extract_range_start") or ""), "2026-04-10T10:00:00")
+        self.assertEqual(str(state.get("log_extract_range_end") or ""), "2026-04-10T10:30:00")
 
 
 if __name__ == "__main__":

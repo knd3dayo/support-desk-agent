@@ -37,6 +37,7 @@ from support_ope_agents.runtime.service_support import resolve_ticket_lookup_ena
 from support_ope_agents.runtime.service_support import sync_case_title_from_state
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
+from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 from support_ope_agents.workflow import WORKFLOW_LABELS, build_plan_steps, route_workflow, summarize_plan
 from support_ope_agents.models.state import CaseState
 from support_ope_agents.models.state import WorkflowKind
@@ -683,6 +684,7 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 			}
 			if record_key == "intake_incident_timeframe":
 				resumed_state["intake_incident_timeframe"] = normalized_additional_input
+				apply_derived_log_extract_range(resumed_state, normalized_additional_input, config=self.context.config)
 		resumed_state["customer_followup_answers"] = answer_records
 		resumed_state["next_action"] = NextActionTexts.RESUME_INTAKE
 

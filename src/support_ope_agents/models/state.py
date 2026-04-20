@@ -42,6 +42,8 @@ class CaseState(TypedDict, total=False):
     intake_investigation_focus: str
     intake_classification_reason: str
     intake_incident_timeframe: str
+    log_extract_range_start: str
+    log_extract_range_end: str
     intake_rework_required: bool
     intake_rework_reason: str
     intake_missing_fields: list[str]

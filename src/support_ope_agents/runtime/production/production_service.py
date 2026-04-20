@@ -53,6 +53,7 @@ from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.mcp_client import McpToolClient
+from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 from support_ope_agents.workflow import (
     ProductionCaseWorkflow,
     WORKFLOW_LABELS,
@@ -130,6 +131,8 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
         self._investigate_executor = InvestigateAgent(
             config=context.config,
             detect_log_format_tool=investigate_tools.get("detect_log_format"),
+            infer_log_header_pattern_tool=investigate_tools.get("infer_log_header_pattern"),
+            extract_log_time_range_tool=investigate_tools.get("extract_log_time_range"),
             search_documents_tool=investigate_tools.get("search_documents"),
             external_ticket_tool=investigate_tools.get("external_ticket"),
             internal_ticket_tool=investigate_tools.get("internal_ticket"),
@@ -729,6 +732,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             }
             if record_key == "intake_incident_timeframe":
                 resumed_state["intake_incident_timeframe"] = normalized_additional_input
+                apply_derived_log_extract_range(resumed_state, normalized_additional_input, config=self.context.config)
         resumed_state["customer_followup_answers"] = answer_records
         resumed_state["next_action"] = NextActionTexts.RESUME_INTAKE
 

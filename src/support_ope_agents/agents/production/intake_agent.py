@@ -23,6 +23,7 @@ from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 from support_ope_agents.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
@@ -756,6 +757,7 @@ class IntakeAgent(AbstractAgent):
         extracted_timeframe = self._extract_incident_timeframe(masked_issue)
         existing_timeframe = str(update.get("intake_incident_timeframe") or "").strip()
         update["intake_incident_timeframe"] = extracted_timeframe or existing_timeframe
+        apply_derived_log_extract_range(update, str(update.get("intake_incident_timeframe") or ""), config=self.config)
         return cast("CaseState", update)
 
     def quality_gate(self, state: CaseState) -> CaseState:
@@ -769,6 +771,7 @@ class IntakeAgent(AbstractAgent):
         update["intake_urgency"] = validation_result.urgency
         if validation_result.incident_timeframe:
             update["intake_incident_timeframe"] = validation_result.incident_timeframe
+            apply_derived_log_extract_range(update, validation_result.incident_timeframe, config=self.config)
         update["intake_missing_fields"] = validation_result.missing_fields
         update["intake_rework_reason"] = validation_result.rework_reason
         update["intake_rework_required"] = bool(validation_result.missing_fields)

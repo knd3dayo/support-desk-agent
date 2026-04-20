@@ -300,17 +300,9 @@ class SampleSupervisorAgent(AbstractAgent):
                         query=investigation_query,
                         workspace_path=str(update.get("workspace_path") or "").strip() or None,
                         instruction_text=instruction_text or None,
+                        state=cast(dict[str, Any], update),
                     )
                     investigation_summary = self._extract_investigation_summary(investigation_result)
-                except TypeError:
-                    try:
-                        investigation_result = self.investigate_executor.execute(
-                            query=investigation_query,
-                            workspace_path=str(update.get("workspace_path") or "").strip() or None,
-                        )
-                        investigation_summary = self._extract_investigation_summary(investigation_result)
-                    except Exception:
-                        investigation_summary = self._fallback_investigation_summary(raw_issue)
                 except Exception:
                     investigation_summary = self._fallback_investigation_summary(raw_issue)
             else:

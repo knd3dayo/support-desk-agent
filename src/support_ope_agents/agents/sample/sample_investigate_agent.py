@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import inspect
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,13 +12,16 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig
+from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
+from support_ope_agents.tools.builtin_tools import build_builtin_tools
 from support_ope_agents.tools.builtin_tools import _detect_log_format_from_lines
 from support_ope_agents.tools.builtin_tools import _extract_text_from_path
 from support_ope_agents.tools.builtin_tools import _search_log_with_patterns
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 
 from langchain_core.messages import HumanMessage
 from deepagents import create_deep_agent
@@ -33,6 +38,9 @@ class SampleInvestigateAgent(AbstractAgent):
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
+        builtin_tools = build_builtin_tools(config)
+        self._infer_log_header_pattern_tool = builtin_tools["infer_log_header_pattern"].handler
+        self._extract_log_time_range_tool = builtin_tools["extract_log_time_range"].handler
 
     @staticmethod
     def _default_query() -> str:
@@ -135,6 +143,64 @@ class SampleInvestigateAgent(AbstractAgent):
 
         return "".join(parts)
 
+    @staticmethod
+    def _invoke_tool(tool: Any, *args: object, **kwargs: object) -> str:
+        result = tool(*args, **kwargs)
+        if inspect.isawaitable(result):
+            return str(run_awaitable_sync(result))
+        return str(result)
+
+    def _requested_log_extract_range(self, state: dict[str, Any] | None) -> tuple[str, str] | None:
+        normalized_state = dict(state or {})
+        apply_derived_log_extract_range(
+            normalized_state,
+            str(normalized_state.get("intake_incident_timeframe") or ""),
+            config=self.config,
+        )
+        start = str(normalized_state.get("log_extract_range_start") or "").strip()
+        end = str(normalized_state.get("log_extract_range_end") or "").strip()
+        if start and end:
+            return start, end
+        return None
+
+    def _maybe_extract_log_time_range(self, state: dict[str, Any] | None, workspace_path: str | None, log_path: Path) -> str:
+        requested_range = self._requested_log_extract_range(state)
+        if requested_range is None or not workspace_path:
+            return ""
+        range_start, range_end = requested_range
+        inferred_payload = json.loads(
+            self._invoke_tool(self._infer_log_header_pattern_tool, file_path=str(log_path), sample_line_limit=100)
+        )
+        if not isinstance(inferred_payload, dict):
+            return ""
+        header_pattern = str(inferred_payload.get("header_pattern") or "").strip()
+        timestamp_start = inferred_payload.get("timestamp_start")
+        timestamp_end = inferred_payload.get("timestamp_end")
+        if not header_pattern or not isinstance(timestamp_start, int) or not isinstance(timestamp_end, int):
+            return ""
+        extracted_payload = json.loads(
+            self._invoke_tool(
+                self._extract_log_time_range_tool,
+                file_path=str(log_path),
+                workspace_path=workspace_path,
+                header_pattern=header_pattern,
+                timestamp_start=timestamp_start,
+                timestamp_end=timestamp_end,
+                range_start=range_start,
+                range_end=range_end,
+                time_format=str(inferred_payload.get("timestamp_format") or "") or None,
+            )
+        )
+        if not isinstance(extracted_payload, dict):
+            return ""
+        output_path = str(extracted_payload.get("output_path") or "").strip()
+        matched_count = int(extracted_payload.get("matched_record_count") or 0)
+        if not output_path:
+            return ""
+        if matched_count > 0:
+            return f"指定時間帯 {range_start} から {range_end} のログ断片を {output_path} に保存しました。"
+        return f"指定時間帯 {range_start} から {range_end} に一致するログ断片は見つからず、空の成果物を {output_path} に保存しました。"
+
     def create_sub_agent(self, *, query: str | None = None, instruction_text: str = "") -> Any:
         settings = self.config.agents.InvestigateAgent
         effective_query = (query or self._default_query()).strip()
@@ -160,9 +226,21 @@ class SampleInvestigateAgent(AbstractAgent):
     def create_node(self) -> Any:
         return self.create_sub_agent(query=self._default_query())
 
-    def execute(self, *, query: str, workspace_path: str | None = None, instruction_text: str | None = None) -> Any:
+    def execute(
+        self,
+        *,
+        query: str,
+        workspace_path: str | None = None,
+        instruction_text: str | None = None,
+        state: dict[str, Any] | None = None,
+    ) -> Any:
         effective_query = query.strip() or self._default_query()
         log_summary = self._summarize_workspace_log(workspace_path)
+        log_path = self._find_evidence_log_file(workspace_path) if workspace_path else None
+        if log_path is not None:
+            extraction_summary = self._maybe_extract_log_time_range(state, workspace_path, log_path)
+            if extraction_summary:
+                log_summary = f"{log_summary} {extraction_summary}".strip()
 
         try:
             sub_agent = self.create_sub_agent(query=effective_query, instruction_text=instruction_text or "")

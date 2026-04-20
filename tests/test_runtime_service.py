@@ -772,6 +772,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             answers["intake_incident_timeframe"]["answer"],
             "2026-04-10 10:15 頃に初回発生しました。",
         )
+        self.assertEqual(str(state.get("log_extract_range_start") or ""), "2026-04-10T10:00:00")
+        self.assertEqual(str(state.get("log_extract_range_end") or ""), "2026-04-10T10:30:00")
         self.assertEqual(str(state.get("external_ticket_id") or ""), "")
         self.assertEqual(str(state.get("internal_ticket_id") or ""), "")
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 INTERNAL_ONLY_LOGICAL_TOOLS = frozenset(
     {
         "detect_log_format",
+        "extract_log_time_range",
+        "infer_log_header_pattern",
         "read_shared_memory",
         "write_draft",
         "write_shared_memory",

@@ -15,6 +15,7 @@ from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.util.formatting import format_result
+from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 
 if TYPE_CHECKING:
     from support_ope_agents.models.state import CaseState
@@ -30,6 +31,8 @@ class InvestigateAgent(AbstractAgent):
     """
     config: AppConfig
     detect_log_format_tool: Callable[..., Any] | None = None
+    infer_log_header_pattern_tool: Callable[..., Any] | None = None
+    extract_log_time_range_tool: Callable[..., Any] | None = None
     search_documents_tool: Callable[..., Any] | None = None
     external_ticket_tool: Callable[..., Any] | None = None
     internal_ticket_tool: Callable[..., Any] | None = None
@@ -88,6 +91,60 @@ class InvestigateAgent(AbstractAgent):
             elif str(entry).strip():
                 lines.append(str(entry).strip())
         return lines
+
+    def _requested_log_extract_range(self, state: Mapping[str, Any]) -> tuple[str, str] | None:
+        normalized_state = dict(state)
+        apply_derived_log_extract_range(
+            normalized_state,
+            str(normalized_state.get("intake_incident_timeframe") or ""),
+            config=self.config,
+        )
+        start = str(normalized_state.get("log_extract_range_start") or "").strip()
+        end = str(normalized_state.get("log_extract_range_end") or "").strip()
+        if start and end:
+            return start, end
+        return None
+
+    def _maybe_extract_log_time_range(self, state: Mapping[str, Any], log_path: Path) -> str:
+        requested_range = self._requested_log_extract_range(state)
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        if requested_range is None or not workspace_path:
+            return ""
+        if self.infer_log_header_pattern_tool is None or self.extract_log_time_range_tool is None:
+            return ""
+
+        range_start, range_end = requested_range
+        inferred = json.loads(self._invoke_tool(self.infer_log_header_pattern_tool, str(log_path)))
+        if not isinstance(inferred, dict):
+            return ""
+        header_pattern = str(inferred.get("header_pattern") or "").strip()
+        timestamp_start = inferred.get("timestamp_start")
+        timestamp_end = inferred.get("timestamp_end")
+        if not header_pattern or not isinstance(timestamp_start, int) or not isinstance(timestamp_end, int):
+            return ""
+
+        extracted = json.loads(
+            self._invoke_tool(
+                self.extract_log_time_range_tool,
+                str(log_path),
+                workspace_path,
+                header_pattern,
+                timestamp_start,
+                timestamp_end,
+                range_start,
+                range_end,
+                str(inferred.get("timestamp_format") or "") or None,
+            )
+        )
+        if not isinstance(extracted, dict):
+            return ""
+        output_path = str(extracted.get("output_path") or "").strip()
+        matched_count = int(extracted.get("matched_record_count") or 0)
+        if not output_path:
+            return ""
+        if matched_count > 0:
+            return f"指定時間帯 {range_start} から {range_end} のログ断片を {output_path} に保存しました。"
+        return f"指定時間帯 {range_start} から {range_end} に一致するログ断片は見つからず、空の成果物を {output_path} に保存しました。"
 
     @classmethod
     def _summarize_log_analysis(cls, parsed: dict[str, Any], log_path: Path) -> str:
@@ -258,6 +315,13 @@ class InvestigateAgent(AbstractAgent):
             except Exception:
                 log_summary = ""
                 log_file = ""
+        if log_path is not None:
+            try:
+                extraction_summary = self._maybe_extract_log_time_range(update, log_path)
+            except Exception:
+                extraction_summary = ""
+            if extraction_summary:
+                log_summary = f"{log_summary} {extraction_summary}".strip()
 
         ticket_results = self._build_ticket_results(update)
         document_results: list[dict[str, object]] = []
