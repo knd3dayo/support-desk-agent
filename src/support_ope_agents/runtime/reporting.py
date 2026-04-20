@@ -291,15 +291,6 @@ def _ticket_lookup_status(state: CaseState, *, config: AppConfig, ticket_kind: s
     if not ticket_id:
         return "未指定"
 
-    resolver = CaseIdResolverService()
-    is_auto_generated = (
-        resolver.is_auto_generated_external_ticket_id(ticket_id)
-        if ticket_kind == "external"
-        else resolver.is_auto_generated_internal_ticket_id(ticket_id)
-    )
-    if is_auto_generated:
-        return "未実行: 自動採番 ID"
-
     enabled = False
     binding = config.tools.ticket_sources.get(ticket_kind)
     if binding is not None and getattr(binding, "enabled", False):
@@ -1514,8 +1505,6 @@ def _unshared_memory_lines(
 
 def _should_ignore_private_memory_line(normalized_line: str) -> bool:
     ignored_prefixes = (
-        "external ticket id: ext-trace-",
-        "internal ticket id: int-trace-",
         "raw result: {",
     )
     ignored_exact = {

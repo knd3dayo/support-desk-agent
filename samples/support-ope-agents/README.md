@@ -83,7 +83,7 @@ python -m support_ope_agents.cli action \
   --config /home/user/source/repos/support-ope-agents/samples/support-ope-agents/config-sample.yml
 ```
 
-ticket ID を省略した場合は trace_id から `EXT-TRACE-...` と `INT-TRACE-...` が自動生成されます。ただしこの自動採番 ID は trace 相関用であり、IntakeAgent の MCP lookup はスキップします。GitHub MCP を使う sample config では、`--external-ticket-id` と `--internal-ticket-id` には config に設定した各 repository の GitHub Issue 番号を指定してください。
+ticket ID を省略した場合、外部・内部チケット ID は空のままとなり、IntakeAgent の MCP lookup はスキップします。GitHub MCP を使う sample config では、チケット文脈を取得したい場合に `--external-ticket-id` と `--internal-ticket-id` へ config に設定した各 repository の GitHub Issue 番号を指定してください。
 
 ## 4. 補足
 

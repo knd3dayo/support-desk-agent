@@ -1387,7 +1387,7 @@ export default function App() {
                 type="text"
                 value={externalTicketId}
                 onChange={(event) => setExternalTicketId(event.target.value)}
-                placeholder="任意: https://example.invalid/tickets/EXT-12345"
+                placeholder="任意: 未指定なら外部チケット参照は行いません"
                 disabled={busy}
               />
             </label>
@@ -1397,7 +1397,7 @@ export default function App() {
                 type="text"
                 value={internalTicketId}
                 onChange={(event) => setInternalTicketId(event.target.value)}
-                placeholder="任意: https://example.invalid/tickets/INT-67890"
+                placeholder="任意: 未指定なら内部チケット参照は行いません"
                 disabled={busy}
               />
             </label>

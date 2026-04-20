@@ -24,40 +24,18 @@ class CaseIdResolverService:
         )
 
     @staticmethod
-    def _normalize_trace_id(trace_id: str | None) -> str:
-        if not trace_id:
-            return f"TRACE-{uuid4().hex}"
-        normalized = trace_id.strip()
-        if normalized.startswith("TRACE-"):
-            return normalized
-        if normalized.startswith("SESSION-"):
-            return f"TRACE-{normalized.removeprefix('SESSION-')}"
-        return f"TRACE-{normalized}"
-
-    @staticmethod
     def _normalize_ticket_id(value: str) -> str:
         return value.strip().upper()
-
-    @classmethod
-    def _is_trace_linked_ticket_id(cls, value: str, *, prefix: str) -> bool:
-        normalized = cls._normalize_ticket_id(value)
-        return normalized.startswith(f"{prefix}-TRACE-")
 
     def resolve_external_ticket_id(self, *, explicit_ticket_id: str | None = None, trace_id: str | None = None) -> str:
         if explicit_ticket_id:
             return self._normalize_ticket_id(explicit_ticket_id)
-        return f"EXT-{self._normalize_trace_id(trace_id)}"
+        return ""
 
     def resolve_internal_ticket_id(self, *, explicit_ticket_id: str | None = None, trace_id: str | None = None) -> str:
         if explicit_ticket_id:
             return self._normalize_ticket_id(explicit_ticket_id)
-        return f"INT-{self._normalize_trace_id(trace_id)}"
-
-    def is_auto_generated_external_ticket_id(self, value: str | None) -> bool:
-        return bool(value) and self._is_trace_linked_ticket_id(value, prefix="EXT")
-
-    def is_auto_generated_internal_ticket_id(self, value: str | None) -> bool:
-        return bool(value) and self._is_trace_linked_ticket_id(value, prefix="INT")
+        return ""
 
     def resolve(self, prompt: str, explicit_case_id: str | None = None, workspace_path: str | None = None) -> str:
         if explicit_case_id:

@@ -52,13 +52,6 @@ class TicketUpdateAgent(AbstractAgent):
     def _ticket_binding(self, ticket_kind: str) -> TicketServerBindingSettings | None:
         return self.config.tools.ticket_sources.get(ticket_kind)
 
-    @staticmethod
-    def _is_auto_generated_ticket_id(ticket_kind: str, ticket_id: str) -> bool:
-        resolver = CaseIdResolverService()
-        if ticket_kind == "external":
-            return resolver.is_auto_generated_external_ticket_id(ticket_id)
-        return resolver.is_auto_generated_internal_ticket_id(ticket_id)
-
     def _build_ticket_tool_prompt(
         self,
         *,
@@ -274,7 +267,7 @@ class TicketUpdateAgent(AbstractAgent):
         binding = self._ticket_binding(ticket_kind)
         if binding is None or not binding.enabled or self.ticket_mcp_client is None:
             return None, None
-        if not ticket_id or self._is_auto_generated_ticket_id(ticket_kind, ticket_id):
+        if not ticket_id:
             return None, None
 
         model = build_chat_openai_model(self.config, temperature=0)

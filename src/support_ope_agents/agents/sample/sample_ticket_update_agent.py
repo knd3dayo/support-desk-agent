@@ -62,13 +62,6 @@ class SampleTicketUpdateAgent(AbstractAgent):
             return None
         return self.config.tools.ticket_sources.get(ticket_kind)
 
-    @staticmethod
-    def _is_auto_generated_ticket_id(ticket_kind: str, ticket_id: str) -> bool:
-        resolver = CaseIdResolverService()
-        if ticket_kind == "external":
-            return resolver.is_auto_generated_external_ticket_id(ticket_id)
-        return resolver.is_auto_generated_internal_ticket_id(ticket_id)
-
     def _build_ticket_tool_prompt(self, *, ticket_kind: str, ticket_id: str, binding: TicketServerBindingSettings, tools_xml: str) -> str:
         static_arguments = json.dumps(binding.arguments, ensure_ascii=False, sort_keys=True)
         description = binding.description or f"{ticket_kind} ticket lookup"

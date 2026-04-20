@@ -140,8 +140,8 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan", help="Create an execution plan for a case", parents=[common])
     plan.add_argument("prompt", help="User request for planning")
     plan.add_argument("--workspace-path", required=True, help="Workspace path for the case")
-    plan.add_argument("--external-ticket-id", default=None, help="Explicit external ticket ID. If omitted, derive from trace_id")
-    plan.add_argument("--internal-ticket-id", default=None, help="Explicit internal ticket ID. If omitted, derive from trace_id")
+    plan.add_argument("--external-ticket-id", default=None, help="Explicit external ticket ID. If omitted, external ticket lookup is skipped")
+    plan.add_argument("--internal-ticket-id", default=None, help="Explicit internal ticket ID. If omitted, internal ticket lookup is skipped")
     plan.set_defaults(func=_cmd_plan)
 
     action = subparsers.add_parser("action", help="Execute action mode for a case", parents=[common])
@@ -149,8 +149,8 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument("--workspace-path", required=True, help="Workspace path for the case")
     action.add_argument("--trace-id", default=None, help="Trace identifier from plan mode")
     action.add_argument("--execution-plan", default=None, help="Optional execution plan text")
-    action.add_argument("--external-ticket-id", default=None, help="Explicit external ticket ID. If omitted, derive from trace_id")
-    action.add_argument("--internal-ticket-id", default=None, help="Explicit internal ticket ID. If omitted, derive from trace_id")
+    action.add_argument("--external-ticket-id", default=None, help="Explicit external ticket ID. If omitted, external ticket lookup is skipped")
+    action.add_argument("--internal-ticket-id", default=None, help="Explicit internal ticket ID. If omitted, internal ticket lookup is skipped")
     action.set_defaults(func=_cmd_action)
 
     resume_customer_input = subparsers.add_parser(

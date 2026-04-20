@@ -718,8 +718,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(str(state.get("log_analysis_file") or ""), str(log_file.resolve()))
         self.assertEqual(str(state.get("external_ticket_id") or ""), str(result.get("external_ticket_id") or ""))
         self.assertEqual(str(state.get("internal_ticket_id") or ""), str(result.get("internal_ticket_id") or ""))
-        self.assertTrue(str(state.get("external_ticket_id") or "").startswith("EXT-TRACE-"))
-        self.assertTrue(str(state.get("internal_ticket_id") or "").startswith("INT-TRACE-"))
+        self.assertEqual(str(state.get("external_ticket_id") or ""), "")
+        self.assertEqual(str(state.get("internal_ticket_id") or ""), "")
         registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
         self.assertEqual(registry.pii_mask_calls, 0)
 
@@ -772,8 +772,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             answers["intake_incident_timeframe"]["answer"],
             "2026-04-10 10:15 頃に初回発生しました。",
         )
-        self.assertTrue(str(state.get("external_ticket_id") or "").startswith("EXT-TRACE-"))
-        self.assertTrue(str(state.get("internal_ticket_id") or "").startswith("INT-TRACE-"))
+        self.assertEqual(str(state.get("external_ticket_id") or ""), "")
+        self.assertEqual(str(state.get("internal_ticket_id") or ""), "")
 
     def test_resume_customer_input_accepts_unknown_incident_timeframe_without_reasking(self) -> None:
         initial = self.service.action(
@@ -889,7 +889,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(str(external_result.get("status") or ""), "hydrated")
         self.assertEqual(str(internal_result.get("status") or ""), "hydrated")
 
-    def test_action_skips_ticket_lookup_for_auto_generated_ticket_ids(self) -> None:
+    def test_action_marks_ticket_lookup_unavailable_when_ticket_ids_are_missing(self) -> None:
         result = self.service.action(
             prompt="生成AI基盤のアーキテクチャ概要を教えてください。",
             workspace_path=str(self.workspace_path),
@@ -899,14 +899,14 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         state = cast(CaseState, result["state"])
         self.assertFalse(bool(state.get("external_ticket_lookup_enabled")))
         self.assertFalse(bool(state.get("internal_ticket_lookup_enabled")))
-        self.assertTrue(str(state.get("external_ticket_id") or "").startswith("EXT-TRACE-"))
-        self.assertTrue(str(state.get("internal_ticket_id") or "").startswith("INT-TRACE-"))
+        self.assertEqual(str(state.get("external_ticket_id") or ""), "")
+        self.assertEqual(str(state.get("internal_ticket_id") or ""), "")
 
         results = cast(list[dict[str, object]], state.get("knowledge_retrieval_results") or [])
         external_result = next(item for item in results if str(item.get("source_name") or "") == "external_ticket")
         internal_result = next(item for item in results if str(item.get("source_name") or "") == "internal_ticket")
-        self.assertEqual(str(external_result.get("status") or ""), "skipped")
-        self.assertEqual(str(internal_result.get("status") or ""), "skipped")
+        self.assertEqual(str(external_result.get("status") or ""), "unavailable")
+        self.assertEqual(str(internal_result.get("status") or ""), "unavailable")
 
         registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
         self.assertEqual(registry.external_ticket_calls, [])

@@ -28,12 +28,7 @@ def resolve_ticket_lookup_enabled(
     if isinstance(saved_lookup_enabled, bool):
         return saved_lookup_enabled
 
-    normalized_saved_ticket_id = str(saved_ticket_id or "").strip()
-    if not normalized_saved_ticket_id:
-        return False
-    if ticket_kind == "external":
-        return not case_id_resolver_service.is_auto_generated_external_ticket_id(normalized_saved_ticket_id)
-    return not case_id_resolver_service.is_auto_generated_internal_ticket_id(normalized_saved_ticket_id)
+    return bool(str(saved_ticket_id or "").strip())
 
 
 def persist_case_title(
