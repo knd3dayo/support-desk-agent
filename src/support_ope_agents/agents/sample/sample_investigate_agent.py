@@ -18,6 +18,7 @@ from support_ope_agents.tools.builtin_tools import build_builtin_tools
 from support_ope_agents.tools.builtin_tools import _detect_log_format_from_lines
 from support_ope_agents.tools.builtin_tools import _extract_text_from_path
 from support_ope_agents.tools.builtin_tools import _search_log_with_patterns
+from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
@@ -41,6 +42,7 @@ class SampleInvestigateAgent(AbstractAgent):
         builtin_tools = build_builtin_tools(config)
         self._infer_log_header_pattern_tool = builtin_tools["infer_log_header_pattern"].handler
         self._extract_log_time_range_tool = builtin_tools["extract_log_time_range"].handler
+        self._write_working_memory_tool = build_default_write_working_memory_tool(config, INVESTIGATE_AGENT)
 
     @staticmethod
     def _default_query() -> str:
@@ -201,6 +203,50 @@ class SampleInvestigateAgent(AbstractAgent):
             return f"指定時間帯 {range_start} から {range_end} のログ断片を {output_path} に保存しました。"
         return f"指定時間帯 {range_start} から {range_end} に一致するログ断片は見つからず、空の成果物を {output_path} に保存しました。"
 
+    def _write_working_memory(
+        self,
+        *,
+        state: dict[str, Any] | None,
+        workspace_path: str | None,
+        query: str,
+        log_path: Path | None,
+        log_summary: str,
+        document_summary: str,
+        extraction_summary: str,
+        instruction_text: str,
+    ) -> None:
+        normalized_state = dict(state or {})
+        case_id = str(normalized_state.get("case_id") or "").strip()
+        normalized_workspace_path = str(workspace_path or normalized_state.get("workspace_path") or "").strip()
+        if not case_id or not normalized_workspace_path:
+            return
+
+        bullets = [
+            f"Query: {query}",
+            f"Evidence log: {log_path.name if log_path is not None else 'n/a'}",
+            f"Incident timeframe: {str(normalized_state.get('intake_incident_timeframe') or 'n/a').strip() or 'n/a'}",
+            f"Requested extract range: {str(normalized_state.get('log_extract_range_start') or 'n/a').strip() or 'n/a'} -> {str(normalized_state.get('log_extract_range_end') or 'n/a').strip() or 'n/a'}",
+        ]
+        sections: list[dict[str, object]] = [
+            {"title": "Log Findings", "summary": log_summary or "n/a"},
+            {"title": "Document Findings", "summary": document_summary or "n/a"},
+        ]
+        if extraction_summary:
+            sections.append({"title": "Log Extraction", "summary": extraction_summary})
+        if instruction_text.strip():
+            bullets.append("Instruction provided: yes")
+
+        try:
+            self._invoke_tool(
+                self._write_working_memory_tool,
+                case_id,
+                normalized_workspace_path,
+                {"title": "Investigate Result", "heading_level": 2, "bullets": bullets, "sections": sections},
+                "append",
+            )
+        except Exception:
+            return
+
     def create_sub_agent(self, *, query: str | None = None, instruction_text: str = "") -> Any:
         settings = self.config.agents.InvestigateAgent
         effective_query = (query or self._default_query()).strip()
@@ -237,8 +283,12 @@ class SampleInvestigateAgent(AbstractAgent):
         effective_query = query.strip() or self._default_query()
         log_summary = self._summarize_workspace_log(workspace_path)
         log_path = self._find_evidence_log_file(workspace_path) if workspace_path else None
+        extraction_summary = ""
         if log_path is not None:
-            extraction_summary = self._maybe_extract_log_time_range(state, workspace_path, log_path)
+            try:
+                extraction_summary = self._maybe_extract_log_time_range(state, workspace_path, log_path)
+            except Exception as exc:
+                extraction_summary = f"ログ抽出は失敗しました: {exc}"
             if extraction_summary:
                 log_summary = f"{log_summary} {extraction_summary}".strip()
 
@@ -253,10 +303,30 @@ class SampleInvestigateAgent(AbstractAgent):
             )
         except Exception:
             if log_summary:
+                self._write_working_memory(
+                    state=state,
+                    workspace_path=workspace_path,
+                    query=effective_query,
+                    log_path=log_path,
+                    log_summary=log_summary,
+                    document_summary="deep agent invocation failed; returned log-only summary",
+                    extraction_summary=extraction_summary,
+                    instruction_text=instruction_text or "",
+                )
                 return log_summary
             raise
 
         document_summary = extract_result_output_text(result) or format_result(result)
+        self._write_working_memory(
+            state=state,
+            workspace_path=workspace_path,
+            query=effective_query,
+            log_path=log_path,
+            log_summary=log_summary,
+            document_summary=document_summary,
+            extraction_summary=extraction_summary,
+            instruction_text=instruction_text or "",
+        )
         if log_summary and document_summary:
             return f"{log_summary}\n\n補足情報:\n{document_summary}"
         if log_summary:

@@ -50,6 +50,7 @@ from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
 from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
+from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 from support_ope_agents.workflow import (
@@ -107,6 +108,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             ),
             read_shared_memory_tool=build_default_read_shared_memory_tool(context.config),
             write_shared_memory_tool=build_default_write_shared_memory_tool(context.config),
+            write_working_memory_tool=build_default_write_working_memory_tool(context.config, SUPERVISOR_AGENT),
         )
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:

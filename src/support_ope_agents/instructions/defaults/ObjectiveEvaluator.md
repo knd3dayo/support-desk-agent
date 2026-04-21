@@ -13,6 +13,8 @@
 - エージェント別評価は 0 から 100 の点数で示し、減点理由を簡潔に明記してください。
 - SuperVisorAgent の判断が最終状態と整合していても、根拠不足や記録不足があれば減点してください。
 - 可能な限り、Summary、Adopted sources、Intake category、Intake urgency、Incident timeframe などの構造化項目単位で確認してください。
+- shared/progress.md については、単に存在するかではなく、各 agent の「実施」「確認結果」「判断」「次アクション」が追える粒度かを確認してください。
+- improvement_points では、agent 名、対象 memory、追記すべき内容が分かる粒度で改善案を書いてください。例えば「InvestigateAgent が shared/progress.md に採用根拠と除外仮説を残す」のように具体化してください。
 
 ## 出力上の注意
 - 断定できない場合は、その旨を明記したうえで warning としてください。
@@ -26,5 +28,6 @@
 - agent_evaluations はエージェント別評価の一覧です。各要素に agent_name, score, comment を含めてください。
 - overall_summary はケース全体の総評を 1 つの文字列で返してください。
 - improvement_points は改善提案の配列です。shared memory や working memory に何を残すべきか分かる粒度で書いてください。user_checklist がある場合は、その未充足項目に対応する改善案を優先して含めてください。
+- improvement_points では、「progress が薄い」「記録不足」のような抽象表現だけで終わらせず、どの agent が、shared/progress.md または working memory に、何を追加すべきかまで示してください。
 - overall_score はケース全体の 0 から 100 の点数です。
 - criterion_evaluations と agent_evaluations の score は 0 から 100 の整数で返してください。

@@ -29,6 +29,7 @@ class SampleSupervisorAgent(AbstractAgent):
     load_instruction: Callable[[str, str], str] | None = None
     read_shared_memory_tool: Callable[..., Any] | None = None
     write_shared_memory_tool: Callable[..., Any] | None = None
+    write_working_memory_tool: Callable[..., Any] | None = None
 
     @staticmethod
     def _extract_investigation_summary(result: Any) -> str:
@@ -215,7 +216,32 @@ class SampleSupervisorAgent(AbstractAgent):
             judgment_rationale_parts.append(f"分類理由: {classification_reason}")
         judgment_rationale = " ".join(part for part in judgment_rationale_parts if part)
         context_sections = [section for section in (raw_issue, ticket_context, followup_answers) if section]
-        progress_summary = "追加確認の回答とチケット文脈を踏まえて sample Supervisor が再評価しました。"
+        progress_summary = "sample Supervisor が調査結果を再評価し、承認待ちへ進めるかを判断しました。"
+        investigation_excerpt = investigation_summary.strip() or "調査結果はこれから整理します。"
+        implemented_actions = [
+            "問い合わせ内容と既存 shared memory を確認しました。",
+            "InvestigateAgent の結果を受け取り、回答ドラフト化の前提を整理しました。",
+        ]
+        if ticket_context:
+            implemented_actions.append("取得済み ticket context を調査判断へ反映しました。")
+        if followup_answers:
+            implemented_actions.append("顧客の追加回答を確認し、既知情報へ反映しました。")
+        confirmed_results = [
+            f"調査要約: {investigation_excerpt}",
+            f"分類: {intake_category} / 緊急度: {intake_urgency}",
+        ]
+        requested_range = ""
+        range_start = str(state.get("log_extract_range_start") or "").strip()
+        range_end = str(state.get("log_extract_range_end") or "").strip()
+        if range_start and range_end:
+            requested_range = f"ログ抽出対象: {range_start} -> {range_end}"
+            confirmed_results.append(requested_range)
+        supervisor_working_sections = [
+            {"title": "Implemented", "bullets": implemented_actions},
+            {"title": "Confirmed", "bullets": confirmed_results},
+            {"title": "Judgment", "bullets": [judgment_rationale or "n/a"]},
+            {"title": "Next Action", "bullets": [next_action]},
+        ]
 
         context_content = {
             "title": "Shared Context",
@@ -241,6 +267,10 @@ class SampleSupervisorAgent(AbstractAgent):
             ],
             "sections": [
                 {"title": "Latest Supervisor Review", "summary": progress_summary},
+                {"title": "Implemented", "bullets": implemented_actions},
+                {"title": "Confirmed", "bullets": confirmed_results},
+                {"title": "Judgment", "bullets": [judgment_rationale or "n/a"]},
+                {"title": "Next Action", "bullets": [next_action]},
             ],
         }
         summary_content = {
@@ -269,6 +299,26 @@ class SampleSupervisorAgent(AbstractAgent):
             )
         except Exception:
             return
+
+        if self.write_working_memory_tool is not None:
+            try:
+                self._invoke_tool(
+                    self.write_working_memory_tool,
+                    case_id,
+                    workspace_path,
+                    {
+                        "title": "Supervisor Review",
+                        "heading_level": 2,
+                        "bullets": [
+                            f"Primary source: {primary_source}",
+                            f"Investigation summary: {investigation_excerpt}",
+                        ] + ([requested_range] if requested_range else []),
+                        "sections": supervisor_working_sections,
+                    },
+                    "append",
+                )
+            except Exception:
+                return
 
     def _build_instruction_text(self, case_id: str, state: "CaseState") -> str:
         if self.load_instruction is None or not case_id:
