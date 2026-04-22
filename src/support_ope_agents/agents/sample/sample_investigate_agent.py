@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -247,6 +248,38 @@ class SampleInvestigateAgent(AbstractAgent):
         except Exception:
             return
 
+    @staticmethod
+    def _augment_query_with_evidence(query: str, log_path: Path | None, log_summary: str) -> str:
+        if log_path is None or not log_summary.strip():
+            return query
+        evidence_section = (
+            "workspace 上の evidence ログは既に確認済みです。"
+            f"\nEvidence file: {log_path.name}"
+            f"\nEvidence path: {log_path}"
+            f"\nEvidence summary: {log_summary.strip()}"
+        )
+        parts = [part for part in (query.strip(), evidence_section) if part]
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _is_contradictory_document_summary(document_summary: str, log_path: Path | None) -> bool:
+        if log_path is None:
+            return False
+        normalized = document_summary.strip().lower()
+        if not normalized:
+            return False
+        missing_markers = (
+            "見つから",
+            "存在しない",
+            "存在していない",
+            "不足している",
+            "アップロードされていない",
+            "not found",
+            "missing",
+            "does not exist",
+        )
+        return log_path.name.lower() in normalized and any(marker in normalized for marker in missing_markers)
+
     def create_sub_agent(self, *, query: str | None = None, instruction_text: str = "") -> Any:
         settings = self.config.agents.InvestigateAgent
         effective_query = (query or self._default_query()).strip()
@@ -283,6 +316,7 @@ class SampleInvestigateAgent(AbstractAgent):
         effective_query = query.strip() or self._default_query()
         log_summary = self._summarize_workspace_log(workspace_path)
         log_path = self._find_evidence_log_file(workspace_path) if workspace_path else None
+        investigation_query = self._augment_query_with_evidence(effective_query, log_path, log_summary)
         extraction_summary = ""
         if log_path is not None:
             try:
@@ -293,11 +327,11 @@ class SampleInvestigateAgent(AbstractAgent):
                 log_summary = f"{log_summary} {extraction_summary}".strip()
 
         try:
-            sub_agent = self.create_sub_agent(query=effective_query, instruction_text=instruction_text or "")
+            sub_agent = self.create_sub_agent(query=investigation_query, instruction_text=instruction_text or "")
             result = sub_agent.invoke(
                 {
                     "messages": [
-                        HumanMessage(content=effective_query),
+                        HumanMessage(content=investigation_query),
                     ]
                 }
             )
@@ -317,6 +351,8 @@ class SampleInvestigateAgent(AbstractAgent):
             raise
 
         document_summary = extract_result_output_text(result) or format_result(result)
+        if self._is_contradictory_document_summary(document_summary, log_path):
+            document_summary = ""
         self._write_working_memory(
             state=state,
             workspace_path=workspace_path,

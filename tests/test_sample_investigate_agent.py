@@ -24,6 +24,11 @@ class _FakeNoopSubAgent:
         return {"output": "補足なし"}
 
 
+class _FakeMissingEvidenceSubAgent:
+    def invoke(self, _payload: object) -> dict[str, object]:
+        return {"output": "vdp.log ファイルが見つからず、再提供が必要です。"}
+
+
 class _WorkspaceAwareInvestigateExecutor:
     def execute(
         self,
@@ -56,6 +61,16 @@ class _CapturingInvestigateExecutor:
         self.workspace_path = workspace_path
         del state
         return {"output": "captured"}
+
+
+class _CapturingSubAgent:
+    def __init__(self, output: str = "captured") -> None:
+        self.payloads: list[object] = []
+        self.output = output
+
+    def invoke(self, payload: object) -> dict[str, object]:
+        self.payloads.append(payload)
+        return {"output": self.output}
 
 
 class _CapturingSharedMemoryWriter:
@@ -155,6 +170,26 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         summary = str(result)
         self.assertIn("指定時間帯", summary)
         self.assertIn("log_extracts", summary)
+
+    def test_execute_passes_evidence_context_to_sub_agent_and_drops_missing_file_claim(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+        capturing_sub_agent = _CapturingSubAgent(output="vdp.log ファイルが見つからず、再提供が必要です。")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "vdp.log").write_text(
+                "2025-10-21T20:55:12 ERROR Error loading server cache data source.\n"
+                "com.denodo.vdb.cache.VDBCacheException: Data source vdpcachedatasource not found\n",
+                encoding="utf-8",
+            )
+            with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
+                result = agent.execute(query="ログを調べて", workspace_path=tmpdir)
+
+        rendered = str(result)
+        self.assertIn("Evidence file: vdp.log", str(capturing_sub_agent.payloads[0]))
+        self.assertIn("vdpcachedatasource not found", rendered)
+        self.assertNotIn("再提供が必要", rendered)
 
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
         supervisor = SampleSupervisorAgent(investigate_executor=_WorkspaceAwareInvestigateExecutor())
@@ -258,6 +293,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("Intake urgency:", json.dumps(written.get("progress_content"), ensure_ascii=False))
         self.assertIn("Judgment rationale:", json.dumps(written.get("summary_content"), ensure_ascii=False))
         self.assertIn("Next action:", json.dumps(written.get("summary_content"), ensure_ascii=False))
+        self.assertIn("Adopted sources:", json.dumps(written.get("summary_content"), ensure_ascii=False))
 
 
 if __name__ == "__main__":

@@ -98,6 +98,36 @@ class LogRangeToolTests(unittest.TestCase):
             self.assertIn("2025-10-21T20:55:12.313 failure", rendered)
             self.assertIn("com.example.CacheException: boom", rendered)
 
+    def test_extract_log_time_range_accepts_iso_range_without_matching_time_format(self) -> None:
+        config = self._build_config()
+        tools = build_builtin_tools(config)
+        handler = tools["extract_log_time_range"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir)
+            log_path = workspace_path / "vdp.log"
+            log_path.write_text(
+                "100 [main] INFO 2025-10-21T20:32:35.845 start\n"
+                "200 [main] ERROR 2025-10-21T20:55:12.313 failure\n",
+                encoding="utf-8",
+            )
+
+            raw = asyncio.run(
+                handler(
+                    str(log_path),
+                    str(workspace_path),
+                    r"^\d+\s+\[[^\]]+\]\s+(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\d{4}-\d{2}-\d{2}T",
+                    16,
+                    39,
+                    "2025-10-21T20:50:00",
+                    "2025-10-21T20:56:00",
+                    "%Y-%m-%dT%H:%M:%S.%f",
+                )
+            )
+            payload = json.loads(raw)
+
+            self.assertEqual(payload["matched_record_count"], 1)
+
     def test_infer_log_header_pattern_returns_structured_payload(self) -> None:
         config = self._build_config()
         tool = build_default_infer_log_pattern_tool(config)

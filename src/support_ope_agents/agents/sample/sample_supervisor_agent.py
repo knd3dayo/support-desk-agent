@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from langgraph.graph import END, START, StateGraph
@@ -185,6 +186,35 @@ class SampleSupervisorAgent(AbstractAgent):
         parts = [part for part in (preface, f"元の問い合わせ:\n{raw_issue}" if raw_issue else "", *extra_sections) if part]
         return "\n\n".join(parts)
 
+    @staticmethod
+    def _collect_adopted_sources(state: "CaseState") -> list[str]:
+        adopted_sources: list[str] = []
+
+        for value in cast(list[str], state.get("knowledge_retrieval_adopted_sources") or []):
+            normalized = str(value).strip()
+            if normalized and normalized not in adopted_sources:
+                adopted_sources.append(normalized)
+
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        if workspace_path:
+            evidence_dir = Path(workspace_path).expanduser().resolve() / ".evidence"
+            if evidence_dir.exists():
+                for path in sorted(p for p in evidence_dir.rglob("*") if p.is_file()):
+                    relative_path = path.relative_to(Path(workspace_path).expanduser().resolve()).as_posix()
+                    if relative_path not in adopted_sources:
+                        adopted_sources.append(relative_path)
+
+        ticket_context = cast(dict[str, Any], state.get("intake_ticket_context_summary") or {})
+        for key, value in ticket_context.items():
+            if str(value).strip():
+                source_label = f"ticket:{key}"
+                if source_label not in adopted_sources:
+                    adopted_sources.append(source_label)
+
+        if not adopted_sources:
+            adopted_sources.append("customer issue")
+        return adopted_sources
+
     def _write_shared_memory(self, state: "CaseState", investigation_summary: str) -> None:
         if self.write_shared_memory_tool is None:
             return
@@ -233,6 +263,8 @@ class SampleSupervisorAgent(AbstractAgent):
         requested_range = ""
         range_start = str(state.get("log_extract_range_start") or "").strip()
         range_end = str(state.get("log_extract_range_end") or "").strip()
+        incident_timeframe = str(state.get("intake_incident_timeframe") or "").strip()
+        adopted_sources = self._collect_adopted_sources(state)
         if range_start and range_end:
             requested_range = f"ログ抽出対象: {range_start} -> {range_end}"
             confirmed_results.append(requested_range)
@@ -249,6 +281,7 @@ class SampleSupervisorAgent(AbstractAgent):
                 f"Intake category: {intake_category}",
                 f"Intake urgency: {intake_urgency}",
                 f"Investigation focus: {investigation_focus}",
+                f"Incident timeframe: {incident_timeframe or 'n/a'}",
             ] + ([f"Classification reason: {classification_reason}"] if classification_reason else []),
             "sections": [
                 {"title": "Current Issue", "summary": raw_issue},
@@ -281,6 +314,10 @@ class SampleSupervisorAgent(AbstractAgent):
                 f"Judgment rationale: {judgment_rationale}",
                 f"Next action: {next_action}",
                 f"Primary source: {primary_source}",
+                f"Adopted sources: {', '.join(adopted_sources)}",
+                f"Intake category: {intake_category}",
+                f"Intake urgency: {intake_urgency}",
+                f"Incident timeframe: {incident_timeframe or 'n/a'}",
             ],
             "sections": [
                 {"title": "Source Context", "summary": "\n\n".join(context_sections)},
@@ -312,6 +349,7 @@ class SampleSupervisorAgent(AbstractAgent):
                         "bullets": [
                             f"Primary source: {primary_source}",
                             f"Investigation summary: {investigation_excerpt}",
+                            f"Adopted sources: {', '.join(adopted_sources)}",
                         ] + ([requested_range] if requested_range else []),
                         "sections": supervisor_working_sections,
                     },

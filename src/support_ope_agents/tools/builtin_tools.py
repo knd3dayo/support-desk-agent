@@ -290,7 +290,7 @@ def _parse_timestamp_value(raw_value: str, time_format: str | None = None) -> da
         try:
             return datetime.strptime(value, time_format)
         except ValueError:
-            return None
+            pass
 
     normalized = value.replace(",", ".")
     try:
