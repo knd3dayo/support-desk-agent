@@ -15,7 +15,7 @@ from support_ope_agents.agents.roles import SUPERVISOR_AGENT, TICKET_UPDATE_AGEN
 from support_ope_agents.config.models import AppConfig, TicketServerBindingSettings
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
-from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.langchain import build_chat_openai_model
 from support_ope_agents.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml

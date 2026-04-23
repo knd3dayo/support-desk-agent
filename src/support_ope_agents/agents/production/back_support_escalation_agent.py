@@ -11,7 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT, SUPERVISOR_AGENT
-from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:

@@ -12,7 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
-from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.log_time_range import apply_derived_log_extract_range

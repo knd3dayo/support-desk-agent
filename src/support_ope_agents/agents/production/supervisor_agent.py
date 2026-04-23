@@ -12,7 +12,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import BACK_SUPPORT_INQUIRY_WRITER_AGENT, INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import EscalationSettings
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
-from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.util.shared_memory_payload import SharedMemoryDocumentPayload
 

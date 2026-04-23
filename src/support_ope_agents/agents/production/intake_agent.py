@@ -18,7 +18,7 @@ from support_ope_agents.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.config.models import TicketCandidateMatchingSettings, TicketServerBindingSettings
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
-from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.mcp_client import McpToolClient

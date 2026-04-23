@@ -13,7 +13,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
-from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.util.formatting import format_result
 

@@ -13,7 +13,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.runtime.asyncio_utils import run_awaitable_sync
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.tools.builtin_tools import build_builtin_tools
 from support_ope_agents.tools.builtin_tools import _detect_log_format_from_lines
