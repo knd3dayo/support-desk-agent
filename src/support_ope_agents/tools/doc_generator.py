@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import json
 from pathlib import Path
 
 from support_ope_agents.config import load_config
@@ -53,6 +54,9 @@ def build_tool_docs_markdown(tool_name: str, role_bindings: list[tuple[str, Tool
         lines.append(
             f"- {role}: provider={tool.provider}, target={target}, status={_implementation_status(tool)}, override=allowed"
         )
+
+    if canonical_tool.input_schema:
+        lines.extend(["", "## Input schema", "```json", json.dumps(canonical_tool.input_schema, ensure_ascii=False, indent=2), "```"])
 
     lines.extend(
         [

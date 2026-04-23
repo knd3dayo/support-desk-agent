@@ -148,6 +148,21 @@ class LogRangeToolTests(unittest.TestCase):
         self.assertEqual(payload["timestamp_format"], "%Y-%m-%dT%H:%M:%S.%f")
         self.assertTrue(payload["header_pattern"])
 
+    def test_builtin_tools_expose_input_schema_from_annotations(self) -> None:
+        config = self._build_config()
+        tools = build_builtin_tools(config)
+
+        infer_schema = tools["infer_log_header_pattern"].input_schema
+        self.assertEqual(infer_schema["type"], "object")
+        self.assertIn("file_path", infer_schema["properties"])
+        self.assertEqual(infer_schema["properties"]["file_path"]["type"], "string")
+        self.assertEqual(infer_schema["properties"]["file_path"]["description"], "解析対象のログファイルパス")
+        self.assertIn("file_path", infer_schema["required"])
+
+        extract_schema = tools["extract_log_time_range"].input_schema
+        self.assertEqual(extract_schema["properties"]["timestamp_start"]["type"], "integer")
+        self.assertEqual(extract_schema["properties"]["output_subdir"]["default"], "log_extracts")
+
     def test_registry_exposes_new_investigate_tools(self) -> None:
         config = self._build_config()
         registry = ToolRegistry(config)
@@ -156,6 +171,7 @@ class LogRangeToolTests(unittest.TestCase):
 
         self.assertIn("infer_log_header_pattern", tools)
         self.assertIn("extract_log_time_range", tools)
+        self.assertIn("file_path", tools["infer_log_header_pattern"].input_schema["properties"])
 
     def test_investigate_agent_appends_extraction_summary(self) -> None:
         config = self._build_config()

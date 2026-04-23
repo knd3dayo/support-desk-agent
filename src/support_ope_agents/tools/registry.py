@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 
 from support_ope_agents.agents.roles import (
@@ -41,6 +41,7 @@ class ToolSpec:
     handler: ToolCallable
     provider: str = "local"
     target: str | None = None
+    input_schema: dict[str, Any] = field(default_factory=dict)
 
 
 def _not_implemented_tool(name: str) -> ToolCallable:
@@ -68,6 +69,7 @@ class ToolRegistry:
                 handler=builtin.handler,
                 provider="builtin",
                 target=builtin.name,
+                input_schema=builtin.input_schema,
             )
             for name, builtin in build_builtin_tools(config).items()
         }
@@ -409,6 +411,7 @@ class ToolRegistry:
                     handler=tool.handler,
                     provider="builtin",
                     target=target_name,
+                    input_schema=tool.input_schema,
                 )
             if builtin is None:
                 raise ToolConfigurationError(
@@ -420,6 +423,7 @@ class ToolRegistry:
                 handler=builtin.handler,
                 provider="builtin",
                 target=target_name,
+                input_schema=builtin.input_schema,
             )
         if self._mcp_tool_client is None:
             raise ToolConfigurationError(

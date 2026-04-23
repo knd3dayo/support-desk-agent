@@ -28,6 +28,12 @@ class ToolDocsGeneratorTests(unittest.TestCase):
             self.assertIn("BackSupportEscalationAgent", content)
             self.assertIn("## 手編集メモ", content)
 
+            infer_log_pattern_doc = Path(tmpdir) / "infer_log_header_pattern.generated.md"
+            self.assertTrue(infer_log_pattern_doc.exists())
+            infer_content = infer_log_pattern_doc.read_text(encoding="utf-8")
+            self.assertIn("## Input schema", infer_content)
+            self.assertIn('"file_path"', infer_content)
+
 
 if __name__ == "__main__":
     unittest.main()
