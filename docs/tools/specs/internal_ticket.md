@@ -42,4 +42,6 @@
 
 ## 5. 実装状況
 
+- 区分: integration-required
 - 既定実装なし
+- tools.ticket_sources.internal の接続先構成が前提

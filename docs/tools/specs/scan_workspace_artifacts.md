@@ -16,4 +16,6 @@ workspace 配下の evidence / artifacts を走査し、調査材料の所在と
 
 ## 4. 実装状況
 
+- 区分: planned
 - 未実装
+- 現在は ToolRegistry の placeholder handler を返す

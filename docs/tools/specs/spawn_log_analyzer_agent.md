@@ -15,4 +15,6 @@
 
 ## 4. 実装状況
 
+- 区分: planned
 - 未実装
+- 現在は ToolRegistry の placeholder handler を返す

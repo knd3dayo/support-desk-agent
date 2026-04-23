@@ -20,16 +20,43 @@
 - shared memory や working memory のような workflow 内部ツールは MCP override 対象に含めない
 - external_ticket / internal_ticket の接続先設定は logical_tools ではなく tools.ticket_sources に集約する
 - 実装未着手のツールでも、設計上の責務と I/O 契約は先に固定する
+- docs/tools/specs 配下のページは ToolRegistry 上の論理ツール名を表し、Python モジュールとの 1:1 対応は前提にしない
 
-## 4. 読み方
+## 4. 実装区分
+
+- implemented: 既定 builtin 実装が存在し、ToolRegistry から利用可能
+- planned: 論理ツール名と仕様はあるが、現時点では ToolRegistry の placeholder handler のみ
+- integration-required: builtin 既定実装は持たず、設定または外部接続を前提に利用する
+
+## 5. 読み方
 
 - 共通方針を確認したうえで、必要な tool 個別ページを参照する
 - agent 文書は role 別ツール設計書ではなく、利用する tool ページへ直接リンクする
 - role 別ツール文書は generated 下書きや旧構成との比較用途に限定する
 
-## 5. 実装上の接続点
+## 6. 実装上の接続点
 
 - ToolRegistry: [src/support_ope_agents/tools/registry.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/registry.py)
 - builtin tools: [src/support_ope_agents/tools/builtin_tools.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/builtin_tools.py)
-- shared memory payload: [src/support_ope_agents/tools/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/shared_memory_payload.py)
+- shared memory payload: [src/support_ope_agents/util/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/util/shared_memory_payload.py)
 - config override: [config.yml](/home/user/source/repos/support-ope-agents/config.yml)
+
+## 7. 未実装の論理ツール
+
+以下は ToolRegistry 上の論理ツール名としては存在するが、現時点では builtin 実装ファイルを持たず、registry の not implemented handler で受けているもの。
+
+- inspect_workflow_state
+- evaluate_agent_result
+- route_phase_agent
+- scan_workspace_artifacts
+- spawn_log_analyzer_agent
+- spawn_knowledge_retriever_agent
+- spawn_draft_writer_agent
+- spawn_investigate_agent
+- spawn_back_support_escalation_agent
+- spawn_back_support_inquiry_writer_agent
+- read_log_file
+- run_python_analysis
+- record_approval_decision
+- zendesk_reply
+- redmine_update

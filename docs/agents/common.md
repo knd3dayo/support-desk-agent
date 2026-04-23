@@ -67,4 +67,4 @@ write_shared_memory の既定実装は、文字列だけでなく構造化 paylo
 ```
 
 既定実装ではこの payload を Markdown へ整形し、shared/context.md、shared/progress.md、shared/summary.md のいずれかへ replace または append で反映する。
-実装上は [src/support_ope_agents/tools/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/shared_memory_payload.py) に型を定義し、dict の自由記述を減らす。
+実装上は [src/support_ope_agents/util/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/util/shared_memory_payload.py) に型を定義し、dict の自由記述を減らす。

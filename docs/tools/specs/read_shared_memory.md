@@ -17,4 +17,5 @@ shared/context.md、shared/progress.md、shared/summary.md をまとめて読み
 
 ## 4. 実装状況
 
+- 区分: implemented
 - 実装済み

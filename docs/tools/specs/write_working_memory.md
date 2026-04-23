@@ -16,4 +16,5 @@ agent 個別の working.md へ作業メモや比較結果を記録する。
 
 ## 4. 実装状況
 
+- 区分: implemented
 - 実装済み

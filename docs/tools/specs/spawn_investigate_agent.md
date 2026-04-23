@@ -1,8 +1,8 @@
-# route_phase_agent
+# spawn_investigate_agent
 
 ## 1. 目的
 
-workflow_kind と現在の調査状況に応じて次に起動する担当 agent を選定する。
+調査と回答ドラフト生成を InvestigateAgent へ委譲する。
 
 ## 2. 利用エージェント
 
@@ -10,7 +10,7 @@ workflow_kind と現在の調査状況に応じて次に起動する担当 agent
 
 ## 3. 既定実装 / 接続点
 
-- 論理ツール名: route_phase_agent
+- 論理ツール名: spawn_investigate_agent
 - ToolRegistry 定義: [src/support_ope_agents/tools/registry.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/registry.py)
 
 ## 4. 実装状況

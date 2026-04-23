@@ -15,8 +15,9 @@ shared/context.md、shared/progress.md、shared/summary.md へ調査結果や進
 
 - 論理ツール名: write_shared_memory
 - 既定実装: [src/support_ope_agents/tools/default_write_shared_memory.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/default_write_shared_memory.py)
-- payload 型: [src/support_ope_agents/tools/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/shared_memory_payload.py)
+- payload 型: [src/support_ope_agents/util/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/util/shared_memory_payload.py)
 
 ## 4. 実装状況
 
+- 区分: implemented
 - 実装済み
