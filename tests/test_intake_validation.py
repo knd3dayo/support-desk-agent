@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 
-from support_ope_agents.agents.production.intake_agent import IntakeAgent
+from support_ope_agents.agents.production.intake_agent import IntakeAgent, IntakeAgentTools
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.config.models import TicketServerBindingSettings
 
@@ -112,11 +112,13 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
             )
             agent = IntakeAgent(
                 config=config,
-                pii_mask_tool=lambda *_args, **_kwargs: "",
-                external_ticket_tool=lambda *_args, **_kwargs: "",
-                internal_ticket_tool=lambda *_args, **_kwargs: "",
-                classify_ticket_tool=lambda *_args, **_kwargs: "",
-                write_shared_memory_tool=lambda *_args, **_kwargs: "",
+                tools=IntakeAgentTools(
+                    pii_mask_tool=lambda *_args, **_kwargs: "",
+                    external_ticket_tool=lambda *_args, **_kwargs: "",
+                    internal_ticket_tool=lambda *_args, **_kwargs: "",
+                    classify_ticket_tool=lambda *_args, **_kwargs: "",
+                    write_shared_memory_tool=lambda *_args, **_kwargs: "",
+                ),
             )
 
             urgency = agent._resolve_classification_urgency(
@@ -139,11 +141,13 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         )
         agent = IntakeAgent(
             config=config,
-            pii_mask_tool=lambda *_args, **_kwargs: "",
-            external_ticket_tool=lambda *_args, **_kwargs: "",
-            internal_ticket_tool=lambda *_args, **_kwargs: "",
-            classify_ticket_tool=lambda *_args, **_kwargs: "",
-            write_shared_memory_tool=lambda *_args, **_kwargs: "",
+            tools=IntakeAgentTools(
+                pii_mask_tool=lambda *_args, **_kwargs: "",
+                external_ticket_tool=lambda *_args, **_kwargs: "",
+                internal_ticket_tool=lambda *_args, **_kwargs: "",
+                classify_ticket_tool=lambda *_args, **_kwargs: "",
+                write_shared_memory_tool=lambda *_args, **_kwargs: "",
+            ),
         )
 
         urgency = agent._resolve_classification_urgency(
@@ -204,11 +208,13 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         )
         agent = IntakeAgent(
             config=config,
-            pii_mask_tool=lambda *_args, **_kwargs: "",
-            external_ticket_tool=lambda *_args, **_kwargs: "",
-            internal_ticket_tool=lambda *_args, **_kwargs: "",
-            classify_ticket_tool=lambda *_args, **_kwargs: "",
-            write_shared_memory_tool=lambda *_args, **_kwargs: "",
+            tools=IntakeAgentTools(
+                pii_mask_tool=lambda *_args, **_kwargs: "",
+                external_ticket_tool=lambda *_args, **_kwargs: "",
+                internal_ticket_tool=lambda *_args, **_kwargs: "",
+                classify_ticket_tool=lambda *_args, **_kwargs: "",
+                write_shared_memory_tool=lambda *_args, **_kwargs: "",
+            ),
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -265,11 +271,13 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         )
         agent = IntakeAgent(
             config=config,
-            pii_mask_tool=lambda *_args, **_kwargs: "",
-            external_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("external_ticket tool is not configured. Configure tools.ticket_sources.external in config.yml.")),
-            internal_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("internal_ticket tool is not configured. Configure tools.ticket_sources.internal in config.yml.")),
-            classify_ticket_tool=lambda *_args, **_kwargs: "",
-            write_shared_memory_tool=lambda *_args, **_kwargs: "",
+            tools=IntakeAgentTools(
+                pii_mask_tool=lambda *_args, **_kwargs: "",
+                external_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("external_ticket tool is not configured. Configure tools.ticket_sources.external in config.yml.")),
+                internal_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("internal_ticket tool is not configured. Configure tools.ticket_sources.internal in config.yml.")),
+                classify_ticket_tool=lambda *_args, **_kwargs: "",
+                write_shared_memory_tool=lambda *_args, **_kwargs: "",
+            ),
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -302,12 +310,14 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         )
         agent = IntakeAgent(
             config=config,
-            pii_mask_tool=lambda *_args, **_kwargs: "",
-            external_ticket_tool=lambda *_args, **_kwargs: "",
-            internal_ticket_tool=lambda *_args, **_kwargs: "",
-            classify_ticket_tool=lambda *_args, **_kwargs: "",
-            write_shared_memory_tool=lambda *_args, **_kwargs: "",
-            ticket_mcp_client=_FakeResolver(),  # type: ignore[arg-type]
+            tools=IntakeAgentTools(
+                pii_mask_tool=lambda *_args, **_kwargs: "",
+                external_ticket_tool=lambda *_args, **_kwargs: "",
+                internal_ticket_tool=lambda *_args, **_kwargs: "",
+                classify_ticket_tool=lambda *_args, **_kwargs: "",
+                write_shared_memory_tool=lambda *_args, **_kwargs: "",
+                ticket_mcp_client=_FakeResolver(),  # type: ignore[arg-type]
+            ),
         )
         model = _FakeChatModel(
             [
@@ -364,12 +374,14 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         )
         agent = IntakeAgent(
             config=config,
-            pii_mask_tool=lambda *_args, **_kwargs: "",
-            external_ticket_tool=lambda *_args, **_kwargs: "",
-            internal_ticket_tool=lambda *_args, **_kwargs: "",
-            classify_ticket_tool=lambda *_args, **_kwargs: "",
-            write_shared_memory_tool=lambda *_args, **_kwargs: "",
-            ticket_mcp_client=resolver,  # type: ignore[arg-type]
+            tools=IntakeAgentTools(
+                pii_mask_tool=lambda *_args, **_kwargs: "",
+                external_ticket_tool=lambda *_args, **_kwargs: "",
+                internal_ticket_tool=lambda *_args, **_kwargs: "",
+                classify_ticket_tool=lambda *_args, **_kwargs: "",
+                write_shared_memory_tool=lambda *_args, **_kwargs: "",
+                ticket_mcp_client=resolver,  # type: ignore[arg-type]
+            ),
         )
         model = _FakeChatModel(
             [

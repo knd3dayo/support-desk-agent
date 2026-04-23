@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
+from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
 
@@ -25,7 +25,9 @@ class ConsolidatedDraftTests(unittest.TestCase):
         config = self._build_config()
         agent = InvestigateAgent(
             config=config,
-            search_documents_tool=lambda **_: '{"results":[{"source_name":"ai-chat-util","source_type":"document_source","status":"matched","summary":"ai-chat-util は生成AI向けユーティリティです。","matched_paths":["/knowledge/ai-chat-util/README.md"],"evidence":["チャット支援機能を提供します"]}]}',
+            tools=InvestigateAgentTools(
+                search_documents_tool=lambda **_: '{"results":[{"source_name":"ai-chat-util","source_type":"document_source","status":"matched","summary":"ai-chat-util は生成AI向けユーティリティです。","matched_paths":["/knowledge/ai-chat-util/README.md"],"evidence":["チャット支援機能を提供します"]}]}'
+            ),
         )
 
         result = agent.execute(
@@ -45,7 +47,9 @@ class ConsolidatedDraftTests(unittest.TestCase):
         config = self._build_config()
         agent = InvestigateAgent(
             config=config,
-            detect_log_format_tool=lambda *_args, **_kwargs: '{"detected_format":"unknown","search_results":{"severity":[{"line_number":9,"line":"2026-04-10 ERROR Data source vdpcachedatasource not found"}],"java_exception":[{"line_number":10,"line":"com.denodo.vdb.cache.VDBCacheException: Data source vdpcachedatasource not found"}]}}',
+            tools=InvestigateAgentTools(
+                detect_log_format_tool=lambda *_args, **_kwargs: '{"detected_format":"unknown","search_results":{"severity":[{"line_number":9,"line":"2026-04-10 ERROR Data source vdpcachedatasource not found"}],"java_exception":[{"line_number":10,"line":"com.denodo.vdb.cache.VDBCacheException: Data source vdpcachedatasource not found"}]}}'
+            ),
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -71,8 +75,10 @@ class ConsolidatedDraftTests(unittest.TestCase):
         write_draft_tool = build_default_write_draft_tool(config, "customer_response_draft")
         agent = InvestigateAgent(
             config=config,
-            search_documents_tool=lambda **_: '{"results":[{"source_name":"sample","source_type":"document_source","status":"matched","summary":"sample の概要です。","matched_paths":["/knowledge/sample/README.md"],"evidence":["sample の概要です。"]}]}',
-            write_draft_tool=write_draft_tool,
+            tools=InvestigateAgentTools(
+                search_documents_tool=lambda **_: '{"results":[{"source_name":"sample","source_type":"document_source","status":"matched","summary":"sample の概要です。","matched_paths":["/knowledge/sample/README.md"],"evidence":["sample の概要です。"]}]}',
+                write_draft_tool=write_draft_tool,
+            ),
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

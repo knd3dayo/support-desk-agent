@@ -103,14 +103,9 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
         supervisor_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(SUPERVISOR_AGENT)}
         ticket_update_tools = {tool.name: tool.handler for tool in context.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
         ticket_mcp_client = McpToolClient.from_config(context.config) if context.config.tools.mcp_manifest_path is not None else None
-        self._intake_executor = IntakeAgent(
+        self._intake_executor = IntakeAgent.from_tool_maps(
             config=context.config,
-            pii_mask_tool=intake_tools["pii_mask"],
-            external_ticket_tool=intake_tools["external_ticket"],
-            internal_ticket_tool=intake_tools["internal_ticket"],
-            classify_ticket_tool=intake_tools["classify_ticket"],
-            write_shared_memory_tool=intake_tools["write_shared_memory"],
-            write_working_memory_tool=intake_tools.get("write_working_memory"),
+            intake_tools=intake_tools,
             runtime_harness_manager=context.runtime_harness_manager,
             ticket_mcp_client=ticket_mcp_client,
         )
@@ -128,18 +123,10 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             read_shared_memory_tool=back_support_escalation_tools["read_shared_memory"],
             write_shared_memory_tool=back_support_escalation_tools["write_shared_memory"],
         )
-        self._investigate_executor = InvestigateAgent(
+        self._investigate_executor = InvestigateAgent.from_tool_maps(
             config=context.config,
-            detect_log_format_tool=investigate_tools.get("detect_log_format"),
-            infer_log_header_pattern_tool=investigate_tools.get("infer_log_header_pattern"),
-            extract_log_time_range_tool=investigate_tools.get("extract_log_time_range"),
-            search_documents_tool=investigate_tools.get("search_documents"),
-            external_ticket_tool=investigate_tools.get("external_ticket"),
-            internal_ticket_tool=investigate_tools.get("internal_ticket"),
-            read_shared_memory_tool=investigate_tools.get("read_shared_memory") or supervisor_tools.get("read_shared_memory"),
-            write_shared_memory_tool=investigate_tools.get("write_shared_memory") or supervisor_tools.get("write_shared_memory"),
-            write_working_memory_tool=investigate_tools.get("write_working_memory"),
-            write_draft_tool=investigate_tools.get("write_draft"),
+            investigate_tools=investigate_tools,
+            fallback_tools=supervisor_tools,
         )
         self._supervisor_executor = SupervisorPhaseExecutor(
             supervisor_tools["read_shared_memory"],

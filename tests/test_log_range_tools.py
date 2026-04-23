@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
+from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.builtin_tools import build_builtin_tools
 from support_ope_agents.tools.default_infer_log_pattern import build_default_infer_log_pattern_tool
@@ -177,28 +177,30 @@ class LogRangeToolTests(unittest.TestCase):
         config = self._build_config()
         agent = InvestigateAgent(
             config=config,
-            detect_log_format_tool=lambda *_args, **_kwargs: json.dumps(
-                {
-                    "detected_format": "unknown",
-                    "search_results": {"severity": [], "java_exception": []},
-                },
-                ensure_ascii=False,
-            ),
-            infer_log_header_pattern_tool=lambda *_args, **_kwargs: json.dumps(
-                {
-                    "header_pattern": r"^\d+\s+\[[^\]]+\]\s+(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\d{4}-\d{2}-\d{2}T",
-                    "timestamp_start": 16,
-                    "timestamp_end": 39,
-                    "timestamp_format": "%Y-%m-%dT%H:%M:%S.%f",
-                },
-                ensure_ascii=False,
-            ),
-            extract_log_time_range_tool=lambda *_args, **_kwargs: json.dumps(
-                {
-                    "output_path": "/tmp/extracted.log",
-                    "matched_record_count": 2,
-                },
-                ensure_ascii=False,
+            tools=InvestigateAgentTools(
+                detect_log_format_tool=lambda *_args, **_kwargs: json.dumps(
+                    {
+                        "detected_format": "unknown",
+                        "search_results": {"severity": [], "java_exception": []},
+                    },
+                    ensure_ascii=False,
+                ),
+                infer_log_header_pattern_tool=lambda *_args, **_kwargs: json.dumps(
+                    {
+                        "header_pattern": r"^\d+\s+\[[^\]]+\]\s+(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\d{4}-\d{2}-\d{2}T",
+                        "timestamp_start": 16,
+                        "timestamp_end": 39,
+                        "timestamp_format": "%Y-%m-%dT%H:%M:%S.%f",
+                    },
+                    ensure_ascii=False,
+                ),
+                extract_log_time_range_tool=lambda *_args, **_kwargs: json.dumps(
+                    {
+                        "output_path": "/tmp/extracted.log",
+                        "matched_record_count": 2,
+                    },
+                    ensure_ascii=False,
+                ),
             ),
         )
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 from asyncio import run
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Mapping, cast
 
@@ -22,14 +22,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True)
-class InvestigateAgent(AbstractAgent):
-    """
-    InvestigateAgentはケースの調査を担当するエージェントで、
-    ログ分析、知識取得、調査結果の要約、共有メモリへの書き込みなどの機能を提供します。
-    create_node() で Investigate フェーズの実装をLanggraph のDeepAgentノードとして提供します。
-
-    """
-    config: AppConfig
+class InvestigateAgentTools:
     detect_log_format_tool: Callable[..., Any] | None = None
     infer_log_header_pattern_tool: Callable[..., Any] | None = None
     extract_log_time_range_tool: Callable[..., Any] | None = None
@@ -40,6 +33,53 @@ class InvestigateAgent(AbstractAgent):
     write_shared_memory_tool: Callable[..., Any] | None = None
     write_working_memory_tool: Callable[..., Any] | None = None
     write_draft_tool: Callable[..., Any] | None = None
+
+    @classmethod
+    def from_tool_maps(
+        cls,
+        investigate_tools: Mapping[str, Callable[..., Any]],
+        fallback_tools: Mapping[str, Callable[..., Any]] | None = None,
+    ) -> "InvestigateAgentTools":
+        shared_tools = fallback_tools or {}
+        return cls(
+            detect_log_format_tool=investigate_tools.get("detect_log_format"),
+            infer_log_header_pattern_tool=investigate_tools.get("infer_log_header_pattern"),
+            extract_log_time_range_tool=investigate_tools.get("extract_log_time_range"),
+            search_documents_tool=investigate_tools.get("search_documents"),
+            external_ticket_tool=investigate_tools.get("external_ticket"),
+            internal_ticket_tool=investigate_tools.get("internal_ticket"),
+            read_shared_memory_tool=investigate_tools.get("read_shared_memory") or shared_tools.get("read_shared_memory"),
+            write_shared_memory_tool=investigate_tools.get("write_shared_memory") or shared_tools.get("write_shared_memory"),
+            write_working_memory_tool=investigate_tools.get("write_working_memory"),
+            write_draft_tool=investigate_tools.get("write_draft"),
+        )
+
+
+@dataclass(slots=True)
+class InvestigateAgent(AbstractAgent):
+    """
+    InvestigateAgentはケースの調査を担当するエージェントで、
+    ログ分析、知識取得、調査結果の要約、共有メモリへの書き込みなどの機能を提供します。
+    create_node() で Investigate フェーズの実装をLanggraph のDeepAgentノードとして提供します。
+
+    """
+    config: AppConfig
+    tools: InvestigateAgentTools = field(default_factory=InvestigateAgentTools)
+
+    @classmethod
+    def from_tool_maps(
+        cls,
+        config: AppConfig,
+        investigate_tools: Mapping[str, Callable[..., Any]],
+        fallback_tools: Mapping[str, Callable[..., Any]] | None = None,
+    ) -> "InvestigateAgent":
+        return cls(
+            config=config,
+            tools=InvestigateAgentTools.from_tool_maps(
+                investigate_tools,
+                fallback_tools=fallback_tools,
+            ),
+        )
 
     @staticmethod
     def _default_query() -> str:
@@ -110,11 +150,11 @@ class InvestigateAgent(AbstractAgent):
         workspace_path = str(state.get("workspace_path") or "").strip()
         if requested_range is None or not workspace_path:
             return ""
-        if self.infer_log_header_pattern_tool is None or self.extract_log_time_range_tool is None:
+        if self.tools.infer_log_header_pattern_tool is None or self.tools.extract_log_time_range_tool is None:
             return ""
 
         range_start, range_end = requested_range
-        inferred = json.loads(self._invoke_tool(self.infer_log_header_pattern_tool, str(log_path)))
+        inferred = json.loads(self._invoke_tool(self.tools.infer_log_header_pattern_tool, str(log_path)))
         if not isinstance(inferred, dict):
             return ""
         header_pattern = str(inferred.get("header_pattern") or "").strip()
@@ -125,7 +165,7 @@ class InvestigateAgent(AbstractAgent):
 
         extracted = json.loads(
             self._invoke_tool(
-                self.extract_log_time_range_tool,
+                self.tools.extract_log_time_range_tool,
                 str(log_path),
                 workspace_path,
                 header_pattern,
@@ -306,9 +346,9 @@ class InvestigateAgent(AbstractAgent):
         log_summary = ""
         log_file = ""
         log_path = self._find_evidence_log_file(workspace_path) if workspace_path else None
-        if log_path is not None and self.detect_log_format_tool is not None:
+        if log_path is not None and self.tools.detect_log_format_tool is not None:
             try:
-                parsed = json.loads(self._invoke_tool(self.detect_log_format_tool, str(log_path), []))
+                parsed = json.loads(self._invoke_tool(self.tools.detect_log_format_tool, str(log_path), []))
                 if isinstance(parsed, dict):
                     log_summary = self._summarize_log_analysis(parsed, log_path)
                     log_file = str(log_path.resolve())
@@ -325,11 +365,11 @@ class InvestigateAgent(AbstractAgent):
 
         ticket_results = self._build_ticket_results(update)
         document_results: list[dict[str, object]] = []
-        if self.search_documents_tool is not None:
+        if self.tools.search_documents_tool is not None:
             try:
                 payload = json.loads(
                     self._invoke_tool(
-                        self.search_documents_tool,
+                        self.tools.search_documents_tool,
                         query=query,
                         conversation_messages=cast(list[dict[str, object]], update.get("conversation_messages") or []),
                     )
@@ -361,10 +401,10 @@ class InvestigateAgent(AbstractAgent):
         if not str(update.get("draft_response") or "").strip():
             draft = self._build_default_draft(update)
             update["draft_response"] = draft
-            if self.write_draft_tool is not None and workspace_path and str(update.get("case_id") or "").strip():
+            if self.tools.write_draft_tool is not None and workspace_path and str(update.get("case_id") or "").strip():
                 try:
                     run(
-                        self.write_draft_tool(
+                        self.tools.write_draft_tool(
                             str(update.get("case_id") or ""),
                             workspace_path,
                             draft,

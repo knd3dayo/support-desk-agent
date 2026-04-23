@@ -5,7 +5,7 @@ import inspect
 import json
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
@@ -35,6 +35,37 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True)
+class IntakeAgentTools:
+    pii_mask_tool: Callable[..., Any] | None = None
+    external_ticket_tool: Callable[..., Any] | None = None
+    internal_ticket_tool: Callable[..., Any] | None = None
+    classify_ticket_tool: Callable[..., Any] | None = None
+    write_shared_memory_tool: Callable[..., Any] | None = None
+    write_working_memory_tool: Callable[..., Any] | None = None
+    runtime_harness_manager: RuntimeHarnessManager | None = None
+    ticket_mcp_client: McpToolClient | None = None
+
+    @classmethod
+    def from_tool_maps(
+        cls,
+        intake_tools: dict[str, Callable[..., Any]],
+        *,
+        runtime_harness_manager: RuntimeHarnessManager | None = None,
+        ticket_mcp_client: McpToolClient | None = None,
+    ) -> "IntakeAgentTools":
+        return cls(
+            pii_mask_tool=intake_tools.get("pii_mask"),
+            external_ticket_tool=intake_tools.get("external_ticket"),
+            internal_ticket_tool=intake_tools.get("internal_ticket"),
+            classify_ticket_tool=intake_tools.get("classify_ticket"),
+            write_shared_memory_tool=intake_tools.get("write_shared_memory"),
+            write_working_memory_tool=intake_tools.get("write_working_memory"),
+            runtime_harness_manager=runtime_harness_manager,
+            ticket_mcp_client=ticket_mcp_client,
+        )
+
+
+@dataclass(slots=True)
 class IntakeAgent(AbstractAgent):
     """
     サポート担当者からの問い合わせ内容を受け取り、初期分類や緊急度判定を行うエージェント。
@@ -55,14 +86,25 @@ class IntakeAgent(AbstractAgent):
         rework_reason: str
 
     config: AppConfig
-    pii_mask_tool: Callable[..., Any]
-    external_ticket_tool: Callable[..., Any]
-    internal_ticket_tool: Callable[..., Any]
-    classify_ticket_tool: Callable[..., Any]
-    write_shared_memory_tool: Callable[..., Any]
-    write_working_memory_tool: Callable[..., Any] | None = None
-    runtime_harness_manager: RuntimeHarnessManager | None = None
-    ticket_mcp_client: McpToolClient | None = None
+    tools: IntakeAgentTools = field(default_factory=IntakeAgentTools)
+
+    @classmethod
+    def from_tool_maps(
+        cls,
+        config: AppConfig,
+        intake_tools: dict[str, Callable[..., Any]],
+        *,
+        runtime_harness_manager: RuntimeHarnessManager | None = None,
+        ticket_mcp_client: McpToolClient | None = None,
+    ) -> "IntakeAgent":
+        return cls(
+            config=config,
+            tools=IntakeAgentTools.from_tool_maps(
+                intake_tools,
+                runtime_harness_manager=runtime_harness_manager,
+                ticket_mcp_client=ticket_mcp_client,
+            ),
+        )
 
     def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
         try:
@@ -127,8 +169,8 @@ class IntakeAgent(AbstractAgent):
 
     def _resolve_classification_urgency(self, raw_issue: str, category: str, urgency: str) -> str:
         constraint_mode = (
-            self.runtime_harness_manager.resolve(INTAKE_AGENT)
-            if self.runtime_harness_manager is not None
+            self.tools.runtime_harness_manager.resolve(INTAKE_AGENT)
+            if self.tools.runtime_harness_manager is not None
             else self.config.agents.resolve_constraint_mode(INTAKE_AGENT)
         )
         if not RuntimeHarnessManager.runtime_constraints_enabled_for_mode(constraint_mode):
@@ -567,7 +609,7 @@ class IntakeAgent(AbstractAgent):
         raw_issue = str(update.get("raw_issue") or "").strip()
         if raw_issue and self.config.agents.IntakeAgent.pii_mask.enabled:
             update["masked_issue"] = self._invoke_tool(
-                self.pii_mask_tool,
+                self.tools.pii_mask_tool,
                 raw_issue,
                 self.PII_MASK_PROMPT,
             )
@@ -585,16 +627,16 @@ class IntakeAgent(AbstractAgent):
         followup_questions = cast(dict[str, str], update.get("intake_followup_questions") or {})
         agent_errors = cast(list[dict[str, str]], update.get("agent_errors") or [])
         model = build_chat_openai_model(self.config, temperature=0)
-        for ticket_kind, tool in (("external", self.external_ticket_tool), ("internal", self.internal_ticket_tool)):
+        for ticket_kind, tool in (("external", self.tools.external_ticket_tool), ("internal", self.tools.internal_ticket_tool)):
             ticket_id = str(update.get(f"{ticket_kind}_ticket_id") or "").strip()
             if not ticket_id or not self._ticket_lookup_requested(update, ticket_kind):
                 continue
 
             binding = self._ticket_binding(ticket_kind)
-            if binding is not None and binding.enabled and self.ticket_mcp_client is not None:
+            if binding is not None and binding.enabled and self.tools.ticket_mcp_client is not None:
                 decision: McpToolSelectionDecision | None = None
                 try:
-                    tools_xml = self.ticket_mcp_client.render_tools_xml(binding.server)
+                    tools_xml = self.tools.ticket_mcp_client.render_tools_xml(binding.server)
                     response = model.invoke(
                         [
                             {
@@ -610,7 +652,7 @@ class IntakeAgent(AbstractAgent):
                         ]
                     )
                     decision = self._parse_tool_decision(str(getattr(response, "content", response)), decision_tag=binding.decision_tag)
-                    available_tool_names = self.ticket_mcp_client.list_tool_names(binding.server)
+                    available_tool_names = self.tools.ticket_mcp_client.list_tool_names(binding.server)
                     if decision.get_tool_name not in available_tool_names:
                         raise ValueError(f"selected MCP tool does not exist: {decision.get_tool_name}")
                     if decision.list_tool_name.lower() != "skip" and decision.list_tool_name not in available_tool_names:
@@ -620,7 +662,7 @@ class IntakeAgent(AbstractAgent):
                         and decision.attachment_tool_name not in available_tool_names
                     ):
                         raise ValueError(f"selected MCP tool does not exist: {decision.attachment_tool_name}")
-                    raw_result = self.ticket_mcp_client.call_tool(
+                    raw_result = self.tools.ticket_mcp_client.call_tool(
                         binding.server,
                         decision.get_tool_name,
                         decision.get_arguments,
@@ -634,7 +676,7 @@ class IntakeAgent(AbstractAgent):
                     ticket_summaries[f"{ticket_kind}_ticket"] = summary
                     ticket_artifacts[f"{ticket_kind}_ticket"] = artifact_paths
                     if decision.attachment_tool_name.lower() != "skip":
-                        attachment_result = self.ticket_mcp_client.call_tool(
+                        attachment_result = self.tools.ticket_mcp_client.call_tool(
                             binding.server,
                             decision.attachment_tool_name,
                             decision.attachment_arguments or {},
@@ -652,7 +694,7 @@ class IntakeAgent(AbstractAgent):
                     update[f"{ticket_kind}_ticket_lookup_enabled"] = False
                     if self._is_not_found_error(error) and decision is not None and decision.list_tool_name.lower() != "skip":
                         try:
-                            list_raw_result = self.ticket_mcp_client.call_tool(
+                            list_raw_result = self.tools.ticket_mcp_client.call_tool(
                                 binding.server,
                                 decision.list_tool_name,
                                 decision.list_arguments or {},
@@ -740,7 +782,7 @@ class IntakeAgent(AbstractAgent):
 
         classification = self._parse_classification(
             self._invoke_tool(
-                self.classify_ticket_tool,
+                self.tools.classify_ticket_tool,
                 masked_issue,
                 self.CLASSIFY_PROMPT,
                 conversation_messages=cast(list[dict[str, object]], update.get("conversation_messages") or []),
@@ -815,7 +857,7 @@ class IntakeAgent(AbstractAgent):
         workspace_path = str(update.get("workspace_path") or "").strip()
         case_id = str(update.get("case_id") or "").strip()
         if workspace_path and case_id:
-            if self.write_working_memory_tool is not None and raw_issue:
+            if self.tools.write_working_memory_tool is not None and raw_issue:
                 working_payload: SharedMemoryDocumentPayload = {
                     "title": "Intake Result",
                     "heading_level": 2,
@@ -841,7 +883,7 @@ class IntakeAgent(AbstractAgent):
                         }
                     ]
                 self._invoke_tool(
-                    self.write_working_memory_tool, case_id, workspace_path, working_payload, 
+                    self.tools.write_working_memory_tool, case_id, workspace_path, working_payload, 
                     "append")
 
             context_payload: SharedMemoryDocumentPayload = {
@@ -928,7 +970,7 @@ class IntakeAgent(AbstractAgent):
                 else:
                     progress_payload["bullets"].append("Planning note: plan モードのため、次はユーザー承認待ちの案内を行う")
             self._invoke_tool(
-                self.write_shared_memory_tool, case_id, workspace_path, 
+                self.tools.write_shared_memory_tool, case_id, workspace_path, 
                 context_payload, progress_payload)
 
         if followup_questions:

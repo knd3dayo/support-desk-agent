@@ -6,7 +6,7 @@ import unittest
 from asyncio import run
 from pathlib import Path
 
-from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
+from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_ope_agents.agents.production.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
@@ -224,21 +224,23 @@ class SupervisorAgentTests(unittest.TestCase):
         )
         executor = InvestigateAgent(
             config=config,
-            detect_log_format_tool=lambda *_args, **_kwargs: json.dumps(
-                {
-                    "detected_format": "unknown",
-                    "has_java_stacktrace": True,
-                    "search_results": {
-                        "severity": [
-                            {"line_number": 12, "line": "2026-04-10 10:15:00 ERROR Request timeout while querying VDP"},
-                            {"line_number": 13, "line": "2026-04-10 10:15:01 WARN retry scheduled"},
-                        ],
-                        "java_exception": [
-                            {"line_number": 14, "line": "java.net.SocketTimeoutException: Read timed out"}
-                        ],
+            tools=InvestigateAgentTools(
+                detect_log_format_tool=lambda *_args, **_kwargs: json.dumps(
+                    {
+                        "detected_format": "unknown",
+                        "has_java_stacktrace": True,
+                        "search_results": {
+                            "severity": [
+                                {"line_number": 12, "line": "2026-04-10 10:15:00 ERROR Request timeout while querying VDP"},
+                                {"line_number": 13, "line": "2026-04-10 10:15:01 WARN retry scheduled"},
+                            ],
+                            "java_exception": [
+                                {"line_number": 14, "line": "java.net.SocketTimeoutException: Read timed out"}
+                            ],
+                        },
                     },
-                },
-                ensure_ascii=False,
+                    ensure_ascii=False,
+                ),
             ),
         )
 

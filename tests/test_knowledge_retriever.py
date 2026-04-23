@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from support_ope_agents.agents.production.investigate_agent import InvestigateAgent
+from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.default_search_documents import build_default_search_documents_tool
 from support_ope_agents.tools.registry import ToolRegistry
@@ -246,20 +246,22 @@ class ConsolidatedKnowledgeTests(unittest.TestCase):
         )
         agent = InvestigateAgent(
             config=config,
-            search_documents_tool=lambda **_: json.dumps(
-                {
-                    "results": [
-                        {
-                            "source_name": "ai-platform-poc",
-                            "source_type": "document_source",
-                            "status": "matched",
-                            "summary": "業務適用を見据えた生成AI基盤の PoC リポジトリです。",
-                            "matched_paths": ["/knowledge/ai-platform-poc/README.md"],
-                            "evidence": ["業務適用を見据えた生成AI基盤の PoC リポジトリです。"],
-                        }
-                    ]
-                },
-                ensure_ascii=False,
+            tools=InvestigateAgentTools(
+                search_documents_tool=lambda **_: json.dumps(
+                    {
+                        "results": [
+                            {
+                                "source_name": "ai-platform-poc",
+                                "source_type": "document_source",
+                                "status": "matched",
+                                "summary": "業務適用を見据えた生成AI基盤の PoC リポジトリです。",
+                                "matched_paths": ["/knowledge/ai-platform-poc/README.md"],
+                                "evidence": ["業務適用を見据えた生成AI基盤の PoC リポジトリです。"],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
             ),
         )
 
