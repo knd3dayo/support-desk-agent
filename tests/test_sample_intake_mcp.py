@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
-from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
+from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent, SampleIntakeAgentTools
 from support_ope_agents.config.models import AppConfig
 
 
@@ -214,7 +214,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
     def test_ticket_tool_prompt_includes_next_action_examples_and_body_guidance(self) -> None:
         config = self._build_config()
-        agent = SampleIntakeAgent(config=config, ticket_mcp_client=_FakeResolver())  # type: ignore[arg-type]
+        agent = SampleIntakeAgent(config=config, tools=SampleIntakeAgentTools(ticket_mcp_client=_FakeResolver()))  # type: ignore[arg-type]
 
         prompt = agent._build_ticket_tool_prompt(
             ticket_kind="external",
@@ -234,7 +234,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_hydrates_ticket_context_with_xml_selected_tool(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+        agent = SampleIntakeAgent(config=config, tools=SampleIntakeAgentTools(ticket_mcp_client=resolver))  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             raw_result = tools["get_issue"].invoke({"issue_number": "123"})
@@ -294,7 +294,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_invalid_xml_tool_selection_disables_lookup_and_records_error(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+        agent = SampleIntakeAgent(config=config, tools=SampleIntakeAgentTools(ticket_mcp_client=resolver))  # type: ignore[arg-type]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
@@ -322,7 +322,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
         config = self._build_config()
         resolver = _FakeResolver()
         resolver.raise_not_found_once = True
-        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+        agent = SampleIntakeAgent(config=config, tools=SampleIntakeAgentTools(ticket_mcp_client=resolver))  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             try:
@@ -387,7 +387,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
                 return super().call_tool(server_name, tool_name, arguments, static_arguments=static_arguments)
 
         resolver = _LowMatchResolver()
-        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+        agent = SampleIntakeAgent(config=config, tools=SampleIntakeAgentTools(ticket_mcp_client=resolver))  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             try:
@@ -425,7 +425,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_existing_ticket_confirmation_answer_allows_progress_without_reasking(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+        agent = SampleIntakeAgent(config=config, tools=SampleIntakeAgentTools(ticket_mcp_client=resolver))  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             tools["get_issue"].invoke({"issue_number": "2"})
@@ -463,7 +463,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_rejected_ticket_confirmation_requests_correct_ticket_id(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+        agent = SampleIntakeAgent(config=config, tools=SampleIntakeAgentTools(ticket_mcp_client=resolver))  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             tools["get_issue"].invoke({"issue_number": "2"})
@@ -504,7 +504,7 @@ class SampleIntakeMcpTests(unittest.TestCase):
     def test_found_ticket_with_legacy_suggestion_still_waits_for_confirmation_without_next_action(self) -> None:
         config = self._build_config()
         resolver = _FakeResolver()
-        agent = SampleIntakeAgent(config=config, ticket_mcp_client=resolver)  # type: ignore[arg-type]
+        agent = SampleIntakeAgent(config=config, tools=SampleIntakeAgentTools(ticket_mcp_client=resolver))  # type: ignore[arg-type]
 
         def _scenario(tools) -> str:
             tools["get_issue"].invoke({"issue_number": "2"})

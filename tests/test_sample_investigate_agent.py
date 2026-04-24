@@ -109,9 +109,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                 result = agent.execute(query="このログのフォーマットを教えて", workspace_path=tmpdir)
 
         summary = str(result)
-        self.assertIn("vdp.log", summary)
-        self.assertIn("vdpcachedatasource not found", summary)
-        self.assertIn("補足情報", summary)
+        self.assertIn("Denodo の一般的な構成説明", summary)
 
     def test_default_instructions_prioritize_ticket_body_for_detail_questions(self) -> None:
         config = self._build_config()
@@ -126,50 +124,76 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("取得済み ticket context", supervisor_instruction)
         self.assertIn("ticket の要点", supervisor_instruction)
 
-    def test_execute_extracts_log_fragment_when_incident_timeframe_exists(self) -> None:
+    def test_execute_includes_requested_log_range_in_query_when_incident_timeframe_exists(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
+        capturing_sub_agent = _CapturingSubAgent(output="補足なし")
+
+        with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
+            agent.execute(
+                query="ログを調べて\n\nログ抽出の手掛かり:\n- incident timeframe: 2025-10-21 20:55 頃\n- requested extract range: 2025-10-21T20:40:00 -> 2025-10-21T21:10:00\n- 必要なら infer_log_header_pattern と extract_log_time_range を使って、この時間帯のログ断片を自分で抽出してください。"
+            )
+
+        payload_text = str(capturing_sub_agent.payloads[0])
+        self.assertIn("incident timeframe: 2025-10-21 20:55 頃", payload_text)
+        self.assertIn("requested extract range: 2025-10-21T20:40:00 -> 2025-10-21T21:10:00", payload_text)
+        self.assertIn("extract_log_time_range", payload_text)
+
+    def test_create_sub_agent_passes_investigate_tools_to_deep_agent(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+            with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent") as create_mock:
+                backend_mock.return_value = object()
+                create_mock.return_value = object()
+                agent.create_sub_agent(query="ログを調べて")
+
+        tools = create_mock.call_args.kwargs["tools"]
+        tool_names = [getattr(tool, "__name__", "") for tool in tools]
+        self.assertIn("infer_log_header_pattern", tool_names)
+        self.assertIn("extract_log_time_range", tool_names)
+        self.assertIn("analyze_image_files", tool_names)
+        self.assertIn("analyze_pdf_files", tool_names)
+        self.assertIn("convert_pdf_files_to_images", tool_names)
+        self.assertIn("write_working_memory", tool_names)
+        self.assertIn("read_working_memory", tool_names)
+
+    def test_system_prompt_instructs_checklist_memory_and_attachment_analysis(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        prompt = agent._build_system_prompt("ログを調べて")
+
+        self.assertIn("read_working_memory", prompt)
+        self.assertIn("チェックリスト", prompt)
+        self.assertIn("write_working_memory", prompt)
+        self.assertIn("analyze_pdf_files", prompt)
+        self.assertIn("analyze_image_files", prompt)
+
+    def test_supervisor_includes_attachment_paths_and_evidence_in_query(self) -> None:
+        executor = _CapturingInvestigateExecutor()
+        supervisor = SampleSupervisorAgent(investigate_executor=executor)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             evidence_dir = Path(tmpdir) / ".evidence"
             evidence_dir.mkdir(parents=True, exist_ok=True)
-            (evidence_dir / "vdp.log").write_text(
-                "100 [main] INFO 2025-10-21T20:32:35.845 start\n"
-                "200 [main] ERROR 2025-10-21T20:55:12.313 failure\n"
-                "com.example.CacheException: boom\n",
-                encoding="utf-8",
+            (evidence_dir / "vdp.log").write_text("error line", encoding="utf-8")
+            attachment_dir = Path(tmpdir) / ".artifacts" / "intake" / "external_attachments"
+            attachment_dir.mkdir(parents=True, exist_ok=True)
+            (attachment_dir / "guide.pdf").write_text("pdf payload", encoding="utf-8")
+            (attachment_dir / "screen.png").write_text("png payload", encoding="utf-8")
+            supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-SAMPLE-ATTACH-001",
+                    "workspace_path": tmpdir,
+                    "raw_issue": "添付を含めて調べて",
+                }
             )
-            with patch.object(agent, "create_sub_agent", return_value=_FakeNoopSubAgent()):
-                with patch.object(
-                    agent,
-                    "_invoke_tool",
-                    side_effect=[
-                        json.dumps(
-                            {
-                                "header_pattern": r"^\d+\s+\[[^\]]+\]\s+(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s+\d{4}-\d{2}-\d{2}T",
-                                "timestamp_start": 16,
-                                "timestamp_end": 39,
-                                "timestamp_format": "%Y-%m-%dT%H:%M:%S.%f",
-                            },
-                            ensure_ascii=False,
-                        ),
-                        json.dumps(
-                            {
-                                "output_path": f"{tmpdir}/.artifacts/log_extracts/vdp.log",
-                                "matched_record_count": 1,
-                            },
-                            ensure_ascii=False,
-                        ),
-                    ],
-                ):
-                    result = agent.execute(
-                        query="ログを調べて",
-                        workspace_path=tmpdir,
-                        state={"intake_incident_timeframe": "2025-10-21 20:55 頃"},
-                    )
 
-        summary = str(result)
-        self.assertIn("指定時間帯", summary)
-        self.assertIn("log_extracts", summary)
+        self.assertIn("Evidence file: vdp.log", executor.query)
+        self.assertIn("Working memory tool parameters", executor.query)
+        self.assertIn("CASE-TEST-SAMPLE-ATTACH-001", executor.query)
+        self.assertIn("guide.pdf", executor.query)
+        self.assertIn("screen.png", executor.query)
+        self.assertIn("analyze_pdf_files", executor.query)
 
     def test_execute_passes_evidence_context_to_sub_agent_and_drops_missing_file_claim(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
@@ -184,11 +208,15 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
-                result = agent.execute(query="ログを調べて", workspace_path=tmpdir)
+                result = agent.execute(
+                    query="ログを調べて",
+                    workspace_path=tmpdir,
+                    state={"investigation_evidence_log_path": str(evidence_dir / "vdp.log")},
+                )
 
         rendered = str(result)
-        self.assertIn("Evidence file: vdp.log", str(capturing_sub_agent.payloads[0]))
-        self.assertIn("vdpcachedatasource not found", rendered)
+        self.assertIn("ログを調べて", str(capturing_sub_agent.payloads[0]))
+        self.assertEqual(rendered, "")
         self.assertNotIn("再提供が必要", rendered)
 
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
@@ -261,6 +289,12 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                 },
                 ensure_ascii=False,
             ),
+            read_working_memory_tool=lambda **_kwargs: json.dumps(
+                {
+                    "content": "## Investigate Result\n- 未解決事項: SSO 側ログの追加確認が必要",
+                },
+                ensure_ascii=False,
+            ),
             write_shared_memory_tool=writer,
         )
 
@@ -275,6 +309,9 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                         "answer": "はい。Issue #2 で合っています。",
                     }
                 },
+                "intake_incident_timeframe": "2025-10-21 20:55 頃",
+                "log_extract_range_start": "2025-10-21T20:40:00",
+                "log_extract_range_end": "2025-10-21T21:10:00",
                 "intake_ticket_context_summary": {
                     "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。"
                 },
@@ -284,6 +321,10 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertEqual(str(result.get("investigation_summary") or ""), "captured")
         self.assertIn("Issue #2 が有力候補", executor.query)
         self.assertIn("認証基盤で再現あり", executor.query)
+        self.assertIn("Investigate working memory", executor.query)
+        self.assertIn("未解決事項: SSO 側ログの追加確認が必要", executor.query)
+        self.assertIn("incident timeframe: 2025-10-21 20:55 頃", executor.query)
+        self.assertIn("requested extract range: 2025-10-21T20:40:00 -> 2025-10-21T21:10:00", executor.query)
         self.assertEqual(len(writer.calls), 1)
         written = writer.calls[0]
         self.assertEqual(str(written.get("case_id") or ""), "CASE-TEST-SAMPLE-MEMORY-001")

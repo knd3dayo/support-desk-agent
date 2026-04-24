@@ -29,6 +29,7 @@ class SampleSupervisorAgent(AbstractAgent):
     back_support_escalation_executor: "SampleBackSupportEscalationAgent | None" = None
     load_instruction: Callable[[str, str], str] | None = None
     read_shared_memory_tool: Callable[..., Any] | None = None
+    read_working_memory_tool: Callable[..., Any] | None = None
     write_shared_memory_tool: Callable[..., Any] | None = None
     write_working_memory_tool: Callable[..., Any] | None = None
 
@@ -108,6 +109,28 @@ class SampleSupervisorAgent(AbstractAgent):
             return {"context": "", "progress": "", "summary": ""}
         return self._parse_memory(raw_result)
 
+    def _read_investigate_working_memory(self, state: "CaseState") -> str:
+        if self.read_working_memory_tool is None:
+            return ""
+
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        if not case_id or not workspace_path:
+            return ""
+
+        try:
+            raw_result = self._invoke_tool(
+                self.read_working_memory_tool,
+                case_id=case_id,
+                workspace_path=workspace_path,
+            )
+            parsed = json.loads(raw_result)
+        except Exception:
+            return ""
+        if not isinstance(parsed, dict):
+            return ""
+        return str(parsed.get("content") or "").strip()
+
     @staticmethod
     def _format_followup_answers(state: "CaseState") -> str:
         answers = cast(dict[str, Any], state.get("customer_followup_answers") or {})
@@ -166,13 +189,129 @@ class SampleSupervisorAgent(AbstractAgent):
             sections.append(f"{label}:\n{value}")
         return "\n\n".join(sections)
 
+    @staticmethod
+    def _find_evidence_log_file(workspace_path: str | None) -> Path | None:
+        if not workspace_path:
+            return None
+        workspace_root = Path(workspace_path).expanduser().resolve()
+        candidate_dirs = [workspace_root / ".evidence", workspace_root / "evidence"]
+        preferred_names = ["application.log", "vdp.log"]
+        for directory in candidate_dirs:
+            if not directory.exists():
+                continue
+            for name in preferred_names:
+                candidate = directory / name
+                if candidate.exists() and candidate.is_file():
+                    return candidate
+            discovered_files = [path for path in sorted(directory.rglob("*")) if path.is_file()]
+            for path in discovered_files:
+                if path.suffix.lower() == ".log":
+                    return path
+            for path in discovered_files:
+                if path.suffix.lower() in {".out", ".txt"}:
+                    return path
+        return None
+
+    @staticmethod
+    def _find_attachment_files(workspace_path: str | None) -> list[Path]:
+        if not workspace_path:
+            return []
+        workspace_root = Path(workspace_path).expanduser().resolve()
+        candidate_dirs = [
+            workspace_root / ".artifacts" / "intake" / "external_attachments",
+            workspace_root / ".artifacts" / "intake" / "internal_attachments",
+            workspace_root / ".evidence",
+            workspace_root / "evidence",
+        ]
+        allowed_suffixes = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+        discovered: list[Path] = []
+        for directory in candidate_dirs:
+            if not directory.exists():
+                continue
+            for path in sorted(directory.rglob("*")):
+                if path.is_file() and path.suffix.lower() in allowed_suffixes and path not in discovered:
+                    discovered.append(path)
+        return discovered
+
     def _build_investigation_query(self, state: "CaseState") -> str:
         raw_issue = str(state.get("raw_issue") or "").strip()
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
         followup_section = self._format_followup_answers(state)
         ticket_context_section = self._format_ticket_context(state)
         shared_memory_section = self._format_shared_memory_snapshot(self._read_shared_memory(state))
+        investigate_working_memory = self._read_investigate_working_memory(state)
+        working_memory_params_section = (
+            "\n".join(
+                [
+                    "Working memory tool parameters:",
+                    f"- case_id: {case_id}",
+                    f"- workspace_path: {workspace_path}",
+                ]
+            )
+            if case_id and workspace_path
+            else ""
+        )
+        investigate_working_memory_section = (
+            f"Investigate working memory:\n{investigate_working_memory}"
+            if investigate_working_memory
+            else ""
+        )
+        incident_timeframe = str(state.get("intake_incident_timeframe") or "").strip()
+        range_start = str(state.get("log_extract_range_start") or "").strip()
+        range_end = str(state.get("log_extract_range_end") or "").strip()
+        log_range_section = (
+            "\n".join(
+                part
+                for part in (
+                    "ログ抽出の手掛かり:",
+                    f"- incident timeframe: {incident_timeframe}" if incident_timeframe else "",
+                    f"- requested extract range: {range_start} -> {range_end}" if range_start and range_end else "",
+                )
+                if part
+            )
+            if incident_timeframe or (range_start and range_end)
+            else ""
+        )
+        evidence_path = str(state.get("investigation_evidence_log_path") or "").strip()
+        evidence_section = (
+            "\n".join(
+                [
+                    "workspace 上の evidence ログが存在します。",
+                    f"Evidence file: {Path(evidence_path).name}",
+                    f"Evidence path: {evidence_path}",
+                ]
+            )
+            if evidence_path
+            else ""
+        )
+        attachment_paths = [str(path).strip() for path in list(state.get("investigation_attachment_paths") or []) if str(path).strip()]
+        attachment_section = (
+            "\n".join(
+                [
+                    "調査可能な添付ファイル path:",
+                    *[f"- {path}" for path in attachment_paths],
+                    "添付の利用順序: まず path を確認し、PDF は analyze_pdf_files、画像は analyze_image_files を優先してください。",
+                ]
+            )
+            if attachment_paths
+            else ""
+        )
 
-        extra_sections = [section for section in (followup_section, ticket_context_section, shared_memory_section) if section]
+        extra_sections = [
+            section
+            for section in (
+                working_memory_params_section,
+                followup_section,
+                ticket_context_section,
+                shared_memory_section,
+                investigate_working_memory_section,
+                log_range_section,
+                evidence_section,
+                attachment_section,
+            )
+            if section
+        ]
         if not extra_sections:
             return raw_issue
 
@@ -382,11 +521,16 @@ class SampleSupervisorAgent(AbstractAgent):
             if self.investigate_executor is not None and raw_issue:
                 try:
                     case_id = str(update.get("case_id") or "").strip()
+                    workspace_path = str(update.get("workspace_path") or "").strip()
+                    evidence_log = self._find_evidence_log_file(workspace_path)
+                    attachment_paths = self._find_attachment_files(workspace_path)
+                    update["investigation_evidence_log_path"] = str(evidence_log) if evidence_log is not None else ""
+                    update["investigation_attachment_paths"] = [str(path) for path in attachment_paths]
                     investigation_query = self._build_investigation_query(update)
                     instruction_text = self._build_instruction_text(case_id, update)
                     investigation_result = self.investigate_executor.execute(
                         query=investigation_query,
-                        workspace_path=str(update.get("workspace_path") or "").strip() or None,
+                        workspace_path=workspace_path or None,
                         instruction_text=instruction_text or None,
                         state=cast(dict[str, Any], update),
                     )

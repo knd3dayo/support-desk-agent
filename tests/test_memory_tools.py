@@ -8,6 +8,7 @@ from pathlib import Path
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.memory.file_store import CaseMemoryStore
+from support_ope_agents.tools.default_read_working_memory import build_default_read_working_memory_tool
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
 from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
 
@@ -84,6 +85,25 @@ class MemoryToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("# Working Memory: KnowledgeRetrieverAgent", content)
         self.assertIn("## Knowledge Retrieval Result", content)
         self.assertIn("Summary: architecture overview", content)
+
+    async def test_read_working_memory_returns_agent_working_file_content(self) -> None:
+        write_tool = build_default_write_working_memory_tool(self.config, KNOWLEDGE_RETRIEVER_AGENT)
+        read_tool = build_default_read_working_memory_tool(self.config, KNOWLEDGE_RETRIEVER_AGENT)
+
+        await write_tool(
+            "CASE-TEST-008",
+            str(self.workspace_path),
+            {"title": "Knowledge Retrieval Result", "bullets": ["Summary: architecture overview"]},
+            "append",
+        )
+
+        raw = await read_tool("CASE-TEST-008", str(self.workspace_path))
+
+        parsed = json.loads(raw)
+        self.assertEqual(parsed["agent_name"], KNOWLEDGE_RETRIEVER_AGENT)
+        self.assertTrue(Path(parsed["working_memory_path"]).exists())
+        self.assertIn("# Working Memory: KnowledgeRetrieverAgent", parsed["content"])
+        self.assertIn("Summary: architecture overview", parsed["content"])
 
     async def test_write_draft_writes_markdown_artifact(self) -> None:
         tool = build_default_write_draft_tool(self.config, "customer_response_draft")

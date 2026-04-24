@@ -48,6 +48,7 @@ from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
+from support_ope_agents.tools.default_read_working_memory import build_default_read_working_memory_tool
 from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
 from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
@@ -91,7 +92,10 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         super().__init__(context)
         self._migrate_legacy_traces()
         ticket_mcp_client = McpToolClient.from_config(context.config) if context.config.tools.mcp_manifest_path is not None else None
-        self._intake_executor = SampleIntakeAgent(config=context.config, ticket_mcp_client=ticket_mcp_client)
+        self._intake_executor = SampleIntakeAgent.from_ticket_mcp_client(
+            config=context.config,
+            ticket_mcp_client=ticket_mcp_client,
+        )
         self._approval_executor = SampleApprovalAgent()
         self._ticket_update_executor = SampleTicketUpdateAgent(
             config=context.config,
@@ -107,6 +111,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
                 role if role in {SUPERVISOR_AGENT, INVESTIGATE_AGENT} else SUPERVISOR_AGENT,
             ),
             read_shared_memory_tool=build_default_read_shared_memory_tool(context.config),
+            read_working_memory_tool=build_default_read_working_memory_tool(context.config, INVESTIGATE_AGENT),
             write_shared_memory_tool=build_default_write_shared_memory_tool(context.config),
             write_working_memory_tool=build_default_write_working_memory_tool(context.config, SUPERVISOR_AGENT),
         )

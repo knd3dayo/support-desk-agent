@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
@@ -43,10 +43,26 @@ class TicketLookupAgentResult(BaseModel):
     next_action: str = ""
     attachment_urls: list[str] = Field(default_factory=list)
 
+
+@dataclass(slots=True)
+class SampleIntakeAgentTools:
+    ticket_mcp_client: McpToolClient | None = None
+
 @dataclass(slots=True)
 class SampleIntakeAgent(AbstractAgent):
     config: AppConfig
-    ticket_mcp_client: McpToolClient | None = None
+    tools: SampleIntakeAgentTools = field(default_factory=SampleIntakeAgentTools)
+
+    @classmethod
+    def from_ticket_mcp_client(
+        cls,
+        config: AppConfig,
+        ticket_mcp_client: McpToolClient | None = None,
+    ) -> "SampleIntakeAgent":
+        return cls(
+            config=config,
+            tools=SampleIntakeAgentTools(ticket_mcp_client=ticket_mcp_client),
+        )
 
     _TICKET_REJECTION_MARKERS = (
         "違う",
@@ -205,7 +221,7 @@ class SampleIntakeAgent(AbstractAgent):
         raw_issue: str,
         ticket_id: str,
     ) -> tuple[TicketLookupAgentResult, dict[str, Any]]:
-        mcp_client = self.ticket_mcp_client
+        mcp_client = self.tools.ticket_mcp_client
         if mcp_client is None:
             raise ValueError("ticket MCP provider is not configured")
         model = build_chat_openai_model(self.config, temperature=0)
@@ -416,7 +432,7 @@ class SampleIntakeAgent(AbstractAgent):
 
     def hydrate_ticket_contexts(self, state: dict[str, Any]) -> dict[str, Any]:
         update = dict(state)
-        if self.ticket_mcp_client is None:
+        if self.tools.ticket_mcp_client is None:
             return update
 
         raw_issue = str(update.get("raw_issue") or "").strip()
@@ -556,7 +572,7 @@ def main() -> int:
 
     config = load_config(args.config)
     ticket_mcp_client = McpToolClient.from_config(config) if config.tools.mcp_manifest_path is not None else None
-    agent = SampleIntakeAgent(config=config, ticket_mcp_client=ticket_mcp_client)
+    agent = SampleIntakeAgent.from_ticket_mcp_client(config=config, ticket_mcp_client=ticket_mcp_client)
     result = agent.execute(raw_issue=args.issue)
     print(format_result(result))
     return 0
