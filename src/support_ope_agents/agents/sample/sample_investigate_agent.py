@@ -22,22 +22,10 @@ from support_ope_agents.util.langchain import build_chat_openai_model
 from langchain_core.messages import HumanMessage
 from deepagents import create_deep_agent
 
-@dataclass(slots=True)
+
 class SampleInvestigateAgent(AbstractAgent):
-    """
-    InvestigateAgentはケースの調査を担当するエージェントで、
-    ログ分析、知識取得、調査結果の要約、共有メモリへの書き込みなどの機能を提供します。
-    create_node() で Investigate フェーズの実装をLanggraph のDeepAgentノードとして提供します。
-
-    """
-    config: AppConfig
-
-    def __init__(self, config: AppConfig) -> None:
-        self.config = config
-        self._builtin_tools = build_builtin_tools(config)
-        case_memory_manager = CaseMemoryManager(config)
-        self._read_working_memory_tool = case_memory_manager.build_default_read_working_memory_tool(INVESTIGATE_AGENT)
-        self._write_working_memory_tool = case_memory_manager.build_default_write_working_memory_tool(INVESTIGATE_AGENT)
+    def __init__(self, tool_registry: "ToolRegistry") -> None:
+        self.tool_registry = tool_registry
 
     @staticmethod
     def _default_query() -> str:
@@ -91,35 +79,12 @@ class SampleInvestigateAgent(AbstractAgent):
         )
         return log_path.name.lower() in normalized and any(marker in normalized for marker in missing_markers)
 
-    def create_sub_agent(self, *, query: str | None = None, instruction_text: str = "") -> Any:
-        settings = self.config.agents.InvestigateAgent
-        effective_query = (query or self._default_query()).strip()
 
-        backend = build_filtered_document_source_backend(
-            document_sources=settings.document_sources,
-            route_base="knowledge",
-        )
-        if backend is None:
-            raise RuntimeError(
-                "Knowledge document backend could not be initialized. Check agents.InvestigateAgent.document_sources."
-            )
-
-        agent = create_deep_agent(
-            model=build_chat_openai_model(self.config),
-            backend=backend,
-            system_prompt=self._build_system_prompt(effective_query, instruction_text=instruction_text),
-            tools=[
-                self._builtin_tools["infer_log_header_pattern"].handler,
-                self._builtin_tools["extract_log_time_range"].handler,
-                self._builtin_tools["analyze_image_files"].handler,
-                self._builtin_tools["analyze_pdf_files"].handler,
-                self._builtin_tools["convert_pdf_files_to_images"].handler,
-                self._write_working_memory_tool,
-                self._read_working_memory_tool,
-            ],
-            name="investigate-agent",
-        )
-        return agent
+    def read_investigate_working_memory(self, case_id: str, workspace_path: str) -> str:
+        """
+        ToolRegistryの共通APIでworking memory contentを取得
+        """
+        return self.tool_registry.read_investigate_working_memory_for_case(case_id, workspace_path, role=INVESTIGATE_AGENT)
 
     def create_node(self) -> Any:
         return self.create_sub_agent(query=self._default_query())

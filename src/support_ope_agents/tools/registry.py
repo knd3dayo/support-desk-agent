@@ -1,3 +1,27 @@
+    def read_shared_memory_for_case(self, case_id: str, workspace_path: str, role: str = SUPERVISOR_AGENT) -> dict[str, str]:
+        """
+        指定したroleのread_shared_memoryツールを使い、case_id/workspace_pathで共有メモリを取得する共通API。
+        例外時や未設定時は空dictを返す。
+        """
+        tools = {t.name: t.handler for t in self.get_tools(role)}
+        handler = tools.get("read_shared_memory")
+        if handler is None:
+            return {"context": "", "progress": "", "summary": ""}
+        try:
+            raw_result = handler(case_id=case_id, workspace_path=workspace_path)
+            try:
+                parsed = json.loads(raw_result)
+            except Exception:
+                return {"context": "", "progress": "", "summary": ""}
+            if not isinstance(parsed, dict):
+                return {"context": "", "progress": "", "summary": ""}
+            return {
+                "context": str(parsed.get("context") or ""),
+                "progress": str(parsed.get("progress") or ""),
+                "summary": str(parsed.get("summary") or ""),
+            }
+        except Exception:
+            return {"context": "", "progress": "", "summary": ""}
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -56,6 +80,40 @@ def _unavailable_tool(message: str) -> ToolCallable:
 
 
 class ToolRegistry:
+    def get_tool_handler(self, tool_name: str, role: str) -> ToolCallable | None:
+        """
+        指定したroleのツール群からtool_nameに該当するハンドラを返す。見つからない場合はNone。
+        """
+        tools = {t.name: t.handler for t in self.get_tools(role)}
+        return tools.get(tool_name)
+
+    def invoke_tool(self, tool_name: str, role: str, **kwargs) -> object:
+        """
+        指定したroleのツール群からtool_nameに該当するハンドラを呼び出し、結果を返す。
+        ツールが見つからない場合は例外を投げる。
+        """
+        handler = self.get_tool_handler(tool_name, role)
+        if handler is None:
+            raise ValueError(f"Tool handler for '{tool_name}' not found for role '{role}'")
+        return handler(**kwargs)
+
+    def read_investigate_working_memory_for_case(self, case_id: str, workspace_path: str, role: str = SUPERVISOR_AGENT) -> str:
+            """
+            指定したroleのwrite_working_memoryツールを使い、case_id/workspace_pathでworking memoryのcontentを取得する共通API。
+            例外時や未設定時は空文字列を返す。
+            """
+            tools = {t.name: t.handler for t in self.get_tools(role)}
+            handler = tools.get("write_working_memory")
+            if handler is None:
+                return ""
+            try:
+                raw_result = handler(case_id=case_id, workspace_path=workspace_path)
+                parsed = json.loads(raw_result)
+            except Exception:
+                return ""
+            if not isinstance(parsed, dict):
+                return ""
+            return str(parsed.get("content") or "").strip()
     def __init__(self, config: AppConfig, mcp_tool_client: McpToolClient | None = None):
         self._config = config
         self._mcp_tool_client = mcp_tool_client

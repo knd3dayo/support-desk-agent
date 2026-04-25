@@ -34,11 +34,10 @@ class SampleTicketUpdateState(TypedDict, total=False):
     escalation_draft: str
 
 
-@dataclass(slots=True)
+
 class SampleTicketUpdateAgent(AbstractAgent):
-    config: AppConfig | None = None
-    ticket_mcp_client: McpToolClient | None = None
-    prepare_ticket_update_tool: Any | None = None
+    def __init__(self, tool_registry: "ToolRegistry"):
+        self.tool_registry = tool_registry
 
     def _invoke_tool(self, tool: Any, *args: object, **kwargs: object) -> str:
         try:
@@ -351,10 +350,12 @@ class SampleTicketUpdateAgent(AbstractAgent):
                 field_name, question = candidate_question
                 ticket_followup_questions[field_name] = question
 
-        if self.prepare_ticket_update_tool is None:
+        tools = {t.name: t.handler for t in self.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
+        prepare_ticket_update_tool = tools.get("prepare_ticket_update")
+        if prepare_ticket_update_tool is None:
             return ""
         prepared = self._invoke_tool(
-            self.prepare_ticket_update_tool,
+            prepare_ticket_update_tool,
             draft_response=str(state.get("draft_response") or "").strip(),
             escalation_draft=str(state.get("escalation_draft") or "").strip(),
             external_ticket_id=str(state.get("external_ticket_id") or "").strip(),

@@ -15,8 +15,12 @@ from support_ope_agents.agents.roles import BACK_SUPPORT_ESCALATION_AGENT, SUPER
 from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.util.deep_agents_extension import FilteredFilesystemBackend
+
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.instructions.back_support_escalation_system_prompt import SYSTEM_PROMPT
+from support_ope_agents.instructions.back_support_escalation_user_prompt import USER_PROMPT_TEMPLATE
+from support_ope_agents.tools.registry import ToolRegistry
 
 
 class SampleBackSupportEscalationResponse(BaseModel):
@@ -28,10 +32,13 @@ class SampleBackSupportEscalationResponse(BaseModel):
     evidence_paths: list[str] = Field(default_factory=list)
 
 
-@dataclass(slots=True)
+
 class SampleBackSupportEscalationAgent(AbstractAgent):
-    config: AppConfig
-    memory_dir: str
+    def __init__(self, tool_registry: "ToolRegistry", memory_dir: str, config: Any = None):
+        self.tool_registry = tool_registry
+        self.memory_dir = memory_dir
+        # AppConfigを直接保持
+        self._config = config if config is not None else getattr(tool_registry, '_config', None)
 
     @staticmethod
     def _default_memory_dir() -> str:
@@ -42,47 +49,32 @@ class SampleBackSupportEscalationAgent(AbstractAgent):
         return "バックサポート向け問い合わせ文を作成し、連携が必要なログや追加資料を整理してください。"
 
     def _build_system_prompt(self) -> str:
-        return (
-            "あなたはバックサポートへのエスカレーション準備担当です。\n"
-            "与えられた filesystem backend には 1 ケース分の .memory 記録がマウントされています。\n"
-            "shared 配下の共有記録と agents 配下の各 agent 作業記録だけを根拠にしてください。\n"
-            "作業開始時に必ず ls('/')、ls('/shared')、ls('/agents') を実行して、backend が見えていることを確認してください。\n"
-            "少なくとも /shared/context.md と /shared/progress.md を読み、必要に応じて /shared/summary.md と /agents/*/working.md を参照してください。\n"
-            "filesystem tools を使って必要なファイルを調べ、問い合わせ文案と不足資料を structured output で返してください。\n"
-            "ファイル編集やコマンド実行は行わないでください。\n"
-            "backend を確認していない段階で『記録がない』と判断してはいけません。\n"
-            "事実を捏造せず、記録にないものは不足資料として整理してください。"
-        )
+        return SYSTEM_PROMPT
 
     def _build_user_prompt(self, query: str) -> str:
-        return (
-            "目的:\n"
-            "- バックサポートへ渡す問い合わせ文案を日本語で作成する\n"
-            "- 連携すべきログ、再現情報、添付候補ファイルを整理する\n"
-            "- shared と agents の両方を確認し、根拠に使った path を evidence_paths に入れる\n"
-            "- required_log_files には不足しているが収集依頼すべきログや再現情報を入れる\n"
-            "- attachment_candidates には既に memory 配下に存在し、問い合わせに添付すべき path を入れる\n"
-            "- inquiry_draft は、そのままバックサポートに渡せる文面にする\n"
-            "- evidence_paths には実際に読んだ backend path を必ず 2 件以上入れる\n"
-            f"依頼内容:\n{query}"
-        )
+        return USER_PROMPT_TEMPLATE.format(query=query)
 
     def create_sub_agent(self, *, query: str | None = None) -> Any:
         memory_root = Path(self.memory_dir).expanduser().resolve()
         if not memory_root.exists() or not memory_root.is_dir():
             raise RuntimeError(f"Memory directory does not exist: {memory_root}")
-
         backend = FilteredFilesystemBackend(
             root_dir=memory_root,
             virtual_mode=True,
             ignore_patterns=("**/__pycache__/**", "**/.DS_Store"),
         )
+        # 必要なツールがあればToolRegistryから取得してtoolsに追加
+        # get_toolsはToolRegistryのpublicメソッド
+        tools = {t.name: t.handler for t in self.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)}
+        # ToolRegistry._configはprivate属性なので、コンストラクタでAppConfigを保持しておく
+        # _configはprivate属性なので、self._config(AppConfig)を使う
+        model = build_chat_openai_model(self._config)
         return create_deep_agent(
-            model=build_chat_openai_model(self.config),
+            model=model,
             backend=backend,
             system_prompt=self._build_system_prompt(),
             response_format=SampleBackSupportEscalationResponse,
-            tools=[],
+            tools=[t for t in tools.values() if t],
             name="back-support-escalation-sample",
         )
 
@@ -134,6 +126,7 @@ class SampleBackSupportEscalationAgent(AbstractAgent):
         return SampleBackSupportEscalationAgent.build_agent_definition()
 
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the sample back support escalation agent")
     parser.add_argument("query", nargs="?", default=SampleBackSupportEscalationAgent._default_query(), help="Escalation preparation request")
@@ -146,7 +139,8 @@ def main() -> int:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    agent = SampleBackSupportEscalationAgent(config=config, memory_dir=args.memory_dir)
+    tool_registry = ToolRegistry(config)
+    agent = SampleBackSupportEscalationAgent(tool_registry=tool_registry, memory_dir=args.memory_dir, config=config)
     result = agent.execute(query=args.query)
     print(format_result(result))
     return 0

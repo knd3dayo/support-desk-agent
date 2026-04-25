@@ -23,15 +23,19 @@ if TYPE_CHECKING:
     from support_ope_agents.models.state import CaseState
 
 
-@dataclass(slots=True)
+
 class SampleSupervisorAgent(AbstractAgent):
-    investigate_executor: "SampleInvestigateAgent | None" = None
-    back_support_escalation_executor: "SampleBackSupportEscalationAgent | None" = None
-    load_instruction: Callable[[str, str], str] | None = None
-    read_shared_memory_tool: Callable[..., Any] | None = None
-    read_working_memory_tool: Callable[..., Any] | None = None
-    write_shared_memory_tool: Callable[..., Any] | None = None
-    write_working_memory_tool: Callable[..., Any] | None = None
+    def __init__(
+        self,
+        tool_registry: "ToolRegistry",
+        investigate_executor: "SampleInvestigateAgent | None" = None,
+        back_support_escalation_executor: "SampleBackSupportEscalationAgent | None" = None,
+    ):
+        self.tool_registry = tool_registry
+        self.investigate_executor = investigate_executor
+        self.back_support_escalation_executor = back_support_escalation_executor
+
+
 
     @staticmethod
     def _extract_investigation_summary(result: Any) -> str:
@@ -68,13 +72,7 @@ class SampleSupervisorAgent(AbstractAgent):
         summary = investigation_summary.strip() or "サンプル調査を実行しました。"
         return f"お問い合わせありがとうございます。\n\n{summary}\n\n必要であれば追加の確認事項もご案内できます。"
 
-    @staticmethod
-    def _invoke_tool(tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
-        result = tool(*args, **kwargs)
-        if inspect.isawaitable(result):
-            resolved = run_awaitable_sync(cast(Any, result))
-            return str(resolved)
-        return str(result)
+
 
     @staticmethod
     def _parse_memory(raw_result: str) -> dict[str, str]:
@@ -90,46 +88,7 @@ class SampleSupervisorAgent(AbstractAgent):
             "summary": str(parsed.get("summary") or ""),
         }
 
-    def _read_shared_memory(self, state: "CaseState") -> dict[str, str]:
-        if self.read_shared_memory_tool is None:
-            return {"context": "", "progress": "", "summary": ""}
 
-        case_id = str(state.get("case_id") or "").strip()
-        workspace_path = str(state.get("workspace_path") or "").strip()
-        if not case_id or not workspace_path:
-            return {"context": "", "progress": "", "summary": ""}
-
-        try:
-            raw_result = self._invoke_tool(
-                self.read_shared_memory_tool,
-                case_id=case_id,
-                workspace_path=workspace_path,
-            )
-        except Exception:
-            return {"context": "", "progress": "", "summary": ""}
-        return self._parse_memory(raw_result)
-
-    def _read_investigate_working_memory(self, state: "CaseState") -> str:
-        if self.read_working_memory_tool is None:
-            return ""
-
-        case_id = str(state.get("case_id") or "").strip()
-        workspace_path = str(state.get("workspace_path") or "").strip()
-        if not case_id or not workspace_path:
-            return ""
-
-        try:
-            raw_result = self._invoke_tool(
-                self.read_working_memory_tool,
-                case_id=case_id,
-                workspace_path=workspace_path,
-            )
-            parsed = json.loads(raw_result)
-        except Exception:
-            return ""
-        if not isinstance(parsed, dict):
-            return ""
-        return str(parsed.get("content") or "").strip()
 
     @staticmethod
     def _format_followup_answers(state: "CaseState") -> str:
@@ -240,7 +199,9 @@ class SampleSupervisorAgent(AbstractAgent):
         followup_section = self._format_followup_answers(state)
         ticket_context_section = self._format_ticket_context(state)
         shared_memory_section = self._format_shared_memory_snapshot(self._read_shared_memory(state))
-        investigate_working_memory = self._read_investigate_working_memory(state)
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        investigate_working_memory = self.tool_registry.read_investigate_working_memory_for_case(case_id, workspace_path, role=SUPERVISOR_AGENT)
         working_memory_params_section = (
             "\n".join(
                 [
@@ -355,14 +316,10 @@ class SampleSupervisorAgent(AbstractAgent):
         return adopted_sources
 
     def _write_shared_memory(self, state: "CaseState", investigation_summary: str) -> None:
-        if self.write_shared_memory_tool is None:
-            return
-
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         if not case_id or not workspace_path:
             return
-
         raw_issue = str(state.get("raw_issue") or "").strip()
         ticket_context = self._format_ticket_context(state)
         followup_answers = self._format_followup_answers(state)
@@ -413,7 +370,6 @@ class SampleSupervisorAgent(AbstractAgent):
             {"title": "Judgment", "bullets": [judgment_rationale or "n/a"]},
             {"title": "Next Action", "bullets": [next_action]},
         ]
-
         context_content = {
             "title": "Shared Context",
             "bullets": [
@@ -462,10 +418,10 @@ class SampleSupervisorAgent(AbstractAgent):
                 {"title": "Source Context", "summary": "\n\n".join(context_sections)},
             ],
         }
-
         try:
-            self._invoke_tool(
-                self.write_shared_memory_tool,
+            self.tool_registry.invoke_tool(
+                "write_shared_memory",
+                SUPERVISOR_AGENT,
                 case_id=case_id,
                 workspace_path=workspace_path,
                 context_content=context_content,
@@ -475,42 +431,28 @@ class SampleSupervisorAgent(AbstractAgent):
             )
         except Exception:
             return
-
-        if self.write_working_memory_tool is not None:
-            try:
-                self._invoke_tool(
-                    self.write_working_memory_tool,
-                    case_id,
-                    workspace_path,
-                    {
-                        "title": "Supervisor Review",
-                        "heading_level": 2,
-                        "bullets": [
-                            f"Primary source: {primary_source}",
-                            f"Investigation summary: {investigation_excerpt}",
-                            f"Adopted sources: {', '.join(adopted_sources)}",
-                        ] + ([requested_range] if requested_range else []),
-                        "sections": supervisor_working_sections,
-                    },
-                    "append",
-                )
-            except Exception:
-                return
-
-    def _build_instruction_text(self, case_id: str, state: "CaseState") -> str:
-        if self.load_instruction is None or not case_id:
-            return ""
-
-        instructions = [
-            self.load_instruction(case_id, SUPERVISOR_AGENT).strip(),
-            self.load_instruction(case_id, INVESTIGATE_AGENT).strip(),
-        ]
-        if self._has_ticket_followup_answer(state):
-            instructions.append(
-                "追加確認の回答を受け取った場合は、まず取得済みのチケット要約と既知の文脈を見直し、"
-                "確認できた状況をそのままユーザーへ返せる粒度で整理してください。"
+        try:
+            self.tool_registry.invoke_tool(
+                "write_working_memory",
+                SUPERVISOR_AGENT,
+                case_id,
+                workspace_path,
+                {
+                    "title": "Supervisor Review",
+                    "heading_level": 2,
+                    "bullets": [
+                        f"Primary source: {primary_source}",
+                        f"Investigation summary: {investigation_excerpt}",
+                        f"Adopted sources: {', '.join(adopted_sources)}",
+                    ] + ([requested_range] if requested_range else []),
+                    "sections": supervisor_working_sections,
+                },
+                "append",
             )
-        return "\n\n".join(part for part in instructions if part)
+        except Exception:
+            return
+
+    # _build_instruction_textは削除（load_instruction依存のため）
 
     def execute_investigation(self, state: "CaseState") -> "CaseState":
         update = cast("CaseState", StateTransitionHelper.supervisor_investigating(state))

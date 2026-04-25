@@ -22,8 +22,11 @@ class SampleApprovalState(TypedDict, total=False):
     next_action: str
 
 
-@dataclass(slots=True)
+
 class SampleApprovalAgent(AbstractAgent):
+    def __init__(self, tool_registry: "ToolRegistry"):
+        self.tool_registry = tool_registry
+
     def wait_for_approval(self, state: dict[str, Any]) -> dict[str, Any]:
         return StateTransitionHelper.waiting_for_approval(state)
 

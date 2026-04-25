@@ -44,25 +44,10 @@ class TicketLookupAgentResult(BaseModel):
     attachment_urls: list[str] = Field(default_factory=list)
 
 
-@dataclass(slots=True)
-class SampleIntakeAgentTools:
-    ticket_mcp_client: McpToolClient | None = None
 
-@dataclass(slots=True)
 class SampleIntakeAgent(AbstractAgent):
-    config: AppConfig
-    tools: SampleIntakeAgentTools = field(default_factory=SampleIntakeAgentTools)
-
-    @classmethod
-    def from_ticket_mcp_client(
-        cls,
-        config: AppConfig,
-        ticket_mcp_client: McpToolClient | None = None,
-    ) -> "SampleIntakeAgent":
-        return cls(
-            config=config,
-            tools=SampleIntakeAgentTools(ticket_mcp_client=ticket_mcp_client),
-        )
+    def __init__(self, tool_registry: "ToolRegistry"):
+        self.tool_registry = tool_registry
 
     _TICKET_REJECTION_MARKERS = (
         "違う",
