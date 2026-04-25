@@ -10,6 +10,7 @@ from typing import Any, TypedDict, cast
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, StateGraph
+from support_ope_agents.config.loader import load_config
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
@@ -40,6 +41,7 @@ class SampleTicketUpdateAgent(AbstractAgent):
         from support_ope_agents.tools.registry import ToolRegistry
         self.config = config
         self.tool_registry = ToolRegistry(config)
+        self.ticket_mcp_client = None
 
     def _invoke_tool(self, tool: Any, *args: object, **kwargs: object) -> str:
         try:
@@ -276,7 +278,7 @@ class SampleTicketUpdateAgent(AbstractAgent):
         if self.config is None or self.ticket_mcp_client is None:
             return None, None
         binding = self._ticket_binding(ticket_kind)
-        if binding is None or not binding.enabled or not ticket_id or self._is_auto_generated_ticket_id(ticket_kind, ticket_id):
+        if binding is None or not binding.enabled or not ticket_id:
             return None, None
         model = build_chat_openai_model(self.config, temperature=0)
         tools_xml = self.ticket_mcp_client.render_tools_xml(binding.server)
@@ -446,9 +448,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the sample ticket update agent")
     parser.add_argument("--draft-response", default="", help="Draft reply to reflect in the outgoing ticket update")
     parser.add_argument("--escalation-draft", default="", help="Escalation draft to reflect in the outgoing ticket update")
+    parser.add_argument("--config", default="config.yml", help="Path to config.yml")
     args = parser.parse_args()
 
-    agent = SampleTicketUpdateAgent()
+    config = load_config(args.config)
+    agent = SampleTicketUpdateAgent(config)
     result = agent.execute(
         draft_response=args.draft_response,
         escalation_draft=args.escalation_draft,

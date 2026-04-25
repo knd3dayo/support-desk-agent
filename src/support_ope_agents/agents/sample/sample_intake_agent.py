@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
@@ -111,62 +110,16 @@ class SampleIntakeAgent(AbstractAgent):
     ) -> str:
         static_arguments = json.dumps(binding.arguments, ensure_ascii=False, sort_keys=True)
         description = binding.description or f"{ticket_kind} ticket lookup"
-        return (
-            "あなたは問い合わせ受付の最小サンプル IntakeAgent です。\n"
-            "渡された MCP tools を使って、指定された ticket URL または ticket identifier を取得してください。\n"
-            "直接取得できない場合は、必要に応じて一覧・検索系 tool を使って候補を探してください。\n"
-            "tool 名や引数は必ず利用可能な tool 定義に従ってください。推測や創作は禁止です。\n"
-            "最終出力は XML のみで、説明文やコードフェンスを付けないでください。\n"
-            "添付ファイル URL が取得できた場合は、その URL を <attachments><attachment>...</attachment></attachments> に列挙してください。\n"
-            "次に取るべき制御は <next_action> で明示してください。許可される値は proceed / confirm_ticket / request_ticket_id です。\n"
-            "- proceed: ticket を特定できており、追加確認なしで後続処理へ進めてよい\n"
-            "- confirm_ticket: ticket 候補の確認が必要\n"
-            "- request_ticket_id: 正しい ticket URL または識別子の再入力が必要\n"
-            "proceed の場合、<suggestion> は原則空にしてください。\n"
-            "ticket 本文に title や body がある場合、content にはユーザーへそのまま説明できる粒度で要約を書いてください。\n"
-            "特に issue body に『背景』『観測された問題』『期待する挙動』『改善候補』のような節がある場合は、それらを優先して短く要約してください。\n"
-            "content には内部調査手順の一般論ではなく、その ticket 固有の内容を優先して書いてください。\n"
-            "\n"
-            "期待する XML 形式:\n"
-            "<result>\n"
-            "  <content>取得できた ticket の要約。取得できなければ空文字でも可</content>\n"
-            "  <suggestion>次に取るべき行動。候補提示や確認事項があればここへ書く</suggestion>\n"
-            "  <next_action>proceed | confirm_ticket | request_ticket_id</next_action>\n"
-            "  <attachments>\n"
-            "    <attachment>https://example.invalid/path/to/file</attachment>\n"
-            "  </attachments>\n"
-            "</result>\n"
-            "\n"
-            "出力例1: ticket を特定できて内容も取得できた場合\n"
-            "<result>\n"
-            "  <content>Issue #2 は、仕様問い合わせに対して直接回答できず shared memory 記録も欠落する問題です。背景として過去の改善レポートがあり、主な論点は『直接回答できていない』『shared memory に分類や緊急度が残っていない』『Supervisor の判断根拠が共有サマリーに残っていない』の3点です。期待する挙動は、仕様問い合わせへ直接回答し、構造化項目と判断根拠を shared memory に残すことです。</content>\n"
-            "  <suggestion></suggestion>\n"
-            "  <next_action>proceed</next_action>\n"
-            "</result>\n"
-            "\n"
-            "出力例2: 候補確認が必要な場合\n"
-            "<result>\n"
-            "  <content>Issue #121 は Login failure incident、Issue #123 は Login 500 on production です。</content>\n"
-            "  <suggestion>候補は Issue #121 または Issue #123 です。正しい ticket か確認してください。</suggestion>\n"
-            "  <next_action>confirm_ticket</next_action>\n"
-            "</result>\n"
-            "\n"
-            "出力例3: 再入力が必要な場合\n"
-            "<result>\n"
-            "  <content></content>\n"
-            "  <suggestion>正しい ticket URL または識別子を教えてください。</suggestion>\n"
-            "  <next_action>request_ticket_id</next_action>\n"
-            "</result>\n"
-            "\n"
-            f"ticket kind: {ticket_kind}\n"
-            f"ticket reference: {ticket_id}\n"
-            f"server name: {binding.server}\n"
-            f"server purpose: {description}\n"
-            f"static arguments: {static_arguments}\n"
-            f"customer issue:\n{raw_issue}\n"
-            "\n"
-            "available tools:\n"
-            f"{tools_xml}\n"
+        template_path = Path(__file__).parent.parent.parent / "instructions" / "intake_ticket_tool_prompt.txt"
+        template = template_path.read_text(encoding="utf-8")
+        return template.format(
+            ticket_kind=ticket_kind,
+            ticket_id=ticket_id,
+            server=binding.server,
+            server_purpose=description,
+            static_arguments=static_arguments,
+            raw_issue=raw_issue,
+            tools_xml=tools_xml,
         )
 
     @staticmethod
