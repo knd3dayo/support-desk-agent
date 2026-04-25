@@ -11,7 +11,7 @@ from unittest.mock import patch
 from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.builtin_tools import build_builtin_tools
-from support_ope_agents.tools.default_infer_log_pattern import build_default_infer_log_pattern_tool
+from support_ope_agents.tools.infer_log_pattern import build_default_infer_log_pattern_tool
 from support_ope_agents.tools.registry import ToolRegistry
 from support_ope_agents.util.log_time_range import derive_log_extract_range_from_timeframe
 

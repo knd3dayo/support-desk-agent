@@ -9,8 +9,7 @@ from pathlib import Path
 from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_ope_agents.agents.production.supervisor_agent import SupervisorPhaseExecutor
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
-from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
+from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
 
 
 class SupervisorPhaseExecutorHelpersTests(unittest.TestCase):
@@ -116,8 +115,9 @@ class SupervisorAgentTests(unittest.TestCase):
                     },
                 }
             )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
+            case_memory_manager = CaseMemoryManager(config)
+            read_shared_memory = case_memory_manager.build_default_read_shared_memory_tool()
+            write_shared_memory = case_memory_manager.build_default_write_shared_memory_tool()
 
             supervisor = SupervisorPhaseExecutor(
                 read_shared_memory_tool=read_shared_memory,
@@ -154,8 +154,9 @@ class SupervisorAgentTests(unittest.TestCase):
                     "agents": {},
                 }
             )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
+            case_memory_manager = CaseMemoryManager(config)
+            read_shared_memory = case_memory_manager.build_default_read_shared_memory_tool()
+            write_shared_memory = case_memory_manager.build_default_write_shared_memory_tool()
 
             supervisor = SupervisorPhaseExecutor(
                 read_shared_memory_tool=read_shared_memory,
@@ -189,8 +190,9 @@ class SupervisorAgentTests(unittest.TestCase):
                     "agents": {},
                 }
             )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
+            case_memory_manager = CaseMemoryManager(config)
+            read_shared_memory = case_memory_manager.build_default_read_shared_memory_tool()
+            write_shared_memory = case_memory_manager.build_default_write_shared_memory_tool()
 
             supervisor = SupervisorPhaseExecutor(
                 read_shared_memory_tool=read_shared_memory,
@@ -268,8 +270,9 @@ class SupervisorAgentTests(unittest.TestCase):
                     "agents": {},
                 }
             )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
+            case_memory_manager = CaseMemoryManager(config)
+            read_shared_memory = case_memory_manager.build_default_read_shared_memory_tool()
+            write_shared_memory = case_memory_manager.build_default_write_shared_memory_tool()
 
             supervisor = SupervisorPhaseExecutor(
                 read_shared_memory_tool=read_shared_memory,
@@ -305,8 +308,9 @@ class SupervisorAgentTests(unittest.TestCase):
                     "agents": {},
                 }
             )
-            read_shared_memory = build_default_read_shared_memory_tool(config)
-            write_shared_memory = build_default_write_shared_memory_tool(config)
+            case_memory_manager = CaseMemoryManager(config)
+            read_shared_memory = case_memory_manager.build_default_read_shared_memory_tool()
+            write_shared_memory = case_memory_manager.build_default_write_shared_memory_tool()
 
             supervisor = SupervisorPhaseExecutor(
                 read_shared_memory_tool=read_shared_memory,

@@ -11,6 +11,10 @@ from support_ope_agents.instructions import InstructionLoader
 
 
 class _LogHeaderPatternInference(BaseModel):
+    """
+    ログ先頭行パターン推定の構造化出力用モデル。
+    LLMから返される推定結果を受け取るための型。
+    """
     header_pattern: str = Field(default="")
     timestamp_start: int = Field(default=-1)
     timestamp_end: int = Field(default=-1)
@@ -20,14 +24,27 @@ class _LogHeaderPatternInference(BaseModel):
 
 
 def build_default_infer_log_pattern_tool(config: AppConfig):
+    """
+    ログファイルの先頭行サンプルから、レコード先頭の正規表現・タイムスタンプ位置・書式を推定するツールを構築。
+    指示文(instructions)はInstructionLoader経由で外部化。
+    """
     def _infer_log_pattern(*, file_path: str, sample_line_limit: int = 100) -> str:
+        """
+        指定ファイルの先頭N行サンプルから、LLMでログパターンを推定しJSONで返す。
+        :param file_path: ログファイルパス
+        :param sample_line_limit: サンプル行数上限
+        :return: 推定結果JSON
+        """
         path = Path(file_path).expanduser().resolve()
         if not path.exists():
             raise FileNotFoundError(f"File was not found: {path}")
 
+
+        # ファイルからサンプル行を抽出
         lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
         sample_lines = lines[:sample_line_limit]
         if not sample_lines:
+            # サンプルが空ならunavailableで返す
             payload = {
                 "status": "unavailable",
                 "file_path": str(path),
@@ -42,6 +59,7 @@ def build_default_infer_log_pattern_tool(config: AppConfig):
             }
             return json.dumps(payload, ensure_ascii=False)
 
+        # LLMモデルを初期化し、構造化出力を有効化
         model = build_chat_openai_model(config, temperature=0)
         structured_model = model.with_structured_output(_LogHeaderPatternInference)
 
@@ -51,6 +69,7 @@ def build_default_infer_log_pattern_tool(config: AppConfig):
         if not instructions:
             raise RuntimeError("instructions for infer_log_pattern is not defined.")
 
+        # プロンプトを組み立て
         prompt = (
             f"{instructions}\n\n"
             f"file_path: {path}\n"
@@ -59,9 +78,11 @@ def build_default_infer_log_pattern_tool(config: AppConfig):
             + "\n".join(f"{index + 1:03d}: {line}" for index, line in enumerate(sample_lines))
         )
 
+        # LLMに問い合わせ
         response = structured_model.invoke([
             {"role": "user", "content": prompt}
         ])
+        # 構造化出力の型でパース
         if isinstance(response, _LogHeaderPatternInference):
             parsed = response
         elif isinstance(response, dict):
@@ -71,6 +92,7 @@ def build_default_infer_log_pattern_tool(config: AppConfig):
         else:
             raise ValueError("infer_log_header_pattern returned an unsupported structured output payload")
 
+        # 結果をJSONで返す
         payload = {
             "status": "matched" if parsed.header_pattern and parsed.timestamp_start >= 0 and parsed.timestamp_end > parsed.timestamp_start else "unavailable",
             "file_path": str(path),

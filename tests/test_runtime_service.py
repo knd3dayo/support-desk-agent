@@ -38,11 +38,9 @@ from support_ope_agents.memory.file_store import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.runtime.production.production_service import ProductionRuntimeContext, ProductionRuntimeService, build_runtime_context
-from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
+from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
 from support_ope_agents.tools.default_search_documents import build_default_search_documents_tool
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
-from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
-from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
 from support_ope_agents.tools import ToolConfigurationError
 from support_ope_agents.tools.registry import ToolSpec
 from support_ope_agents.models.state import CaseState
@@ -137,13 +135,14 @@ class _FakeToolRegistry:
         self.pii_mask_calls = 0
         self.external_ticket_calls: list[str] = []
         self.internal_ticket_calls: list[str] = []
-        self._read_shared_memory = build_default_read_shared_memory_tool(config)
-        self._write_shared_memory = build_default_write_shared_memory_tool(config)
-        self._write_intake_working_memory = build_default_write_working_memory_tool(config, INTAKE_AGENT)
+        case_memory_manager = CaseMemoryManager(config)
+        self._read_shared_memory = case_memory_manager.build_default_read_shared_memory_tool()
+        self._write_shared_memory = case_memory_manager.build_default_write_shared_memory_tool()
+        self._write_intake_working_memory = case_memory_manager.build_default_write_working_memory_tool(INTAKE_AGENT)
         self._search_documents = build_default_search_documents_tool(config)
-        self._write_investigate_working_memory = build_default_write_working_memory_tool(config, INVESTIGATE_AGENT)
-        self._write_log_working_memory = build_default_write_working_memory_tool(config, LOG_ANALYZER_AGENT)
-        self._write_knowledge_working_memory = build_default_write_working_memory_tool(config, KNOWLEDGE_RETRIEVER_AGENT)
+        self._write_investigate_working_memory = case_memory_manager.build_default_write_working_memory_tool(INVESTIGATE_AGENT)
+        self._write_log_working_memory = case_memory_manager.build_default_write_working_memory_tool(LOG_ANALYZER_AGENT)
+        self._write_knowledge_working_memory = case_memory_manager.build_default_write_working_memory_tool(KNOWLEDGE_RETRIEVER_AGENT)
         self._write_back_support_draft = build_default_write_draft_tool(config, "back_support_inquiry_draft")
         self._write_customer_draft = build_default_write_draft_tool(config, "customer_response_draft")
 

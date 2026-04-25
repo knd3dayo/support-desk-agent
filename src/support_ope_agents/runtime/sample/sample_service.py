@@ -47,11 +47,8 @@ from support_ope_agents.runtime.service_support import sync_case_title_from_stat
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
-from support_ope_agents.tools.default_read_shared_memory import build_default_read_shared_memory_tool
-from support_ope_agents.tools.default_read_working_memory import build_default_read_working_memory_tool
-from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
-from support_ope_agents.tools.default_write_shared_memory import build_default_write_shared_memory_tool
-from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
+from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
+from support_ope_agents.tools.prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 from support_ope_agents.workflow import (
@@ -103,6 +100,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             prepare_ticket_update_tool=build_default_prepare_ticket_update_tool(context.config),
         )
         self._investigate_executor = SampleInvestigateAgent(config=context.config)
+        case_memory_manager = CaseMemoryManager(context.config)
         self._supervisor_executor = SampleSupervisorAgent(
             investigate_executor=self._investigate_executor,
             back_support_escalation_executor=None,
@@ -110,10 +108,10 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
                 case_id,
                 role if role in {SUPERVISOR_AGENT, INVESTIGATE_AGENT} else SUPERVISOR_AGENT,
             ),
-            read_shared_memory_tool=build_default_read_shared_memory_tool(context.config),
-            read_working_memory_tool=build_default_read_working_memory_tool(context.config, INVESTIGATE_AGENT),
-            write_shared_memory_tool=build_default_write_shared_memory_tool(context.config),
-            write_working_memory_tool=build_default_write_working_memory_tool(context.config, SUPERVISOR_AGENT),
+            read_shared_memory_tool=case_memory_manager.build_default_read_shared_memory_tool(),
+            read_working_memory_tool=case_memory_manager.build_default_read_working_memory_tool(INVESTIGATE_AGENT),
+            write_shared_memory_tool=case_memory_manager.build_default_write_shared_memory_tool(),
+            write_working_memory_tool=case_memory_manager.build_default_write_working_memory_tool(SUPERVISOR_AGENT),
         )
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:

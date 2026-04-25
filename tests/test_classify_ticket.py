@@ -8,7 +8,7 @@ from unittest.mock import patch
 from langchain_core.messages import AIMessage
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.default_classify_ticket import build_default_classify_ticket_tool
+from support_ope_agents.tools.classify_ticket import build_default_classify_ticket_tool
 
 
 class _FakeModel:

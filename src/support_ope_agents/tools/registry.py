@@ -21,15 +21,12 @@ from support_ope_agents.config.tool_surface import MCP_OVERRIDEABLE_LOGICAL_TOOL
 
 from .builtin_tools import build_builtin_tools
 from .classify_ticket import build_default_classify_ticket_tool
-from .default_pii_mask import build_default_pii_mask_tool
-from .default_prepare_ticket_update import build_default_prepare_ticket_update_tool
-from .default_read_shared_memory import build_default_read_shared_memory_tool
+from .pii_mask import build_default_pii_mask_tool
+from .prepare_ticket_update import build_default_prepare_ticket_update_tool
 from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
-from .default_write_shared_memory import build_default_write_shared_memory_tool
-from .default_write_working_memory import build_default_write_working_memory_tool
 from .mcp_client import McpToolClient, ToolConfigurationError
-
+from .case_memory_manager import CaseMemoryManager
 
 ToolCallable = Callable[..., Any]
 
@@ -101,7 +98,7 @@ class ToolRegistry:
                 ToolSpec(
                     "read_shared_memory",
                     "Read shared case memory files",
-                    build_default_read_shared_memory_tool(self._config),
+                    CaseMemoryManager(self._config).build_default_read_shared_memory_tool(),
                     provider="builtin",
                     target="default-case-memory-reader",
                 ),
@@ -115,14 +112,14 @@ class ToolRegistry:
                 ToolSpec(
                     "write_shared_memory",
                     "Write shared context/progress/summary files for a case workspace",
-                    build_default_write_shared_memory_tool(self._config),
+                    CaseMemoryManager(self._config).build_default_write_shared_memory_tool(),
                     provider="builtin",
                     target="default-case-memory-writer",
                 ),
                 ToolSpec(
                     "write_working_memory",
                     "Write agent working memory",
-                    build_default_write_working_memory_tool(self._config, INTAKE_AGENT),
+                    CaseMemoryManager(self._config).build_default_write_working_memory_tool(INTAKE_AGENT),
                     provider="builtin",
                     target="default-working-memory-writer",
                 ),
@@ -159,7 +156,7 @@ class ToolRegistry:
                 ToolSpec(
                     "write_shared_memory",
                     "Write shared context/progress/summary files for a case workspace",
-                    build_default_write_shared_memory_tool(self._config),
+                    CaseMemoryManager(self._config).build_default_write_shared_memory_tool(),
                     provider="builtin",
                     target="default-case-memory-writer",
                 ),
@@ -196,14 +193,14 @@ class ToolRegistry:
                 ToolSpec(
                     "write_shared_memory",
                     "Write shared context/progress/summary files for a case workspace",
-                    build_default_write_shared_memory_tool(self._config),
+                    CaseMemoryManager(self._config).build_default_write_shared_memory_tool(),
                     provider="builtin",
                     target="default-case-memory-writer",
                 ),
                 ToolSpec(
                     "write_working_memory",
                     "Write agent working memory",
-                    build_default_write_working_memory_tool(self._config, INVESTIGATE_AGENT),
+                    CaseMemoryManager(self._config).build_default_write_working_memory_tool(INVESTIGATE_AGENT),
                     provider="builtin",
                     target="default-working-memory-writer",
                 ),
@@ -228,7 +225,7 @@ class ToolRegistry:
                 ToolSpec(
                     "write_working_memory",
                     "Write agent working memory",
-                    build_default_write_working_memory_tool(self._config, LOG_ANALYZER_AGENT),
+                    CaseMemoryManager(self._config).build_default_write_working_memory_tool(LOG_ANALYZER_AGENT),
                     provider="builtin",
                     target="default-working-memory-writer",
                 ),
@@ -258,14 +255,14 @@ class ToolRegistry:
                 ToolSpec(
                     "write_shared_memory",
                     "Write shared memory",
-                    build_default_write_shared_memory_tool(self._config),
+                    CaseMemoryManager(self._config).build_default_write_shared_memory_tool(),
                     provider="builtin",
                     target="default-case-memory-writer",
                 ),
                 ToolSpec(
                     "write_working_memory",
                     "Write agent working memory",
-                    build_default_write_working_memory_tool(self._config, KNOWLEDGE_RETRIEVER_AGENT),
+                    CaseMemoryManager(self._config).build_default_write_working_memory_tool(KNOWLEDGE_RETRIEVER_AGENT),
                     provider="builtin",
                     target="default-working-memory-writer",
                 ),
@@ -283,7 +280,7 @@ class ToolRegistry:
                 ToolSpec(
                     "read_shared_memory",
                     "Read shared case memory files",
-                    build_default_read_shared_memory_tool(self._config),
+                    CaseMemoryManager(self._config).build_default_read_shared_memory_tool(),
                     provider="builtin",
                     target="default-case-memory-reader",
                 ),
@@ -291,7 +288,7 @@ class ToolRegistry:
                 ToolSpec(
                     "write_shared_memory",
                     "Write shared context/progress/summary files for a case workspace",
-                    build_default_write_shared_memory_tool(self._config),
+                    CaseMemoryManager(self._config).build_default_write_shared_memory_tool(),
                     provider="builtin",
                     target="default-case-memory-writer",
                 ),
@@ -307,7 +304,7 @@ class ToolRegistry:
                 ToolSpec(
                     "write_shared_memory",
                     "Write shared context/progress/summary files for a case workspace",
-                    build_default_write_shared_memory_tool(self._config),
+                    CaseMemoryManager(self._config).build_default_write_shared_memory_tool(),
                     provider="builtin",
                     target="default-case-memory-writer",
                 ),

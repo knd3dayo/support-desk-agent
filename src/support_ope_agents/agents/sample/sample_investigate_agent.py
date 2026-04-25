@@ -14,8 +14,7 @@ from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.tools.builtin_tools import build_builtin_tools
-from support_ope_agents.tools.default_read_working_memory import build_default_read_working_memory_tool
-from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
+from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
@@ -36,8 +35,9 @@ class SampleInvestigateAgent(AbstractAgent):
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self._builtin_tools = build_builtin_tools(config)
-        self._read_working_memory_tool = build_default_read_working_memory_tool(config, INVESTIGATE_AGENT)
-        self._write_working_memory_tool = build_default_write_working_memory_tool(config, INVESTIGATE_AGENT)
+        case_memory_manager = CaseMemoryManager(config)
+        self._read_working_memory_tool = case_memory_manager.build_default_read_working_memory_tool(INVESTIGATE_AGENT)
+        self._write_working_memory_tool = case_memory_manager.build_default_write_working_memory_tool(INVESTIGATE_AGENT)
 
     @staticmethod
     def _default_query() -> str:

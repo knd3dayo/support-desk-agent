@@ -8,9 +8,8 @@ from pathlib import Path
 from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.memory.file_store import CaseMemoryStore
-from support_ope_agents.tools.default_read_working_memory import build_default_read_working_memory_tool
+from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
 from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
-from support_ope_agents.tools.default_write_working_memory import build_default_write_working_memory_tool
 
 
 class MemoryToolTests(unittest.IsolatedAsyncioTestCase):
@@ -69,7 +68,8 @@ class MemoryToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history[1]["content"], "回答案です")
 
     async def test_write_working_memory_creates_agent_working_file(self) -> None:
-        tool = build_default_write_working_memory_tool(self.config, KNOWLEDGE_RETRIEVER_AGENT)
+        case_memory_manager = CaseMemoryManager(self.config)
+        tool = case_memory_manager.build_default_write_working_memory_tool(KNOWLEDGE_RETRIEVER_AGENT)
 
         raw = await tool(
             "CASE-TEST-003",
@@ -87,8 +87,9 @@ class MemoryToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Summary: architecture overview", content)
 
     async def test_read_working_memory_returns_agent_working_file_content(self) -> None:
-        write_tool = build_default_write_working_memory_tool(self.config, KNOWLEDGE_RETRIEVER_AGENT)
-        read_tool = build_default_read_working_memory_tool(self.config, KNOWLEDGE_RETRIEVER_AGENT)
+        case_memory_manager = CaseMemoryManager(self.config)
+        write_tool = case_memory_manager.build_default_write_working_memory_tool(KNOWLEDGE_RETRIEVER_AGENT)
+        read_tool = case_memory_manager.build_default_read_working_memory_tool(KNOWLEDGE_RETRIEVER_AGENT)
 
         await write_tool(
             "CASE-TEST-008",

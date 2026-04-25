@@ -27,7 +27,7 @@ from PIL import Image
 from pptx import Presentation
 
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.default_infer_log_pattern import build_default_infer_log_pattern_tool
+from support_ope_agents.tools.infer_log_pattern import build_default_infer_log_pattern_tool
 from support_ope_agents.util.langchain import build_chat_openai_model, stringify_response_content
 
 

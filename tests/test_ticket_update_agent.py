@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage
 from support_ope_agents.agents.production.ticket_update_agent import TicketUpdateAgent
 from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.default_prepare_ticket_update import build_default_prepare_ticket_update_tool
+from support_ope_agents.tools.prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.mcp_client import McpToolInfo
 
 
