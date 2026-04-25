@@ -46,8 +46,10 @@ class TicketLookupAgentResult(BaseModel):
 
 
 class SampleIntakeAgent(AbstractAgent):
-    def __init__(self, tool_registry: "ToolRegistry"):
-        self.tool_registry = tool_registry
+    def __init__(self, config: Any):
+        from support_ope_agents.tools.registry import ToolRegistry
+        self.config = config
+        self.tool_registry = ToolRegistry(config)
 
     _TICKET_REJECTION_MARKERS = (
         "違う",
@@ -77,16 +79,14 @@ class SampleIntakeAgent(AbstractAgent):
                 return match.group(0).strip()
         return ""
 
+    @staticmethod
+    def _load_classification_prompt_template() -> str:
+        template_path = Path(__file__).parent.parent.parent / "instructions" / "intake_classification_prompt.txt"
+        return template_path.read_text(encoding="utf-8")
+
     def _build_classification_prompt(self, raw_issue: str) -> str:
-        return (
-            "あなたは問い合わせ受付の最小サンプル IntakeAgent です。\n"
-            "問い合わせを以下の schema に従って分類してください。\n"
-            "- category: specification_inquiry / incident_investigation / ambiguous_case のいずれか\n"
-            "- urgency: low / medium / high / critical のいずれか\n"
-            "- investigation_focus: 調査で最初に確認すべき観点\n"
-            "- reason: 分類理由\n"
-            f"問い合わせ本文:\n{raw_issue}"
-        )
+        template = self._load_classification_prompt_template()
+        return template.format(raw_issue=raw_issue)
 
     def _build_ticket_tool_prompt(
         self,

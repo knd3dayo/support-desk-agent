@@ -84,3 +84,5 @@ class CaseState(TypedDict, total=False):
     context_usage: dict[str, int]
     current_agent: str
     next_action: str
+    investigation_evidence_log_path: str
+    investigation_attachment_paths: list[str]

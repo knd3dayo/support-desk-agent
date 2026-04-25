@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
@@ -18,42 +18,24 @@ from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
-
+from ...tools.registry import ToolRegistry
+from ...instructions.investigate_system_prompt import INVESTIGATE_SYSTEM_PROMPT_TEMPLATE
 from langchain_core.messages import HumanMessage
 from deepagents import create_deep_agent
 
 
+
 class SampleInvestigateAgent(AbstractAgent):
-    def __init__(self, tool_registry: "ToolRegistry") -> None:
-        self.tool_registry = tool_registry
+    def __init__(self, config: AppConfig) -> None:
+        self.config = config
+        self.tool_registry = ToolRegistry(config)
 
     @staticmethod
     def _default_query() -> str:
         return "調査すべき内容をここに記載してください"
 
     def _build_system_prompt(self, query: str, instruction_text: str = "") -> str:
-        prompt = (
-            """
-            あなたはサポートケースの調査担当エージェントです。
-            ケースの内容に基づいて、関連するログやドキュメントを調査し、サポート担当者が問題を理解しやすいように要約してください。
-            調査の結果、サポート担当者が次に取るべきアクションも提案してください。
-            調査開始時に、まず read_working_memory で既存の作業メモを確認し、未着手なら調査計画をチェックリストとして整理してください。
-            調査計画の各 major step に着手する前後で write_working_memory を呼び、実施内容、確認できた根拠、未解決事項、次のアクションを追記してください。
-            チェックリストの項目がすべて完了するまで調査を継続し、未解決事項が残る場合は完了扱いにしないでください。
-            検索でヒットした箇所は、ヒット行だけで判断せず、必ずその前後10行以上を read_file で確認して文脈を把握してください。
-            grep や検索結果に line 情報が含まれる場合は、その近傍を優先して読んでください。
-            ログ調査では、まず事前抽出済みの障害発生時間帯ログを優先し、それで不足する場合だけ infer_log_header_pattern と extract_log_time_range を使って追加の時間帯抽出を行ってください。
-            添付ファイルは path を確認してから扱い、PDF は analyze_pdf_files を優先し、画像は analyze_image_files を使って分析してください。
-            README や Markdown、設定ファイル内にリンク、参照先 path、関連ファイル名が出てきた場合は、そのリンク先や参照先ファイルも追加で調査してください。
-            ただし、README に書かれている外部 path や参照先が現在の backend 内に存在しない場合、その path の内容を読んだ前提で説明してはいけません。
-            backend 外の参照先は「今回の調査 backend からは未到達」とみなし、現在読める backend 内の別ソース、別ファイル、別の一致箇所を探してください。
-            参照先が未到達なら、その README 自体は補助情報にとどめ、対象そのものを直接説明している一次情報が backend 内にあるかを再探索してください。
-            特に「〜について教えて」のような説明要求では、サンプル説明文ではなく、対象そのものを説明している一次情報を優先してください。
-            調査根拠は1ファイルだけで確定せず、少なくとも複数の関連箇所を確認してから結論を出してください。
-            調査対象のクエリ:
-            {query}
-            """
-        ).format(query=query)
+        prompt = INVESTIGATE_SYSTEM_PROMPT_TEMPLATE.format(query=query)
         instruction = instruction_text.strip()
         if instruction:
             prompt = f"{prompt}\n\n追加 instruction:\n{instruction}"
@@ -85,6 +67,29 @@ class SampleInvestigateAgent(AbstractAgent):
         ToolRegistryの共通APIでworking memory contentを取得
         """
         return self.tool_registry.read_investigate_working_memory_for_case(case_id, workspace_path, role=INVESTIGATE_AGENT)
+
+
+    def create_sub_agent(
+        self,
+        query: str,
+        instruction_text: str = "",
+        document_sources: Sequence[Any] = (),
+        route_base: str = "docs"
+    ) -> Any:
+        backend = build_filtered_document_source_backend(
+            document_sources=document_sources,
+            route_base=route_base,
+        )
+        tools = {t.name: t.handler for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
+        system_prompt = self._build_system_prompt(query, instruction_text)
+        model = build_chat_openai_model(self.config)
+        return create_deep_agent(
+            model=model,
+            backend=backend,
+            system_prompt=system_prompt,
+            tools=[t for t in tools.values() if t],
+            name="investigate-sample",
+        )
 
     def create_node(self) -> Any:
         return self.create_sub_agent(query=self._default_query())

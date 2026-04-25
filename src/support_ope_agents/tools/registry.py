@@ -1,29 +1,6 @@
-    def read_shared_memory_for_case(self, case_id: str, workspace_path: str, role: str = SUPERVISOR_AGENT) -> dict[str, str]:
-        """
-        指定したroleのread_shared_memoryツールを使い、case_id/workspace_pathで共有メモリを取得する共通API。
-        例外時や未設定時は空dictを返す。
-        """
-        tools = {t.name: t.handler for t in self.get_tools(role)}
-        handler = tools.get("read_shared_memory")
-        if handler is None:
-            return {"context": "", "progress": "", "summary": ""}
-        try:
-            raw_result = handler(case_id=case_id, workspace_path=workspace_path)
-            try:
-                parsed = json.loads(raw_result)
-            except Exception:
-                return {"context": "", "progress": "", "summary": ""}
-            if not isinstance(parsed, dict):
-                return {"context": "", "progress": "", "summary": ""}
-            return {
-                "context": str(parsed.get("context") or ""),
-                "progress": str(parsed.get("progress") or ""),
-                "summary": str(parsed.get("summary") or ""),
-            }
-        except Exception:
-            return {"context": "", "progress": "", "summary": ""}
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 
@@ -96,6 +73,31 @@ class ToolRegistry:
         if handler is None:
             raise ValueError(f"Tool handler for '{tool_name}' not found for role '{role}'")
         return handler(**kwargs)
+
+    def read_shared_memory_for_case(self, case_id: str, workspace_path: str, role: str = SUPERVISOR_AGENT) -> dict[str, str]:
+        """
+        指定したroleのread_shared_memoryツールを使い、case_id/workspace_pathで共有メモリを取得する共通API。
+        例外時や未設定時は空dictを返す。
+        """
+        tools = {t.name: t.handler for t in self.get_tools(role)}
+        handler = tools.get("read_shared_memory")
+        if handler is None:
+            return {"context": "", "progress": "", "summary": ""}
+        try:
+            raw_result = handler(case_id=case_id, workspace_path=workspace_path)
+            try:
+                parsed = json.loads(raw_result)
+            except Exception:
+                return {"context": "", "progress": "", "summary": ""}
+            if not isinstance(parsed, dict):
+                return {"context": "", "progress": "", "summary": ""}
+            return {
+                "context": str(parsed.get("context") or ""),
+                "progress": str(parsed.get("progress") or ""),
+                "summary": str(parsed.get("summary") or ""),
+            }
+        except Exception:
+            return {"context": "", "progress": "", "summary": ""}
 
     def read_investigate_working_memory_for_case(self, case_id: str, workspace_path: str, role: str = SUPERVISOR_AGENT) -> str:
             """

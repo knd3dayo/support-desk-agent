@@ -34,11 +34,11 @@ class SampleBackSupportEscalationResponse(BaseModel):
 
 
 class SampleBackSupportEscalationAgent(AbstractAgent):
-    def __init__(self, tool_registry: "ToolRegistry", memory_dir: str, config: Any = None):
-        self.tool_registry = tool_registry
+    def __init__(self, config: Any, memory_dir: str):
+        from support_ope_agents.tools.registry import ToolRegistry
+        self.config = config
+        self.tool_registry = ToolRegistry(config)
         self.memory_dir = memory_dir
-        # AppConfigを直接保持
-        self._config = config if config is not None else getattr(tool_registry, '_config', None)
 
     @staticmethod
     def _default_memory_dir() -> str:

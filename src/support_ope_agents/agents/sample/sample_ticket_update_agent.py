@@ -36,8 +36,10 @@ class SampleTicketUpdateState(TypedDict, total=False):
 
 
 class SampleTicketUpdateAgent(AbstractAgent):
-    def __init__(self, tool_registry: "ToolRegistry"):
-        self.tool_registry = tool_registry
+    def __init__(self, config: Any):
+        from support_ope_agents.tools.registry import ToolRegistry
+        self.config = config
+        self.tool_registry = ToolRegistry(config)
 
     def _invoke_tool(self, tool: Any, *args: object, **kwargs: object) -> str:
         try:

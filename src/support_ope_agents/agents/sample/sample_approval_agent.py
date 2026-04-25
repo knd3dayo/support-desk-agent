@@ -24,8 +24,10 @@ class SampleApprovalState(TypedDict, total=False):
 
 
 class SampleApprovalAgent(AbstractAgent):
-    def __init__(self, tool_registry: "ToolRegistry"):
-        self.tool_registry = tool_registry
+    def __init__(self, config: Any):
+        from support_ope_agents.tools.registry import ToolRegistry
+        self.config = config
+        self.tool_registry = ToolRegistry(config)
 
     def wait_for_approval(self, state: dict[str, Any]) -> dict[str, Any]:
         return StateTransitionHelper.waiting_for_approval(state)

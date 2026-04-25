@@ -15,23 +15,24 @@ from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
-from support_ope_agents.util.formatting import format_result
+from support_ope_agents.util.formatting import format_result, format_ticket_context
 
-if TYPE_CHECKING:
-    from support_ope_agents.agents.sample.sample_back_support_escalation_agent import SampleBackSupportEscalationAgent
-    from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
-    from support_ope_agents.models.state import CaseState
-
+from support_ope_agents.agents.sample.sample_back_support_escalation_agent import SampleBackSupportEscalationAgent
+from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
+from support_ope_agents.models.state import CaseState
+from support_ope_agents.instructions import InstructionLoader
 
 
 class SampleSupervisorAgent(AbstractAgent):
     def __init__(
         self,
-        tool_registry: "ToolRegistry",
+        config: Any,
         investigate_executor: "SampleInvestigateAgent | None" = None,
         back_support_escalation_executor: "SampleBackSupportEscalationAgent | None" = None,
     ):
-        self.tool_registry = tool_registry
+        from support_ope_agents.tools.registry import ToolRegistry
+        self.config = config
+        self.tool_registry = ToolRegistry(config)
         self.investigate_executor = investigate_executor
         self.back_support_escalation_executor = back_support_escalation_executor
 
@@ -72,24 +73,6 @@ class SampleSupervisorAgent(AbstractAgent):
         summary = investigation_summary.strip() or "サンプル調査を実行しました。"
         return f"お問い合わせありがとうございます。\n\n{summary}\n\n必要であれば追加の確認事項もご案内できます。"
 
-
-
-    @staticmethod
-    def _parse_memory(raw_result: str) -> dict[str, str]:
-        try:
-            parsed = json.loads(raw_result)
-        except json.JSONDecodeError:
-            return {"context": "", "progress": "", "summary": ""}
-        if not isinstance(parsed, dict):
-            return {"context": "", "progress": "", "summary": ""}
-        return {
-            "context": str(parsed.get("context") or ""),
-            "progress": str(parsed.get("progress") or ""),
-            "summary": str(parsed.get("summary") or ""),
-        }
-
-
-
     @staticmethod
     def _format_followup_answers(state: "CaseState") -> str:
         answers = cast(dict[str, Any], state.get("customer_followup_answers") or {})
@@ -112,26 +95,7 @@ class SampleSupervisorAgent(AbstractAgent):
             return ""
         return "追加確認への回答:\n" + "\n".join(lines)
 
-    @staticmethod
-    def _format_ticket_context(state: "CaseState") -> str:
-        ticket_context = cast(dict[str, Any], state.get("intake_ticket_context_summary") or {})
-        if not ticket_context:
-            return ""
-
-        labels = {
-            "external_ticket": "外部チケット要約",
-            "internal_ticket": "内部チケット要約",
-            "external_ticket_attachments": "外部チケット添付",
-            "internal_ticket_attachments": "内部チケット添付",
-        }
-        lines = [
-            f"- {labels.get(key, key)}: {str(value).strip()}"
-            for key, value in ticket_context.items()
-            if str(value).strip()
-        ]
-        if not lines:
-            return ""
-        return "取得済みチケット文脈:\n" + "\n".join(lines)
+    # チケット文脈の整形は共通ユーティリティに移動
 
     @staticmethod
     def _has_ticket_followup_answer(state: "CaseState") -> bool:
@@ -197,8 +161,11 @@ class SampleSupervisorAgent(AbstractAgent):
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         followup_section = self._format_followup_answers(state)
-        ticket_context_section = self._format_ticket_context(state)
-        shared_memory_section = self._format_shared_memory_snapshot(self._read_shared_memory(state))
+        ticket_context_section = format_ticket_context(cast(dict, state))
+        case_id = str(state.get("case_id") or "").strip()
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        shared_memory = self.tool_registry.read_shared_memory_for_case(case_id, workspace_path, role=SUPERVISOR_AGENT)
+        shared_memory_section = self._format_shared_memory_snapshot(shared_memory)
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         investigate_working_memory = self.tool_registry.read_investigate_working_memory_for_case(case_id, workspace_path, role=SUPERVISOR_AGENT)
@@ -321,7 +288,7 @@ class SampleSupervisorAgent(AbstractAgent):
         if not case_id or not workspace_path:
             return
         raw_issue = str(state.get("raw_issue") or "").strip()
-        ticket_context = self._format_ticket_context(state)
+        ticket_context = format_ticket_context(cast(dict, state))
         followup_answers = self._format_followup_answers(state)
         intake_category = str(state.get("intake_category") or "ambiguous_case").strip() or "ambiguous_case"
         intake_urgency = str(state.get("intake_urgency") or "medium").strip() or "medium"
@@ -452,8 +419,6 @@ class SampleSupervisorAgent(AbstractAgent):
         except Exception:
             return
 
-    # _build_instruction_textは削除（load_instruction依存のため）
-
     def execute_investigation(self, state: "CaseState") -> "CaseState":
         update = cast("CaseState", StateTransitionHelper.supervisor_investigating(state))
 
@@ -469,7 +434,7 @@ class SampleSupervisorAgent(AbstractAgent):
                     update["investigation_evidence_log_path"] = str(evidence_log) if evidence_log is not None else ""
                     update["investigation_attachment_paths"] = [str(path) for path in attachment_paths]
                     investigation_query = self._build_investigation_query(update)
-                    instruction_text = self._build_instruction_text(case_id, update)
+                    instruction_text = InstructionLoader(self.config).load(case_id, SUPERVISOR_AGENT)
                     investigation_result = self.investigate_executor.execute(
                         query=investigation_query,
                         workspace_path=workspace_path or None,
