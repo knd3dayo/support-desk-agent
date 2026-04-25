@@ -11,10 +11,18 @@ from support_ope_agents.config import McpServerConfig
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.config.models import McpToolBinding
 from support_ope_agents.tools.mcp_client import McpToolClient
-from support_ope_agents.tools.registry import ToolRegistry
+from support_ope_agents.tools.registry import ToolRegistry, ToolSpec
 
 
 class McpToolClientTests(unittest.TestCase):
+    def test_tool_spec_populates_missing_handler_docstring_from_description(self) -> None:
+        def _handler() -> str:
+            return "ok"
+
+        spec = ToolSpec(name="example", description="Example tool description.", handler=_handler)
+
+        self.assertEqual(spec.handler.__doc__, "Example tool description.")
+
     def test_build_handler_merges_static_and_mapped_arguments(self) -> None:
         client = McpToolClient(McpManifest(path=Path("manifest.json"), servers={}))
 
@@ -100,6 +108,36 @@ class McpToolClientTests(unittest.TestCase):
         self.assertEqual(intake_tools["external_ticket"].provider, "mcp:github")
         self.assertIsNone(intake_tools["external_ticket"].target)
         self.assertIn("not configured", str(intake_tools["external_ticket"].handler()))
+
+    def test_registry_creates_mcp_client_from_config_when_needed(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "tools": {
+                    "mcp_manifest_path": "/tmp/test-mcp.json",
+                    "logical_tools": {
+                        "external_ticket": {
+                            "enabled": True,
+                            "provider": "mcp",
+                            "server": "github",
+                        }
+                    },
+                },
+                "agents": {},
+            }
+        )
+
+        class _FakeMcpClient:
+            def validate_logical_tool(self, *, logical_tool_name: str, binding) -> None:
+                return None
+
+        with patch("support_ope_agents.tools.registry.McpToolClient.from_config", return_value=_FakeMcpClient()) as from_config:
+            ToolRegistry(config)
+
+        from_config.assert_called_once_with(config)
 
 
 if __name__ == "__main__":

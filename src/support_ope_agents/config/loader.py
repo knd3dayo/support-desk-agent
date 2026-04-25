@@ -77,7 +77,16 @@ def load_config(config_path: str | Path) -> AppConfig:
     with path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
 
+    if ROOT_KEY not in raw:
+        available_keys = ", ".join(sorted(str(key) for key in raw.keys())) if isinstance(raw, dict) and raw else "<empty>"
+        raise ValueError(
+            f"config root '{ROOT_KEY}' is required in {path}. available_top_level_keys=[{available_keys}]"
+        )
+
     section = raw.get(ROOT_KEY, {})
+    if not isinstance(section, dict):
+        raise ValueError(f"config root '{ROOT_KEY}' in {path} must be a mapping")
+
     resolved = _resolve_env_refs(section)
     base_dir = path.parent
 

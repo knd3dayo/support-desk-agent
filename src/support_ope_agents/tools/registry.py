@@ -41,6 +41,14 @@ class ToolSpec:
     target: str | None = None
     input_schema: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if getattr(self.handler, "__doc__", None):
+            return
+        try:
+            self.handler.__doc__ = self.description
+        except (AttributeError, TypeError):
+            return
+
 
 def _not_implemented_tool(name: str) -> ToolCallable:
     def _handler(*_: object, **__: object) -> str:
@@ -119,6 +127,8 @@ class ToolRegistry:
     def __init__(self, config: AppConfig, mcp_tool_client: McpToolClient | None = None):
         self._config = config
         self._mcp_tool_client = mcp_tool_client
+        if self._mcp_tool_client is None and config.tools.has_enabled_mcp_tools():
+            self._mcp_tool_client = McpToolClient.from_config(config)
         self._builtin_tools = {
             name: ToolSpec(
                 name=builtin.name,

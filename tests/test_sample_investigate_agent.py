@@ -15,17 +15,17 @@ from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessMan
 
 
 class _FakeSubAgent:
-    def invoke(self, _payload: object) -> dict[str, object]:
+    async def ainvoke(self, _payload: object) -> dict[str, object]:
         return {"output": "ドキュメント補足: Denodo の一般的な構成説明です。"}
 
 
 class _FakeNoopSubAgent:
-    def invoke(self, _payload: object) -> dict[str, object]:
+    async def ainvoke(self, _payload: object) -> dict[str, object]:
         return {"output": "補足なし"}
 
 
 class _FakeMissingEvidenceSubAgent:
-    def invoke(self, _payload: object) -> dict[str, object]:
+    async def ainvoke(self, _payload: object) -> dict[str, object]:
         return {"output": "vdp.log ファイルが見つからず、再提供が必要です。"}
 
 
@@ -68,7 +68,7 @@ class _CapturingSubAgent:
         self.payloads: list[object] = []
         self.output = output
 
-    def invoke(self, payload: object) -> dict[str, object]:
+    async def ainvoke(self, payload: object) -> dict[str, object]:
         self.payloads.append(payload)
         return {"output": self.output}
 

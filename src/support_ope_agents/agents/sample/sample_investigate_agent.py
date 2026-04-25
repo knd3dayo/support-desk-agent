@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Coroutine, Protocol, Sequence, cast
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
@@ -15,6 +15,7 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.tools.builtin_tools import build_builtin_tools
 from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
@@ -22,6 +23,10 @@ from ...tools.registry import ToolRegistry
 from ...instructions.investigate_system_prompt import INVESTIGATE_SYSTEM_PROMPT_TEMPLATE
 from langchain_core.messages import HumanMessage
 from deepagents import create_deep_agent
+
+
+class InvestigateSubAgent(Protocol):
+    def ainvoke(self, payload: object, *args: object, **kwargs: object) -> Coroutine[object, object, Any]: ...
 
 
 
@@ -75,7 +80,7 @@ class SampleInvestigateAgent(AbstractAgent):
         instruction_text: str = "",
         document_sources: Sequence[Any] = (),
         route_base: str = "docs"
-    ) -> Any:
+    ) -> InvestigateSubAgent:
         backend = build_filtered_document_source_backend(
             document_sources=document_sources,
             route_base=route_base,
@@ -83,16 +88,23 @@ class SampleInvestigateAgent(AbstractAgent):
         tools = {t.name: t.handler for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
         system_prompt = self._build_system_prompt(query, instruction_text)
         model = build_chat_openai_model(self.config)
-        return create_deep_agent(
-            model=model,
-            backend=backend,
-            system_prompt=system_prompt,
-            tools=[t for t in tools.values() if t],
-            name="investigate-sample",
+        return cast(
+            InvestigateSubAgent,
+            create_deep_agent(
+                model=model,
+                backend=backend,
+                system_prompt=system_prompt,
+                tools=[t for t in tools.values() if t],
+                name="investigate-sample",
+            ),
         )
 
-    def create_node(self) -> Any:
+    def create_node(self) -> InvestigateSubAgent:
         return self.create_sub_agent(query=self._default_query())
+
+    @staticmethod
+    def _invoke_sub_agent(sub_agent: InvestigateSubAgent, payload: dict[str, Any]) -> Any:
+        return run_awaitable_sync(sub_agent.ainvoke(payload))
 
     def execute(
         self,
@@ -109,12 +121,13 @@ class SampleInvestigateAgent(AbstractAgent):
 
         try:
             sub_agent = self.create_sub_agent(query=investigation_query, instruction_text=instruction_text or "")
-            result = sub_agent.invoke(
+            result = self._invoke_sub_agent(
+                sub_agent,
                 {
                     "messages": [
                         HumanMessage(content=investigation_query),
                     ]
-                }
+                },
             )
         except Exception:
             if log_path is not None:
@@ -154,11 +167,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the sample investigate deep agent")
     parser.add_argument("query", nargs="?", default=SampleInvestigateAgent._default_query(), help="Investigation query")
     parser.add_argument("--config", default="config.yml", help="Path to config.yml")
+    parser.add_argument("--workspace-path", default=None, help="Path to workspace directory")
     args = parser.parse_args()
 
     config = load_config(args.config)
     agent = SampleInvestigateAgent(config)
-    result = agent.execute(query=args.query)
+    result = agent.execute(query=args.query, workspace_path=args.workspace_path)
     print(_extract_result_output(result))
     return 0
 

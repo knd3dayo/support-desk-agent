@@ -149,6 +149,26 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(external_ticket.arguments, {"repo": "external-support"})
         self.assertEqual(external_ticket.candidate_matching.max_question_candidates, 3)
 
+    def test_load_config_requires_support_ope_agents_root_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "llm:",
+                        "  provider: openai",
+                        "  model: gpt-4.1",
+                        "  api_key: sk-test-value",
+                        "tools: {}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "config root 'support_ope_agents' is required"):
+                load_config(config_path)
+
     def test_sample_runtime_context_validates_enabled_ticket_sources_on_startup(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.yml"
