@@ -402,9 +402,9 @@ class SampleSupervisorAgent(AbstractAgent):
             self.tool_registry.invoke_tool(
                 "write_working_memory",
                 SUPERVISOR_AGENT,
-                case_id,
-                workspace_path,
-                {
+                case_id=case_id,
+                workspace_path=workspace_path,
+                content={
                     "title": "Supervisor Review",
                     "heading_level": 2,
                     "bullets": [
@@ -414,7 +414,7 @@ class SampleSupervisorAgent(AbstractAgent):
                     ] + ([requested_range] if requested_range else []),
                     "sections": supervisor_working_sections,
                 },
-                "append",
+                mode="append",
             )
         except Exception:
             return

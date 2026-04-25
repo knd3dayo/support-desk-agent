@@ -45,11 +45,23 @@ class TicketLookupAgentResult(BaseModel):
 
 
 
+
 class SampleIntakeAgent(AbstractAgent):
+    class Tools:
+        def __init__(self, ticket_mcp_client=None):
+            self.ticket_mcp_client = ticket_mcp_client
+
     def __init__(self, config: Any):
         from support_ope_agents.tools.registry import ToolRegistry
         self.config = config
         self.tool_registry = ToolRegistry(config)
+        self.tools = self.Tools()
+
+    @classmethod
+    def from_ticket_mcp_client(cls, config: AppConfig, ticket_mcp_client: McpToolClient | None = None) -> "SampleIntakeAgent":
+        agent = cls(config)
+        agent.tools = cls.Tools(ticket_mcp_client)
+        return agent
 
     _TICKET_REJECTION_MARKERS = (
         "違う",

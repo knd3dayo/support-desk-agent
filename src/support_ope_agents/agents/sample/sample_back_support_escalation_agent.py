@@ -68,7 +68,7 @@ class SampleBackSupportEscalationAgent(AbstractAgent):
         tools = {t.name: t.handler for t in self.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)}
         # ToolRegistry._configはprivate属性なので、コンストラクタでAppConfigを保持しておく
         # _configはprivate属性なので、self._config(AppConfig)を使う
-        model = build_chat_openai_model(self._config)
+        model = build_chat_openai_model(self.config)
         return create_deep_agent(
             model=model,
             backend=backend,
@@ -140,7 +140,7 @@ def main() -> int:
 
     config = load_config(args.config)
     tool_registry = ToolRegistry(config)
-    agent = SampleBackSupportEscalationAgent(tool_registry=tool_registry, memory_dir=args.memory_dir, config=config)
+    agent = SampleBackSupportEscalationAgent(config=config, memory_dir=args.memory_dir)
     result = agent.execute(query=args.query)
     print(format_result(result))
     return 0
