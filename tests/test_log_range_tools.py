@@ -8,11 +8,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from ai_chat_util.ai_chat_util_base.ai_chat_util_models import ChatResponse
+
 from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.builtin_tools import build_builtin_tools
 from support_ope_agents.tools.infer_log_pattern import build_default_infer_log_pattern_tool
 from support_ope_agents.tools.registry import ToolRegistry
+from support_ope_agents.util.ai_chat_util_bridge import build_ai_chat_util_config
 from support_ope_agents.util.log_time_range import derive_log_extract_range_from_timeframe
 
 
@@ -139,7 +142,7 @@ class LogRangeToolTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("support_ope_agents.tools.default_infer_log_pattern.build_chat_openai_model", return_value=_FakeModel()):
+            with patch("support_ope_agents.tools.infer_log_pattern.build_chat_openai_model", return_value=_FakeModel()):
                 payload = json.loads(tool(file_path=str(log_path), sample_line_limit=20))
 
         self.assertEqual(payload["status"], "matched")
@@ -172,6 +175,39 @@ class LogRangeToolTests(unittest.TestCase):
         self.assertIn("infer_log_header_pattern", tools)
         self.assertIn("extract_log_time_range", tools)
         self.assertIn("file_path", tools["infer_log_header_pattern"].input_schema["properties"])
+
+    def test_ai_chat_util_bridge_uses_support_config_as_primary_source(self) -> None:
+        config = self._build_config()
+
+        bridged = build_ai_chat_util_config(config)
+
+        self.assertEqual(bridged.llm.provider, config.llm.provider)
+        self.assertEqual(bridged.llm.completion_model, config.llm.model)
+        self.assertEqual(bridged.llm.api_key, config.llm.api_key)
+        self.assertEqual(bridged.office2pdf.libreoffice_path, config.tools.libreoffice_command)
+
+    def test_analyze_pdf_files_delegates_to_ai_chat_util(self) -> None:
+        config = self._build_config()
+        tools = build_builtin_tools(config)
+        handler = tools["analyze_pdf_files"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pdf_path = Path(tmpdir) / "sample.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4\n")
+
+            with patch(
+                "support_ope_agents.tools.builtin_tools.analyze_pdf_files_with_ai_chat_util",
+                return_value="delegated via ai-chat-util",
+            ) as delegated:
+                result = asyncio.run(handler([str(pdf_path)], "check this", "auto"))
+
+        self.assertEqual(result, "delegated via ai-chat-util")
+        delegated.assert_called_once()
+
+    def test_chat_response_text_normalization_uses_output_property(self) -> None:
+        response = ChatResponse.model_validate({"output": " normalized text "})
+
+        self.assertEqual(response.output, " normalized text ")
 
     def test_investigate_agent_appends_extraction_summary(self) -> None:
         config = self._build_config()

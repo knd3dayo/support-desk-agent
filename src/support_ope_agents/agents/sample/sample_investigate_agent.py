@@ -23,10 +23,8 @@ from ...tools.registry import ToolRegistry
 from ...instructions.investigate_system_prompt import INVESTIGATE_SYSTEM_PROMPT_TEMPLATE
 from langchain_core.messages import HumanMessage
 from deepagents import create_deep_agent
+from langgraph.graph.state import CompiledStateGraph
 
-
-class InvestigateSubAgent(Protocol):
-    def ainvoke(self, payload: object, *args: object, **kwargs: object) -> Coroutine[object, object, Any]: ...
 
 
 
@@ -80,7 +78,7 @@ class SampleInvestigateAgent(AbstractAgent):
         instruction_text: str = "",
         document_sources: Sequence[Any] = (),
         route_base: str = "docs"
-    ) -> InvestigateSubAgent:
+    ) -> CompiledStateGraph:
         backend = build_filtered_document_source_backend(
             document_sources=document_sources,
             route_base=route_base,
@@ -89,7 +87,7 @@ class SampleInvestigateAgent(AbstractAgent):
         system_prompt = self._build_system_prompt(query, instruction_text)
         model = build_chat_openai_model(self.config)
         return cast(
-            InvestigateSubAgent,
+            CompiledStateGraph,
             create_deep_agent(
                 model=model,
                 backend=backend,
@@ -99,11 +97,11 @@ class SampleInvestigateAgent(AbstractAgent):
             ),
         )
 
-    def create_node(self) -> InvestigateSubAgent:
+    def create_node(self) -> CompiledStateGraph:
         return self.create_sub_agent(query=self._default_query())
 
     @staticmethod
-    def _invoke_sub_agent(sub_agent: InvestigateSubAgent, payload: dict[str, Any]) -> Any:
+    def _invoke_sub_agent(sub_agent: CompiledStateGraph, payload: dict[str, Any]) -> Any:
         return run_awaitable_sync(sub_agent.ainvoke(payload))
 
     def execute(

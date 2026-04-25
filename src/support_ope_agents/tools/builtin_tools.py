@@ -19,8 +19,6 @@ import fitz
 import pyzipper
 import requests
 from docx import Document as DocxDocument
-from langchain_core.messages import HumanMessage
-from langchain_openai import ChatOpenAI
 from openpyxl import load_workbook
 from pdfminer.high_level import extract_text as extract_pdf_text
 from PIL import Image
@@ -28,7 +26,11 @@ from pptx import Presentation
 
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.tools.infer_log_pattern import build_default_infer_log_pattern_tool
-from support_ope_agents.util.langchain import build_chat_openai_model, stringify_response_content
+from support_ope_agents.util.ai_chat_util_bridge import (
+    analyze_image_files as analyze_image_files_with_ai_chat_util,
+    analyze_office_files as analyze_office_files_with_ai_chat_util,
+    analyze_pdf_files as analyze_pdf_files_with_ai_chat_util,
+)
 
 
 ToolCallable = Callable[..., Any]
@@ -284,68 +286,6 @@ def _download_urls(config: AppConfig, url_entries: list[Any]) -> tuple[tempfile.
     return tmpdir, downloaded
 
 
-def _serialize_document_summaries(documents: list[dict[str, Any]], prompt: str, mode: str) -> str:
-    return json.dumps(
-        {
-            "mode": mode,
-            "prompt": prompt,
-            "documents": documents,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-
-
-async def _analyze_text_documents(config: AppConfig, documents: list[dict[str, Any]], prompt: str) -> str:
-    model = build_chat_openai_model(config, temperature=0)
-
-    payload_lines = ["You are analyzing customer support evidence.", f"Task: {prompt}", ""]
-    for document in documents:
-        payload_lines.append(f"Document: {document['name']}")
-        payload_lines.append(document["content"])
-        payload_lines.append("")
-    response = await model.ainvoke([HumanMessage(content="\n".join(payload_lines))])
-    return stringify_response_content(response.content)
-
-
-async def _analyze_images(config: AppConfig, paths: list[Path], prompt: str, detail: str) -> str:
-    image_summaries: list[dict[str, Any]] = []
-    for path in paths:
-        with Image.open(path) as image:
-            image_summaries.append(
-                {
-                    "name": path.name,
-                    "path": str(path),
-                    "size": {"width": image.width, "height": image.height},
-                    "format": image.format,
-                    "mode": image.mode,
-                }
-            )
-
-    model = build_chat_openai_model(config, temperature=0)
-    content: list[dict[str, Any]] = [
-        {
-            "type": "text",
-            "text": prompt,
-        }
-    ]
-    for path in paths:
-        mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        content.append({"type": "text", "text": f"Image: {path.name}"})
-        content.append(
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:{mime_type};base64,{encoded}",
-                    "detail": detail,
-                },
-            }
-        )
-    response = await model.ainvoke([HumanMessage(content=cast(Any, content))])
-    return stringify_response_content(response.content)
-
-
 def _resolve_output_dir(output_dir: str | None) -> Path | None:
     if output_dir is None or not str(output_dir).strip():
         return None
@@ -574,25 +514,23 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
         detail: str = "auto",
     ) -> str:
         paths = _ensure_existing_paths(file_list)
-        return await _analyze_images(config, paths, prompt, detail)
+        return await analyze_image_files_with_ai_chat_util(config, [str(path) for path in paths], prompt, detail)
 
     async def analyze_pdf_files(
         pdf_path_list: list[str],
         prompt: str,
         detail: str = "auto",
     ) -> str:
-        del detail
         paths = _ensure_existing_paths(pdf_path_list)
-        return await _analyze_text_documents(config, _collect_text_documents(config, paths), prompt)
+        return await analyze_pdf_files_with_ai_chat_util(config, [str(path) for path in paths], prompt, detail)
 
     async def analyze_office_files(
         office_path_list: list[str],
         prompt: str,
         detail: str = "auto",
     ) -> str:
-        del detail
         paths = _ensure_existing_paths(office_path_list)
-        return await _analyze_text_documents(config, _collect_text_documents(config, paths), prompt)
+        return await analyze_office_files_with_ai_chat_util(config, [str(path) for path in paths], prompt, detail)
 
     async def analyze_image_urls(
         image_path_urls: list[Any],
@@ -601,7 +539,7 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
     ) -> str:
         tmpdir, paths = _download_urls(config, image_path_urls)
         try:
-            return await _analyze_images(config, paths, prompt, detail)
+            return await analyze_image_files_with_ai_chat_util(config, [str(path) for path in paths], prompt, detail)
         finally:
             tmpdir.cleanup()
 
@@ -610,10 +548,9 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
         prompt: str,
         detail: str = "auto",
     ) -> str:
-        del detail
         tmpdir, paths = _download_urls(config, pdf_path_urls)
         try:
-            return await _analyze_text_documents(config, _collect_text_documents(config, paths), prompt)
+            return await analyze_pdf_files_with_ai_chat_util(config, [str(path) for path in paths], prompt, detail)
         finally:
             tmpdir.cleanup()
 
@@ -622,10 +559,9 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
         prompt: str,
         detail: str = "auto",
     ) -> str:
-        del detail
         tmpdir, paths = _download_urls(config, office_path_urls)
         try:
-            return await _analyze_text_documents(config, _collect_text_documents(config, paths), prompt)
+            return await analyze_office_files_with_ai_chat_util(config, [str(path) for path in paths], prompt, detail)
         finally:
             tmpdir.cleanup()
 
