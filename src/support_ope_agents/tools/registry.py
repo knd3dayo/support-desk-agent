@@ -20,7 +20,7 @@ from support_ope_agents.config.models import AppConfig, McpToolBinding
 from support_ope_agents.config.tool_surface import MCP_OVERRIDEABLE_LOGICAL_TOOLS
 
 from .builtin_tools import build_builtin_tools
-from .default_classify_ticket import build_default_classify_ticket_tool
+from .classify_ticket import build_default_classify_ticket_tool
 from .default_pii_mask import build_default_pii_mask_tool
 from .default_prepare_ticket_update import build_default_prepare_ticket_update_tool
 from .default_read_shared_memory import build_default_read_shared_memory_tool

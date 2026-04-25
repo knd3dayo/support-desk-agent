@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
 from support_ope_agents.util.langchain import build_chat_openai_model, stringify_response_content
+from support_ope_agents.instructions import InstructionLoader
 
 
 def build_default_classify_ticket_tool(config: AppConfig):
@@ -23,21 +24,24 @@ def build_default_classify_ticket_tool(config: AppConfig):
             raise ValueError("classify_ticket requires non-empty text")
 
         model = build_chat_openai_model(config, temperature=0)
-        instructions = [
-            "You classify a customer support issue for workflow intake.",
-            "Return only JSON.",
-            "The JSON object must contain category, urgency, investigation_focus, and reason.",
-            "Allowed category values: specification_inquiry, incident_investigation, ambiguous_case.",
-            "Allowed urgency values: low, medium, high.",
-            "Keep investigation_focus and reason concise.",
-        ]
+
+        # instructionsの外部化: InstructionLoader経由で取得
+        try:
+            loader = InstructionLoader(config, memory_store=None, runtime_harness_manager=None)  # memory_storeは不要なためNone
+            instructions = loader.load(case_id="classify_ticket", role="classify_ticket")
+            if not instructions:
+                raise Exception()
+        except Exception:
+            # フォールバック: 旧デフォルト
+            instructions = """You classify a customer support issue for workflow intake.\nReturn only JSON.\nThe JSON object must contain category, urgency, investigation_focus, and reason.\nAllowed category values: specification_inquiry, incident_investigation, ambiguous_case.\nAllowed urgency values: low, medium, high.\nKeep investigation_focus and reason concise."""
+
         prompt_lines: list[str] = []
         if normalized_context:
             prompt_lines.append(f"Context: {normalized_context}")
         prompt_lines.extend(["Issue:", normalized_text])
         response = await model.ainvoke(
             [
-                SystemMessage(content="\n".join(instructions)),
+                SystemMessage(content=instructions),
                 *deserialize_langchain_messages(conversation_messages),
                 HumanMessage(content="\n".join(prompt_lines)),
             ]

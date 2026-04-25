@@ -30,6 +30,7 @@ dependencies = [
   "openpyxl>=3.1,<4",
   "pdfminer.six>=20231228",
   "pyzipper>=0.3,<1",
+  "ai-chat-util @ ${HOME}/source/repos/ai-chat-util/app"
 ]
 
 [project.scripts]
