@@ -25,15 +25,11 @@ def build_default_classify_ticket_tool(config: AppConfig):
 
         model = build_chat_openai_model(config, temperature=0)
 
-        # instructionsの外部化: InstructionLoader経由で取得
-        try:
-            loader = InstructionLoader(config, memory_store=None, runtime_harness_manager=None)  # memory_storeは不要なためNone
-            instructions = loader.load(case_id="classify_ticket", role="classify_ticket")
-            if not instructions:
-                raise Exception()
-        except Exception:
-            # フォールバック: 旧デフォルト
-            instructions = """You classify a customer support issue for workflow intake.\nReturn only JSON.\nThe JSON object must contain category, urgency, investigation_focus, and reason.\nAllowed category values: specification_inquiry, incident_investigation, ambiguous_case.\nAllowed urgency values: low, medium, high.\nKeep investigation_focus and reason concise."""
+        # instructionsの外部化: InstructionLoader経由で取得（instructionsが空なら例外）
+        loader = InstructionLoader(config, memory_store=None, runtime_harness_manager=None)
+        instructions = loader.load(case_id="classify_ticket", role="classify_ticket")
+        if not instructions:
+            raise RuntimeError("instructions for classify_ticket is not defined.")
 
         prompt_lines: list[str] = []
         if normalized_context:
