@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from datetime import datetime
 import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import zipfile
 
 from ai_chat_util.ai_chat_util_base.ai_chat_util_models import ChatResponse
+from docx import Document as DocxDocument
+from openpyxl import Workbook
+from pptx import Presentation
 
 from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_ope_agents.config.models import AppConfig
@@ -208,6 +213,158 @@ class LogRangeToolTests(unittest.TestCase):
         response = ChatResponse.model_validate({"output": " normalized text "})
 
         self.assertEqual(response.output, " normalized text ")
+
+    def test_list_zip_contents_delegates_to_ai_chat_util(self) -> None:
+        config = self._build_config()
+        tools = build_builtin_tools(config)
+        handler = tools["list_zip_contents"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive_path = Path(tmpdir) / "sample.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("a.txt", "hello")
+
+            with patch(
+                "support_ope_agents.tools.builtin_tools.list_zip_contents_with_ai_chat_util",
+                return_value=["a.txt"],
+            ) as delegated:
+                result = asyncio.run(handler(str(archive_path)))
+
+        self.assertEqual(result, ["a.txt"])
+        delegated.assert_called_once_with(str(archive_path.resolve()))
+
+    def test_create_zip_delegates_to_ai_chat_util(self) -> None:
+        config = self._build_config()
+        tools = build_builtin_tools(config)
+        handler = tools["create_zip"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_path = Path(tmpdir) / "input.txt"
+            source_path.write_text("hello", encoding="utf-8")
+            output_path = Path(tmpdir) / "nested" / "archive.zip"
+
+            with patch(
+                "support_ope_agents.tools.builtin_tools.create_zip_with_ai_chat_util",
+                return_value=True,
+            ) as delegated:
+                result = asyncio.run(handler([str(source_path)], str(output_path), "secret"))
+
+        self.assertTrue(result)
+        delegated.assert_called_once_with([str(source_path.resolve())], str(output_path.resolve()), "secret")
+
+    def test_extract_text_from_file_docx_keeps_compat_output(self) -> None:
+        config = self._build_config()
+        handler = build_builtin_tools(config)["extract_text_from_file"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docx_path = Path(tmpdir) / "sample.docx"
+            document = DocxDocument()
+            document.add_paragraph("first line")
+            document.add_paragraph("")
+            document.add_paragraph("second line")
+            document.save(docx_path)
+
+            result = asyncio.run(handler(str(docx_path)))
+
+        self.assertEqual(result, "first line\nsecond line")
+
+    def test_extract_text_from_file_pptx_keeps_compat_output(self) -> None:
+        config = self._build_config()
+        handler = build_builtin_tools(config)["extract_text_from_file"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pptx_path = Path(tmpdir) / "sample.pptx"
+            presentation = Presentation()
+            slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+            slide.shapes.title.text = "overview"
+            textbox = slide.shapes.add_textbox(0, 0, 100, 100)
+            textbox.text_frame.text = "details"
+            presentation.save(pptx_path)
+
+            result = asyncio.run(handler(str(pptx_path)))
+
+        self.assertEqual(result, "[slide 1] overview\n[slide 1] details")
+
+    def test_extract_text_from_file_xlsx_keeps_compat_output(self) -> None:
+        config = self._build_config()
+        handler = build_builtin_tools(config)["extract_text_from_file"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            xlsx_path = Path(tmpdir) / "sample.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "Summary"
+            sheet.append(["col1", "col2"])
+            sheet.append(["a", None])
+            workbook.save(xlsx_path)
+
+            result = asyncio.run(handler(str(xlsx_path)))
+
+        self.assertEqual(result, "[sheet] Summary\ncol1\tcol2\na")
+
+    def test_extract_base64_to_text_keeps_compat_output(self) -> None:
+        config = self._build_config()
+        handler = build_builtin_tools(config)["extract_base64_to_text"].handler
+
+        payload = base64.b64encode("hello\nworld\n".encode("utf-8")).decode("ascii")
+
+        result = asyncio.run(handler(".txt", payload))
+
+        self.assertEqual(result, "hello\nworld\n")
+
+    def test_convert_office_files_to_pdf_delegates_to_ai_chat_util(self) -> None:
+        config = self._build_config()
+        tools = build_builtin_tools(config)
+        handler = tools["convert_office_files_to_pdf"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_path = Path(tmpdir) / "input.docx"
+            source_path.write_text("dummy", encoding="utf-8")
+
+            with patch(
+                "support_ope_agents.tools.builtin_tools.convert_office_files_to_pdf_with_ai_chat_util",
+                return_value=[{"source_path": str(source_path.resolve()), "pdf_path": str(source_path.with_suffix('.pdf').resolve())}],
+            ) as delegated:
+                result = asyncio.run(handler([str(source_path)], None, True))
+
+        self.assertEqual(len(result), 1)
+        delegated.assert_called_once_with(config, [str(source_path.resolve())], None, True)
+
+    def test_detect_log_format_and_search_delegates_to_ai_chat_util(self) -> None:
+        config = self._build_config()
+        tools = build_builtin_tools(config)
+        handler = tools["detect_log_format_and_search"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "app.log"
+            log_path.write_text("INFO start\n", encoding="utf-8")
+
+            with patch(
+                "support_ope_agents.tools.builtin_tools.detect_log_format_and_search_with_ai_chat_util",
+                return_value=json.dumps({"detected_format": "log4j"}, ensure_ascii=False),
+            ) as delegated:
+                result = asyncio.run(handler(str(log_path), ["ERROR"], 10, 5))
+
+        self.assertEqual(json.loads(result)["detected_format"], "log4j")
+        delegated.assert_called_once_with(config, str(log_path.resolve()), ["ERROR"], 10, 5)
+
+    def test_infer_log_header_pattern_delegates_to_ai_chat_util(self) -> None:
+        config = self._build_config()
+        tools = build_builtin_tools(config)
+        handler = tools["infer_log_header_pattern"].handler
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "app.log"
+            log_path.write_text("INFO start\n", encoding="utf-8")
+
+            with patch(
+                "support_ope_agents.tools.builtin_tools.infer_log_header_pattern_with_ai_chat_util",
+                return_value=json.dumps({"status": "matched", "header_pattern": "^INFO", "timestamp_start": 0, "timestamp_end": 4}, ensure_ascii=False),
+            ) as delegated:
+                result = asyncio.run(handler(str(log_path), 20))
+
+        self.assertEqual(json.loads(result)["status"], "matched")
+        delegated.assert_called_once_with(config, str(log_path.resolve()), 20)
 
     def test_investigate_agent_appends_extraction_summary(self) -> None:
         config = self._build_config()
