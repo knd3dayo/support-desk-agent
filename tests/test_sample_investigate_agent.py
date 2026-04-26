@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
@@ -11,21 +12,25 @@ from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSuper
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
+from support_ope_agents.models.state import CaseState
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 
 
 class _FakeSubAgent:
-    async def ainvoke(self, _payload: object) -> dict[str, object]:
+    async def ainvoke(self, _payload: object, *, context: object | None = None) -> dict[str, object]:
+        del context
         return {"output": "ドキュメント補足: Denodo の一般的な構成説明です。"}
 
 
 class _FakeNoopSubAgent:
-    async def ainvoke(self, _payload: object) -> dict[str, object]:
+    async def ainvoke(self, _payload: object, *, context: object | None = None) -> dict[str, object]:
+        del context
         return {"output": "補足なし"}
 
 
 class _FakeMissingEvidenceSubAgent:
-    async def ainvoke(self, _payload: object) -> dict[str, object]:
+    async def ainvoke(self, _payload: object, *, context: object | None = None) -> dict[str, object]:
+        del context
         return {"output": "vdp.log ファイルが見つからず、再提供が必要です。"}
 
 
@@ -66,10 +71,12 @@ class _CapturingInvestigateExecutor:
 class _CapturingSubAgent:
     def __init__(self, output: str = "captured") -> None:
         self.payloads: list[object] = []
+        self.contexts: list[object | None] = []
         self.output = output
 
-    async def ainvoke(self, payload: object) -> dict[str, object]:
+    async def ainvoke(self, payload: object, *, context: object | None = None) -> dict[str, object]:
         self.payloads.append(payload)
+        self.contexts.append(context)
         return {"output": self.output}
 
 
@@ -196,6 +203,20 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         source_names = [source.name for source in document_sources]
         self.assertIn("workspace-evidence", source_names)
 
+    def test_create_sub_agent_enables_agents_memory_and_context_schema(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+            with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
+                backend_mock.return_value = object()
+                create_mock.return_value = object()
+                agent.create_sub_agent(query="ドキュメントから仕様を確認して")
+
+        memory_sources = create_mock.call_args.kwargs["memory"]
+        self.assertTrue(memory_sources)
+        self.assertTrue(str(memory_sources[0]).endswith("/support_ope_agents/AGENTS.md"))
+        self.assertIs(create_mock.call_args.kwargs["context_schema"], CaseState)
+
     def test_system_prompt_instructs_checklist_memory_and_attachment_analysis(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
 
@@ -238,7 +259,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("screen.png", executor.query)
         self.assertIn("analyze_pdf_files", executor.query)
 
-    def test_execute_passes_evidence_context_to_sub_agent_and_drops_missing_file_claim(self) -> None:
+    def test_execute_returns_sub_agent_result_without_post_processing(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
         capturing_sub_agent = _CapturingSubAgent(output="vdp.log ファイルが見つからず、再提供が必要です。")
 
@@ -259,8 +280,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
 
         rendered = str(result)
         self.assertIn("ログを調べて", str(capturing_sub_agent.payloads[0]))
-        self.assertEqual(rendered, "")
-        self.assertNotIn("再提供が必要", rendered)
+        self.assertIn("再提供が必要", rendered)
 
     def test_execute_uses_plain_query_for_standalone_run(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
@@ -277,26 +297,27 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("ログを調べて", payload_text)
         self.assertNotIn("Evidence file:", payload_text)
 
-    def test_execute_retries_once_before_evidence_fallback(self) -> None:
+    def test_execute_passes_context_to_sub_agent(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
-        capturing_sub_agent = _CapturingSubAgent(
-            output="The issue is caused by missing data source vdpcachedatasource in Denodo cache configuration."
-        )
+        capturing_sub_agent = _CapturingSubAgent(output="補足なし")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            evidence_dir = Path(tmpdir) / ".evidence"
-            evidence_dir.mkdir(parents=True, exist_ok=True)
-            (evidence_dir / "vdp.log").write_text("sample", encoding="utf-8")
-            with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
-                with patch.object(
-                    agent,
-                    "_invoke_sub_agent",
-                    side_effect=[RuntimeError("transient"), {"output": capturing_sub_agent.output}],
-                ) as invoke_mock:
-                    result = agent.execute(query="ログを調べて", workspace_path=tmpdir)
+        with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
+            agent.execute(
+                query="仕様を確認して",
+                workspace_path="/tmp/sample-case",
+                state={"case_id": "CASE-CTX-001"},
+            )
 
-        self.assertEqual(invoke_mock.call_count, 2)
-        self.assertIn("vdpcachedatasource", str(result))
+        context = capturing_sub_agent.contexts[0]
+        self.assertEqual(cast(dict[str, object], context).get("case_id"), "CASE-CTX-001")
+        self.assertEqual(cast(dict[str, object], context).get("workspace_path"), "/tmp/sample-case")
+
+    def test_execute_raises_when_sub_agent_invocation_fails(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        with self.assertRaisesRegex(RuntimeError, "boom"):
+            with patch.object(agent, "create_sub_agent", side_effect=RuntimeError("boom")):
+                agent.execute(query="ログがなくても仕様を確認して")
 
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
         supervisor = SampleSupervisorAgent(investigate_executor=_WorkspaceAwareInvestigateExecutor())

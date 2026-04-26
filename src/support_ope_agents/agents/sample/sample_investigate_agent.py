@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import argparse
-import json
-import re
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Protocol, Sequence, cast
+from typing import Any, Sequence, cast
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
+from support_ope_agents.models.state import CaseState
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.tools.builtin_tools import build_builtin_tools
 from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
@@ -29,6 +27,13 @@ from langgraph.graph.state import CompiledStateGraph
 
 
 class SampleInvestigateAgent(AbstractAgent):
+    @staticmethod
+    def _agent_memory_sources() -> list[str]:
+        agents_memory_path = Path(__file__).resolve().parents[2] / "AGENTS.md"
+        if not agents_memory_path.exists():
+            return []
+        return [str(agents_memory_path)]
+
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.tool_registry = ToolRegistry(config)
@@ -43,27 +48,6 @@ class SampleInvestigateAgent(AbstractAgent):
         if instruction:
             prompt = f"{prompt}\n\n追加 instruction:\n{instruction}"
         return prompt
-
-    @staticmethod
-    def _is_contradictory_document_summary(document_summary: str, log_path: Path | None) -> bool:
-        if log_path is None:
-            return False
-        normalized = document_summary.strip().lower()
-        if not normalized:
-            return False
-        file_missing_markers = (
-            f"{log_path.name.lower()} file",
-            f"file {log_path.name.lower()}",
-            f"{log_path.name.lower()} が見つから",
-            f"{log_path.name.lower()} は見つから",
-            f"{log_path.name.lower()} ファイルが見つから",
-            f"{log_path.name.lower()} ファイルは見つから",
-            f"{log_path.name.lower()} が存在しない",
-            f"{log_path.name.lower()} は存在しない",
-            f"{log_path.name.lower()} がアップロードされていない",
-            f"{log_path.name.lower()} の再提供",
-        )
-        return any(marker in normalized for marker in file_missing_markers)
 
     def _resolve_document_sources(self, workspace_path: str | None) -> list[KnowledgeDocumentSource]:
         sources = list(self.config.agents.InvestigateAgent.document_sources)
@@ -98,6 +82,12 @@ class SampleInvestigateAgent(AbstractAgent):
         tools = {t.name: wrap_tool_handler_sync(t.handler) for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
         system_prompt = self._build_system_prompt(query, instruction_text)
         model = build_chat_openai_model(self.config)
+        memory_sources = self._agent_memory_sources()
+        # Avoid create_deep_agent here because it auto-injects middleware such as
+        # summarization and provider-specific prompt caching. Those defaults were
+        # the source of residual warning/resourcewarning behavior in standalone runs.
+        # Rebuild only the middleware we need through the shared create_agent-based
+        # wrapper so other agents can reuse the same controlled setup.
         return cast(
             CompiledStateGraph,
             create_deep_agent_compatible_agent(
@@ -105,6 +95,8 @@ class SampleInvestigateAgent(AbstractAgent):
                 backend=backend,
                 system_prompt=system_prompt,
                 tools=[t for t in tools.values() if t],
+                memory=memory_sources or None,
+                context_schema=CaseState,
                 name="investigate-sample",
             ),
         )
@@ -113,8 +105,16 @@ class SampleInvestigateAgent(AbstractAgent):
         return self.create_sub_agent(query=self._default_query())
 
     @staticmethod
-    def _invoke_sub_agent(sub_agent: CompiledStateGraph, payload: dict[str, Any]) -> Any:
-        return run_awaitable_sync(sub_agent.ainvoke(payload))
+    def _build_context(*, workspace_path: str | None, state: dict[str, Any] | None) -> CaseState:
+        context = cast(CaseState, dict(state or {}))
+        if workspace_path and not str(context.get("workspace_path") or "").strip():
+            context["workspace_path"] = workspace_path
+        return context
+
+    @staticmethod
+    def _invoke_sub_agent(sub_agent: CompiledStateGraph, payload: dict[str, Any], *, context: CaseState) -> Any:
+        runnable = cast(Any, sub_agent)
+        return run_awaitable_sync(runnable.ainvoke(payload, context=context))
 
     def execute(
         self,
@@ -125,45 +125,21 @@ class SampleInvestigateAgent(AbstractAgent):
         state: dict[str, Any] | None = None,
     ) -> Any:
         effective_query = query.strip() or self._default_query()
-        log_path_value = str((state or {}).get("investigation_evidence_log_path") or "").strip()
-        log_path = Path(log_path_value) if log_path_value else find_evidence_log_file(workspace_path)
-
-        last_error: Exception | None = None
-        for _attempt in range(2):
-            try:
-                sub_agent = self.create_sub_agent(
-                    query=effective_query,
-                    instruction_text=instruction_text or "",
-                    workspace_path=workspace_path,
-                )
-                result = self._invoke_sub_agent(
-                    sub_agent,
-                    {
-                        "messages": [
-                            HumanMessage(content=effective_query),
-                        ]
-                    },
-                )
-                break
-            except Exception as exc:
-                last_error = exc
-        else:
-            if log_path is not None:
-                return f"Evidence file: {log_path.name}\nEvidence path: {log_path}"
-            if last_error is not None:
-                raise last_error
-            raise RuntimeError("SampleInvestigateAgent execution failed without an explicit error")
-
-        document_summary = extract_result_output_text(result)
-        if not document_summary and isinstance(result, dict):
-            document_summary = str(result.get("output") or "")
-        if not document_summary:
-            document_summary = format_result(result)
-        if self._is_contradictory_document_summary(document_summary, log_path):
-            document_summary = ""
-        if not document_summary and log_path is not None:
-            return ""
-        return result
+        sub_agent = self.create_sub_agent(
+            query=effective_query,
+            instruction_text=instruction_text or "",
+            workspace_path=workspace_path,
+        )
+        context = self._build_context(workspace_path=workspace_path, state=state)
+        return self._invoke_sub_agent(
+            sub_agent,
+            {
+                "messages": [
+                    HumanMessage(content=effective_query),
+                ]
+            },
+            context=context,
+        )
 
     @classmethod
     def build_agent_definition(cls) -> AgentDefinition:
