@@ -1,46 +1,42 @@
 from __future__ import annotations
 
+"""Sample workflow runtime service.
+
+ケース単位の作業ディレクトリ、チャット履歴、checkpoint、レポート生成を
+まとめて扱うサンプル実装である。plan/action/resume の各入口で workflow
+state を組み立て、永続化済み state と補助サービスをつないで実行する。
+"""
+
 import mimetypes
 import sqlite3
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
-
-from langgraph.checkpoint.sqlite import SqliteSaver
 
 from support_ope_agents.agents.catalog import build_default_agent_definitions
 from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
 from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
-from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
 from support_ope_agents.memory import CaseMemoryStore
 from support_ope_agents.models.state_transitions import CaseStatuses, NextActionTexts, ReportStatusTriggers
-from support_ope_agents.runtime.abstract_service import AbstractRuntimeContext
-from support_ope_agents.runtime.abstract_service import AbstractRuntimeService
+from support_ope_agents.runtime.abstract_service import AbstractRuntimeContext, AbstractRuntimeService
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages
-from support_ope_agents.runtime.followup_context import build_conversation_messages
-from support_ope_agents.runtime.followup_context import resolve_action_prompt
-from support_ope_agents.runtime.followup_context import resolve_saved_conversation_messages
+from support_ope_agents.runtime.followup_context import (
+    build_conversation_messages, resolve_action_prompt, resolve_saved_conversation_messages
+)
 from support_ope_agents.runtime.mcp_startup_validation import validate_ticket_sources_startup
 from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.runtime.sample.sample_control_catalog import build_sample_control_catalog, build_sample_runtime_audit
-from support_ope_agents.runtime.service_support import append_chat_message
-from support_ope_agents.runtime.service_support import backfill_case_title
-from support_ope_agents.runtime.service_support import build_assistant_history_content
-from support_ope_agents.runtime.service_support import has_explicit_ticket_id
-from support_ope_agents.runtime.service_support import new_trace_id
-from support_ope_agents.runtime.service_support import normalize_state_ids
-from support_ope_agents.runtime.service_support import normalize_trace_id
-from support_ope_agents.runtime.service_support import persist_case_title
-from support_ope_agents.runtime.service_support import resolve_ticket_lookup_enabled
-from support_ope_agents.runtime.service_support import sync_case_title_from_state
+from support_ope_agents.runtime.service_support import (
+    append_chat_message, backfill_case_title, build_assistant_history_content,
+    has_explicit_ticket_id, persist_case_title, sync_case_title_from_state
+)
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
@@ -57,10 +53,14 @@ from support_ope_agents.models.state import CaseState, WorkflowKind
 
 
 class SampleRuntimeContext(AbstractRuntimeContext):
+    """SampleRuntimeService が参照する依存オブジェクトの束。"""
+
     pass
 
 
 def build_runtime_context(config_path: str) -> SampleRuntimeContext:
+    """設定ファイルから runtime 全体の依存関係を組み立てる。"""
+
     config = load_config(config_path)
     memory_store = CaseMemoryStore(config)
     runtime_harness_manager = RuntimeHarnessManager(config)
@@ -80,10 +80,15 @@ def build_runtime_context(config_path: str) -> SampleRuntimeContext:
 
 
 class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
+    """サンプル workflow の公開 API と永続化境界を提供する runtime service。"""
+
     def __init__(self, context: SampleRuntimeContext):
+        """実行に必要な executor 群を初期化する。"""
+
         super().__init__(context)
         self._migrate_legacy_traces()
         ticket_mcp_client = McpToolClient.from_config(context.config) if context.config.tools.mcp_manifest_path is not None else None
+        # Intake と TicketUpdate は同じ ticket MCP 接続を共有し、外部チケット参照を一貫させる。
         self._intake_executor = SampleIntakeAgent.from_ticket_mcp_client(
             config=context.config,
             ticket_mcp_client=ticket_mcp_client,
@@ -98,6 +103,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         )
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:
+        """設定込みの agent 一覧を UI/API 向けに整形して返す。"""
+
         agents: list[dict[str, object]] = []
         for definition in build_default_agent_definitions():
             settings = self._context.config.agents.get(definition.role)
@@ -114,6 +121,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return agents
 
     def describe_control_catalog(self) -> dict[str, object]:
+        """runtime が利用可能な control catalog を返す。"""
+
         return build_sample_control_catalog(
             config=self._context.config,
             tool_registry=self._context.tool_registry,
@@ -122,12 +131,16 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         )
 
     def describe_runtime_audit(self, *, case_id: str, trace_id: str, workspace_path: str) -> dict[str, object]:
+        """保存済み state を基に runtime audit 情報を生成する。"""
+
         state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
         if not state:
             raise ValueError("指定された trace_id の保存 state が見つかりません")
         return self._build_runtime_audit_for_state(case_id=case_id, state=state)
 
     def _build_runtime_audit_for_state(self, *, case_id: str, state: CaseState) -> dict[str, object]:
+        """既に読み込んだ state から audit 表現を構築する。"""
+
         return build_sample_runtime_audit(
             case_id=case_id,
             state=state,
@@ -137,6 +150,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         )
 
     def list_cases(self, cases_root: str) -> list[dict[str, object]]:
+        """cases 配下のケース一覧をメタデータ付きで返す。"""
+
         root = Path(cases_root).expanduser().resolve()
         if not root.exists():
             return []
@@ -156,6 +171,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             if not updated_at:
                 updated_at = datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat()
             if not case_title:
+                # 旧ケースや手動作成ケースではタイトル未保存のことがあるため履歴から補完する。
                 case_title = self._backfill_case_title(case_id=case_id, workspace_path=str(child), history=history)
                 metadata = self._context.memory_store.read_case_metadata(child)
                 updated_at = str(metadata.get("updated_at") or updated_at).strip() or updated_at
@@ -172,6 +188,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return cases
 
     def create_case(self, *, cases_root: str, prompt: str, case_id: str | None = None) -> dict[str, str]:
+        """新しいケースディレクトリと初期メタデータを作成する。"""
+
         selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id)
         workspace_path = Path(cases_root).expanduser().resolve() / selected_case_id
         case_path = self.initialize_case(selected_case_id, str(workspace_path))
@@ -209,9 +227,13 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         )
 
     def get_chat_history(self, *, case_id: str, workspace_path: str) -> list[dict[str, object]]:
+        """ケースに保存されたチャット履歴を返す。"""
+
         return self._context.memory_store.read_chat_history(case_id, workspace_path)
 
     def list_workspace_entries(self, *, case_id: str, workspace_path: str, relative_path: str = ".") -> dict[str, object]:
+        """ケース workspace 内のディレクトリエントリ一覧を返す。"""
+
         entries = self._context.memory_store.list_workspace_entries(case_id, workspace_path, relative_path)
         return {
             "case_id": case_id,
@@ -221,6 +243,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         }
 
     def get_workspace_file(self, *, case_id: str, workspace_path: str, relative_path: str, max_chars: int | None = None) -> dict[str, object]:
+        """workspace 内ファイルのプレビュー情報を返す。"""
+
         target = self._context.memory_store.resolve_workspace_path(case_id, workspace_path, relative_path)
         effective_max_chars = max_chars
         if effective_max_chars is None:
@@ -236,6 +260,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             "application/yaml",
         }
 
+        # バイナリは API で直接返さず、プレビュー不可としてメタデータのみ返す。
         if not is_text:
             return {
                 "case_id": case_id,
@@ -275,6 +300,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         filename: str,
         content: bytes,
     ) -> dict[str, object]:
+        """workspace 配下へファイルを保存し、保存結果を返す。"""
+
         safe_filename = Path(filename).name
         relative_path = str(Path(relative_dir or ".") / safe_filename)
         written = self._context.memory_store.write_workspace_file(case_id, workspace_path, relative_path, content)
@@ -286,6 +313,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         }
 
     def create_workspace_archive(self, *, case_id: str, workspace_path: str) -> Path:
+        """ケース workspace 全体を zip アーカイブ化する。"""
+
         case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
         archive_path = case_paths.report_dir / f"{case_id}-workspace.zip"
         archive_path.parent.mkdir(parents=True, exist_ok=True)
@@ -299,6 +328,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return archive_path
 
     def workspace_file_path(self, *, case_id: str, workspace_path: str, relative_path: str) -> Path:
+        """workspace 内相対パスを実ファイルパスへ解決する。"""
+
         return self._context.memory_store.resolve_workspace_path(case_id, workspace_path, relative_path)
 
     def _append_chat_message(
@@ -311,6 +342,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         trace_id: str | None,
         event: str,
     ) -> None:
+        """チャット履歴ストアへ 1 メッセージ追記する。"""
+
         append_chat_message(
             memory_store=self._context.memory_store,
             case_id=case_id,
@@ -328,6 +361,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         workspace_path: str,
         saved_state: CaseState,
     ) -> list[dict[str, object]]:
+        """保存済み state と履歴から会話メッセージ列を復元する。"""
+
         return resolve_saved_conversation_messages(
             state_messages=saved_state.get("conversation_messages"),
             history=self.get_chat_history(case_id=case_id, workspace_path=workspace_path),
@@ -342,6 +377,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         prompt: str,
         conversation_messages: list[dict[str, object]] | None = None,
     ) -> list[dict[str, object]]:
+        """現在の入力と保存済み履歴を統合した会話コンテキストを返す。"""
+
         saved_messages = self._resolve_saved_conversation_messages(
             case_id=case_id,
             workspace_path=workspace_path,
@@ -362,6 +399,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         saved_state: CaseState,
         conversation_messages: list[dict[str, object]] | None = None,
     ) -> str:
+        """action 実行時に workflow へ渡す最終的なプロンプトを決定する。"""
+
         saved_messages = self._resolve_saved_conversation_messages(
             case_id=case_id,
             workspace_path=workspace_path,
@@ -376,6 +415,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
 
     @staticmethod
     def _build_assistant_history_content(result: dict[str, object]) -> str:
+        """応答 payload を履歴保存向けのテキストへ変換する。"""
+
         return build_assistant_history_content(result)
 
     def plan(
@@ -387,6 +428,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         external_ticket_id: str | None = None,
         internal_ticket_id: str | None = None,
     ) -> dict[str, object]:
+        """初回 plan 実行用の state を組み立てて workflow を起動する。"""
+
         selected_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id, workspace_path=workspace_path)
         trace_id = self._new_trace_id()
         resolved_external_ticket_id = self._context.case_id_resolver_service.resolve_external_ticket_id(
@@ -401,6 +444,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         internal_ticket_lookup_enabled = has_explicit_ticket_id(internal_ticket_id)
         self.initialize_case(selected_case_id, workspace_path=workspace_path)
 
+        # plan は保存済み state を引き継がず、現在入力から新規 state を組み立てる。
         workflow_kind = route_workflow(prompt)
         plan_steps = build_plan_steps(workflow_kind)
         plan_summary = summarize_plan(workflow_kind)
@@ -421,6 +465,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
         }
+        # workflow の実行結果をそのまま返すだけでなく、ケース情報と履歴も同期しておく。
         result = self._invoke_workflow(state, trace_id)
         self._sync_case_title_from_state(
             case_id=selected_case_id,
@@ -480,6 +525,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         internal_ticket_id: str | None = None,
         conversation_messages: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
+        """保存済み state を踏まえて action 実行を継続または新規開始する。"""
+
         resolved_case_id = self.resolve_case_id(prompt=prompt, case_id=case_id, workspace_path=workspace_path)
         saved_state = self._load_state(case_id=resolved_case_id, trace_id=trace_id, workspace_path=workspace_path)
         selected_case_id = str(saved_state.get("case_id") or resolved_case_id)
@@ -505,6 +552,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             ticket_kind="internal",
         )
 
+        # 既存 trace がある場合は計画と workflow 種別を引き継ぎ、途中再開を可能にする。
         if not saved_state:
             workflow_kind = route_workflow(prompt)
             plan_steps = build_plan_steps(workflow_kind)
@@ -529,6 +577,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             prompt=prompt,
             conversation_messages=conversation_messages,
         )
+        # workflow に渡す state には、復元済み会話と現在のチケット解決結果をまとめて載せる。
         state: CaseState = {
             "case_id": selected_case_id,
             "workflow_run_id": current_trace_id,
@@ -603,6 +652,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         external_ticket_id: str | None = None,
         internal_ticket_id: str | None = None,
     ) -> dict[str, object]:
+        """顧客追加入力待ちの trace を再開し、回答を state へ反映する。"""
+
         saved_state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
         if not saved_state:
             raise ValueError("指定された trace_id の保存 state が見つかりません")
@@ -616,6 +667,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         merged_prompt = previous_issue
         normalized_additional_input = additional_input.strip()
         if normalized_additional_input:
+            # 元の問い合わせ本文は保持しつつ、追加入力を後段 agent が参照しやすい形で追記する。
             merged_prompt = f"{previous_issue}\n\n[Additional customer input]\n{normalized_additional_input}" if previous_issue else normalized_additional_input
 
         resumed_state = self._normalize_state_ids(saved_state, trace_id=trace_id)
@@ -660,6 +712,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         resumed_state["intake_followup_questions"] = {}
         answer_records = dict(saved_state.get("customer_followup_answers") or {})
         if normalized_additional_input:
+            # 回答履歴を構造化して残し、同一 trace の再実行でも追加入力の出所を失わないようにする。
             record_key = resolved_answer_key or "general"
             answer_records[record_key] = {
                 "question": str(previous_questions.get(record_key) or ""),
@@ -724,6 +777,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return response
 
     def print_workflow_nodes(self) -> list[str]:
+        """case workflow に含まれる node 名一覧を返す。"""
+
         graph = SampleCaseWorkflow().build_case_workflow(
             intake_executor=self._intake_executor,
             supervisor_executor=self._supervisor_executor,
@@ -731,11 +786,15 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return sorted(node.id for node in graph.nodes.values())
 
     def checkpoint_db_path(self, case_id: str, workspace_path: str) -> Path:
+        """ケースの checkpoint DB パスを返し、必要なら親ディレクトリを作成する。"""
+
         case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
         case_paths.traces_dir.mkdir(parents=True, exist_ok=True)
         return case_paths.traces_dir / self._context.config.data_paths.checkpoint_db_filename
 
     def report_file_path(self, case_id: str, trace_id: str, workspace_path: str) -> Path:
+        """trace ごとの改善レポート保存先パスを返す。"""
+
         case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
         case_paths.report_dir.mkdir(parents=True, exist_ok=True)
         return case_paths.report_dir / f"support-improvement-{trace_id}.md"
@@ -748,6 +807,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         trace_id: str | None = None,
         limit: int = 20,
     ) -> dict[str, object]:
+        """checkpoint DB の存在状況と trace 一覧を返す。"""
+
         db_path = self.checkpoint_db_path(case_id, workspace_path)
         result: dict[str, object] = {
             "case_id": case_id,
@@ -771,6 +832,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             result["trace_ids"] = [str(row[0]) for row in rows]
 
         if trace_id:
+            # trace_id 指定時は一覧だけでなく、その trace が復元可能かも合わせて返す。
             state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
             result["trace_id"] = trace_id
             result["has_trace"] = bool(state)
@@ -787,6 +849,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         workspace_path: str,
         checklist: list[str] | None = None,
     ) -> dict[str, object]:
+        """保存済み trace から改善レポートを明示生成する。"""
+
         state = self._load_state(case_id=case_id, trace_id=trace_id, workspace_path=workspace_path)
         if not state:
             raise ValueError("指定された trace_id の保存 state が見つかりません")
@@ -818,6 +882,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         workspace_path: str,
         state: CaseState,
     ) -> str | None:
+        """設定と state の状態に応じて改善レポートを自動生成する。"""
+
         settings = self._context.config.agents.SuperVisorAgent
         if not settings.auto_generate_report:
             return None
@@ -827,6 +893,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         if trigger is None or trigger not in settings.report_on:
             return None
 
+        # 自動生成は状態遷移トリガーに一致した場合のみ行い、通常実行のコスト増加を抑える。
         result = build_support_improvement_report(
             case_id=case_id,
             trace_id=trace_id,
@@ -842,15 +909,20 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return str(result.report_path)
 
     def _load_state(self, *, case_id: str | None, trace_id: str | None, workspace_path: str | None = None) -> CaseState:
+        """checkpoint から trace 単位の workflow state を復元する。"""
+
         if not trace_id or not case_id or not workspace_path:
             return {}
 
         with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
+            # LangGraph snapshot の値を正規化し、case_id/trace_id 系の揺れを吸収する。
             graph = self._build_case_workflow(checkpointer=checkpointer)
             snapshot = graph.get_state({"configurable": {"thread_id": trace_id, "checkpoint_ns": ""}})
             return self._normalize_state_ids(cast(dict[str, object], snapshot.values), trace_id=trace_id)
 
     def _build_case_workflow(self, *, checkpointer: object | None = None) -> Any:
+        """executor を束ねた case workflow インスタンスを構築する。"""
+
         return SampleCaseWorkflow().build_case_workflow(
             checkpointer=cast(Any, checkpointer),
             intake_executor=self._intake_executor,
@@ -858,4 +930,6 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         )
 
     def _migrate_legacy_traces(self) -> None:
+        """旧 trace 形式の移行フック。現状は no-op。"""
+
         return
