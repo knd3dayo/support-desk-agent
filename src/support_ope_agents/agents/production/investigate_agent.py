@@ -16,6 +16,7 @@ from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
+from support_ope_agents.util.workspace_evidence import find_evidence_log_file
 
 if TYPE_CHECKING:
     from support_ope_agents.models.state import CaseState
@@ -92,31 +93,6 @@ class InvestigateAgent(AbstractAgent):
         if inspect.isawaitable(result):
             return str(run_awaitable_sync(cast(Any, result)))
         return str(result)
-
-    @staticmethod
-    def _find_evidence_log_file(workspace_path: str) -> Path | None:
-        workspace_root = Path(workspace_path).expanduser().resolve()
-        candidate_dirs = [
-            workspace_root / ".artifacts" / "intake" / "external_attachments",
-            workspace_root / ".artifacts" / "intake" / "internal_attachments",
-            workspace_root / ".evidence",
-        ]
-        preferred_names = ["application.log", "vdp.log"]
-        for directory in candidate_dirs:
-            if not directory.exists():
-                continue
-            for name in preferred_names:
-                candidate = directory / name
-                if candidate.exists() and candidate.is_file():
-                    return candidate
-            discovered_files = [path for path in sorted(directory.rglob("*")) if path.is_file()]
-            for path in discovered_files:
-                if path.suffix.lower() == ".log":
-                    return path
-            for path in discovered_files:
-                if path.suffix.lower() in {".out", ".txt"}:
-                    return path
-        return None
 
     @staticmethod
     def _collect_signal_lines(entries: list[object], *, limit: int = 2) -> list[str]:
@@ -345,7 +321,7 @@ class InvestigateAgent(AbstractAgent):
 
         log_summary = ""
         log_file = ""
-        log_path = self._find_evidence_log_file(workspace_path) if workspace_path else None
+        log_path = find_evidence_log_file(workspace_path, include_attachment_dirs=True) if workspace_path else None
         if log_path is not None and self.tools.detect_log_format_tool is not None:
             try:
                 parsed = json.loads(self._invoke_tool(self.tools.detect_log_format_tool, str(log_path), []))

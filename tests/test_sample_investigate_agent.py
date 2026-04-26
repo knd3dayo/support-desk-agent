@@ -149,13 +149,34 @@ class SampleInvestigateAgentTests(unittest.TestCase):
 
         tools = create_mock.call_args.kwargs["tools"]
         tool_names = [getattr(tool, "__name__", "") for tool in tools]
+        self.assertIn("list_zip_contents", tool_names)
+        self.assertIn("extract_zip", tool_names)
+        self.assertIn("create_zip", tool_names)
+        self.assertIn("detect_log_format_and_search", tool_names)
         self.assertIn("infer_log_header_pattern", tool_names)
         self.assertIn("extract_log_time_range", tool_names)
         self.assertIn("analyze_image_files", tool_names)
         self.assertIn("analyze_pdf_files", tool_names)
+        self.assertIn("analyze_office_files", tool_names)
+        self.assertIn("convert_office_files_to_pdf", tool_names)
         self.assertIn("convert_pdf_files_to_images", tool_names)
         self.assertIn("write_working_memory", tool_names)
-        self.assertIn("read_working_memory", tool_names)
+
+    def test_create_sub_agent_adds_workspace_evidence_to_document_sources(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+                with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent") as create_mock:
+                    backend_mock.return_value = object()
+                    create_mock.return_value = object()
+                    agent.create_sub_agent(query="ログを調べて", workspace_path=tmpdir)
+
+        document_sources = backend_mock.call_args.kwargs["document_sources"]
+        source_names = [source.name for source in document_sources]
+        self.assertIn("workspace-evidence", source_names)
 
     def test_system_prompt_instructs_checklist_memory_and_attachment_analysis(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
@@ -167,10 +188,14 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("write_working_memory", prompt)
         self.assertIn("analyze_pdf_files", prompt)
         self.assertIn("analyze_image_files", prompt)
+        self.assertIn("list_zip_contents", prompt)
+        self.assertIn("extract_zip", prompt)
+        self.assertIn("list_zip_contents", prompt)
+        self.assertIn("extract_zip", prompt)
 
     def test_supervisor_includes_attachment_paths_and_evidence_in_query(self) -> None:
         executor = _CapturingInvestigateExecutor()
-        supervisor = SampleSupervisorAgent(investigate_executor=executor)
+        supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             evidence_dir = Path(tmpdir) / ".evidence"
@@ -218,6 +243,21 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("ログを調べて", str(capturing_sub_agent.payloads[0]))
         self.assertEqual(rendered, "")
         self.assertNotIn("再提供が必要", rendered)
+
+    def test_execute_uses_plain_query_for_standalone_run(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+        capturing_sub_agent = _CapturingSubAgent(output="補足なし")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "vdp.log").write_text("2025-10-21T20:55:12 ERROR sample\n", encoding="utf-8")
+            with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
+                agent.execute(query="ログを調べて", workspace_path=tmpdir)
+
+        payload_text = str(capturing_sub_agent.payloads[0])
+        self.assertIn("ログを調べて", payload_text)
+        self.assertNotIn("Evidence file:", payload_text)
 
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
         supervisor = SampleSupervisorAgent(investigate_executor=_WorkspaceAwareInvestigateExecutor())

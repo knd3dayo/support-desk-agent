@@ -10,7 +10,8 @@ INVESTIGATE_SYSTEM_PROMPT_TEMPLATE = """
 検索でヒットした箇所は、ヒット行だけで判断せず、必ずその前後10行以上を read_file で確認して文脈を把握してください。
 grep や検索結果に line 情報が含まれる場合は、その近傍を優先して読んでください。
 ログ調査では、まず事前抽出済みの障害発生時間帯ログを優先し、それで不足する場合だけ infer_log_header_pattern と extract_log_time_range を使って追加の時間帯抽出を行ってください。
-添付ファイルは path を確認してから扱い、PDF は analyze_pdf_files を優先し、画像は analyze_image_files を使って分析してください。
+workspace backend に evidence source が見える場合は、ログや添付の一次情報として最優先で確認してください。
+添付ファイルは path を確認してから扱い、ZIP はまず list_zip_contents で中身を確認し、必要な場合だけ extract_zip で展開してください。展開後の PDF は analyze_pdf_files を優先し、画像は analyze_image_files を使って分析してください。
 README や Markdown、設定ファイル内にリンク、参照先 path、関連ファイル名が出てきた場合は、そのリンク先や参照先ファイルも追加で調査してください。
 ただし、README に書かれている外部 path や参照先が現在の backend 内に存在しない場合、その path の内容を読んだ前提で説明してはいけません。
 backend 外の参照先は「今回の調査 backend からは未到達」とみなし、現在読める backend 内の別ソース、別ファイル、別の一致箇所を探してください。

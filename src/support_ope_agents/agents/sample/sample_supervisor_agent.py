@@ -16,6 +16,7 @@ from support_ope_agents.models.state_transitions import NextActionTexts, StateTr
 from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.util.formatting import format_result, format_ticket_context
+from support_ope_agents.util.workspace_evidence import find_attachment_files, find_evidence_log_file
 
 from support_ope_agents.agents.sample.sample_back_support_escalation_agent import SampleBackSupportEscalationAgent
 from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
@@ -111,50 +112,6 @@ class SampleSupervisorAgent(AbstractAgent):
                 continue
             sections.append(f"{label}:\n{value}")
         return "\n\n".join(sections)
-
-    @staticmethod
-    def _find_evidence_log_file(workspace_path: str | None) -> Path | None:
-        if not workspace_path:
-            return None
-        workspace_root = Path(workspace_path).expanduser().resolve()
-        candidate_dirs = [workspace_root / ".evidence", workspace_root / "evidence"]
-        preferred_names = ["application.log", "vdp.log"]
-        for directory in candidate_dirs:
-            if not directory.exists():
-                continue
-            for name in preferred_names:
-                candidate = directory / name
-                if candidate.exists() and candidate.is_file():
-                    return candidate
-            discovered_files = [path for path in sorted(directory.rglob("*")) if path.is_file()]
-            for path in discovered_files:
-                if path.suffix.lower() == ".log":
-                    return path
-            for path in discovered_files:
-                if path.suffix.lower() in {".out", ".txt"}:
-                    return path
-        return None
-
-    @staticmethod
-    def _find_attachment_files(workspace_path: str | None) -> list[Path]:
-        if not workspace_path:
-            return []
-        workspace_root = Path(workspace_path).expanduser().resolve()
-        candidate_dirs = [
-            workspace_root / ".artifacts" / "intake" / "external_attachments",
-            workspace_root / ".artifacts" / "intake" / "internal_attachments",
-            workspace_root / ".evidence",
-            workspace_root / "evidence",
-        ]
-        allowed_suffixes = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
-        discovered: list[Path] = []
-        for directory in candidate_dirs:
-            if not directory.exists():
-                continue
-            for path in sorted(directory.rglob("*")):
-                if path.is_file() and path.suffix.lower() in allowed_suffixes and path not in discovered:
-                    discovered.append(path)
-        return discovered
 
     def _build_investigation_query(self, state: "CaseState") -> str:
         raw_issue = str(state.get("raw_issue") or "").strip()
@@ -429,8 +386,8 @@ class SampleSupervisorAgent(AbstractAgent):
                 try:
                     case_id = str(update.get("case_id") or "").strip()
                     workspace_path = str(update.get("workspace_path") or "").strip()
-                    evidence_log = self._find_evidence_log_file(workspace_path)
-                    attachment_paths = self._find_attachment_files(workspace_path)
+                    evidence_log = find_evidence_log_file(workspace_path)
+                    attachment_paths = find_attachment_files(workspace_path)
                     update["investigation_evidence_log_path"] = str(evidence_log) if evidence_log is not None else ""
                     update["investigation_attachment_paths"] = [str(path) for path in attachment_paths]
                     investigation_query = self._build_investigation_query(update)

@@ -11,7 +11,7 @@ from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_ope_agents.config.loader import load_config
-from support_ope_agents.config.models import AppConfig
+from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
 from support_ope_agents.tools.builtin_tools import build_builtin_tools
 from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
@@ -19,6 +19,7 @@ from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.workspace_evidence import build_workspace_evidence_source, find_evidence_log_file
 from ...tools.registry import ToolRegistry
 from ...instructions.investigate_system_prompt import INVESTIGATE_SYSTEM_PROMPT_TEMPLATE
 from langchain_core.messages import HumanMessage
@@ -64,6 +65,16 @@ class SampleInvestigateAgent(AbstractAgent):
         )
         return log_path.name.lower() in normalized and any(marker in normalized for marker in missing_markers)
 
+    def _resolve_document_sources(self, workspace_path: str | None) -> list[KnowledgeDocumentSource]:
+        sources = list(self.config.agents.InvestigateAgent.document_sources)
+        evidence_source = build_workspace_evidence_source(
+            workspace_path,
+            evidence_subdir=self.config.data_paths.evidence_subdir,
+        )
+        if evidence_source is not None:
+            sources.append(evidence_source)
+        return sources
+
 
     def read_investigate_working_memory(self, case_id: str, workspace_path: str) -> str:
         """
@@ -77,10 +88,12 @@ class SampleInvestigateAgent(AbstractAgent):
         query: str,
         instruction_text: str = "",
         document_sources: Sequence[Any] = (),
-        route_base: str = "docs"
+        route_base: str = "docs",
+        workspace_path: str | None = None,
     ) -> CompiledStateGraph:
+        effective_document_sources = list(document_sources) if document_sources else self._resolve_document_sources(workspace_path)
         backend = build_filtered_document_source_backend(
-            document_sources=document_sources,
+            document_sources=effective_document_sources,
             route_base=route_base,
         )
         tools = {t.name: t.handler for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
@@ -114,16 +127,19 @@ class SampleInvestigateAgent(AbstractAgent):
     ) -> Any:
         effective_query = query.strip() or self._default_query()
         log_path_value = str((state or {}).get("investigation_evidence_log_path") or "").strip()
-        log_path = Path(log_path_value) if log_path_value else None
-        investigation_query = effective_query
+        log_path = Path(log_path_value) if log_path_value else find_evidence_log_file(workspace_path)
 
         try:
-            sub_agent = self.create_sub_agent(query=investigation_query, instruction_text=instruction_text or "")
+            sub_agent = self.create_sub_agent(
+                query=effective_query,
+                instruction_text=instruction_text or "",
+                workspace_path=workspace_path,
+            )
             result = self._invoke_sub_agent(
                 sub_agent,
                 {
                     "messages": [
-                        HumanMessage(content=investigation_query),
+                        HumanMessage(content=effective_query),
                     ]
                 },
             )

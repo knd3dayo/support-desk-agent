@@ -177,6 +177,15 @@ class LogRangeToolTests(unittest.TestCase):
 
         tools = {tool.name: tool for tool in registry.get_tools("InvestigateAgent")}
 
+        self.assertIn("list_zip_contents", tools)
+        self.assertIn("extract_zip", tools)
+        self.assertIn("create_zip", tools)
+        self.assertIn("analyze_image_files", tools)
+        self.assertIn("analyze_pdf_files", tools)
+        self.assertIn("analyze_office_files", tools)
+        self.assertIn("convert_office_files_to_pdf", tools)
+        self.assertIn("convert_pdf_files_to_images", tools)
+        self.assertIn("detect_log_format_and_search", tools)
         self.assertIn("infer_log_header_pattern", tools)
         self.assertIn("extract_log_time_range", tools)
         self.assertIn("file_path", tools["infer_log_header_pattern"].input_schema["properties"])
