@@ -98,10 +98,14 @@ class StateTransitionHelper:
         return update
 
     @staticmethod
-    def waiting_for_approval(state: Mapping[str, Any]) -> dict[str, Any]:
+    def waiting_for_approval(
+        state: Mapping[str, Any],
+        *,
+        current_agent: str = APPROVAL_AGENT,
+    ) -> dict[str, Any]:
         update = dict(state)
         update["status"] = CaseStatuses.WAITING_APPROVAL
-        update["current_agent"] = APPROVAL_AGENT
+        update["current_agent"] = current_agent
         update.setdefault("approval_decision", "pending")
         if update.get("execution_mode") == "plan":
             update["next_action"] = NextActionTexts.PLAN_APPROVAL

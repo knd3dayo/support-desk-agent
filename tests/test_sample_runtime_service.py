@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import types
 import unittest
@@ -16,6 +17,13 @@ from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessMan
 from support_ope_agents.runtime.sample.sample_service import SampleRuntimeContext
 from support_ope_agents.runtime.sample.sample_service import SampleRuntimeService
 from support_ope_agents.tools import ToolRegistry
+
+
+def _llm_api_key() -> str:
+    api_key = os.environ.get("LLM_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("LLM_API_KEY is required for test_sample_runtime_service.py")
+    return api_key
 
 
 class _FakeStructuredClassifier:
@@ -63,7 +71,7 @@ class SampleRuntimeServiceFlowTests(unittest.TestCase):
         self.workspace_path = Path(self._tmpdir.name)
         self.config = AppConfig.model_validate(
             {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": _llm_api_key()},
                 "config_paths": {},
                 "data_paths": {},
                 "interfaces": {},

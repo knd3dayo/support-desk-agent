@@ -11,6 +11,7 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
+from support_ope_agents.workflow.sample.sample_case_workflow import CaseWorkflow as SampleCaseWorkflow
 from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
 from support_ope_agents.models.state import CaseState
 from support_ope_agents.models.state_transitions import CaseStatuses
@@ -679,6 +680,7 @@ def _build_sequence_diagram(
 ) -> str:
     path = _workflow_path_for_report(state, runtime_audit)
     approval_route = _approval_route_for_report(state, runtime_audit)
+    runtime_mode = _runtime_mode_for_report(runtime_audit)
     participants = _sequence_participants(path, runtime_audit)
     lines = [
         "sequenceDiagram",
@@ -698,16 +700,23 @@ def _build_sequence_diagram(
 
     if "escalation_review" in path:
         lines.append("    Supervisor->>Escalation: エスカレーション判断と要約を依頼")
-        lines.append("    Escalation-->>Supervisor: エスカレーション要約を返却")
-        lines.append("    Supervisor->>Inquiry: 問い合わせ文案作成を依頼")
-        lines.append("    Inquiry-->>Supervisor: エスカレーション文案を返却")
+        if runtime_mode == "sample":
+            lines.append("    Escalation-->>Supervisor: エスカレーション要約と文案を返却")
+        else:
+            lines.append("    Escalation-->>Supervisor: エスカレーション要約を返却")
+            lines.append("    Supervisor->>Inquiry: 問い合わせ文案作成を依頼")
+            lines.append("    Inquiry-->>Supervisor: エスカレーション文案を返却")
         lines.append("    Supervisor->>Approval: 承認依頼を送信")
         if approval_route == "investigation":
             lines.append("    Approval->>Supervisor: 再調査を依頼")
         elif approval_route == "draft_review":
             lines.append("    Approval->>Supervisor: 差戻しを依頼")
-            lines.append("    Supervisor->>Inquiry: 問い合わせ文案の修正を依頼")
-        elif approval_route == "ticket_update_prepare":
+            lines.append(
+                "    Supervisor->>Escalation: 修正版エスカレーション文案を依頼"
+                if runtime_mode == "sample"
+                else "    Supervisor->>Inquiry: 問い合わせ文案の修正を依頼"
+            )
+        elif approval_route == "ticket_update_subgraph":
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
     elif "draft_review" in path:
@@ -722,7 +731,7 @@ def _build_sequence_diagram(
         elif approval_route == "draft_review":
             lines.append("    Approval->>Supervisor: 差戻しを依頼")
             lines.append("    Supervisor->>Investigate: 修正版ドラフト作成を依頼")
-        elif approval_route == "ticket_update_prepare":
+        elif approval_route == "ticket_update_subgraph":
             lines.append("    Approval->>TicketUpdate: 承認済み更新を依頼")
             lines.append("    TicketUpdate-->>User: 更新完了")
     return "\n".join(lines)
@@ -735,10 +744,10 @@ def _approval_route_for_report(state: CaseState, runtime_audit: dict[str, object
         if route:
             return route
     if str(state.get("status") or "") == CaseStatuses.CLOSED or str(state.get("ticket_update_result") or "").strip():
-        return "ticket_update_prepare"
+        return "ticket_update_subgraph"
     decision = str(state.get("approval_decision") or "").strip().lower()
     if decision in {"approved", "approve"}:
-        return "ticket_update_prepare"
+        return "ticket_update_subgraph"
     if decision in {"rejected", "reject"}:
         return "draft_review"
     if decision == "reinvestigate":
@@ -750,21 +759,33 @@ def _workflow_path_for_report(state: CaseState, runtime_audit: dict[str, object]
     workflow_path = runtime_audit.get("workflow_path") if isinstance(runtime_audit, dict) else None
     if isinstance(workflow_path, list) and workflow_path:
         return tuple(str(item) for item in workflow_path if str(item).strip())
+    if _runtime_mode_for_report(runtime_audit) == "sample":
+        return SampleCaseWorkflow().reconstruct_main_workflow_path(state)
     return ProductionCaseWorkflow().reconstruct_main_workflow_path(state)
+
+
+def _runtime_mode_for_report(runtime_audit: dict[str, object] | None) -> str:
+    audit_summary = runtime_audit.get("summary") if isinstance(runtime_audit, dict) else None
+    if isinstance(audit_summary, dict):
+        runtime_mode = str(audit_summary.get("runtime_mode") or "").strip()
+        if runtime_mode:
+            return runtime_mode
+    return "production"
 
 
 def _sequence_participants(
     workflow_path: tuple[str, ...],
     runtime_audit: dict[str, object] | None,
 ) -> list[tuple[str, str]]:
+    runtime_mode = _runtime_mode_for_report(runtime_audit)
     participant_defs = [
         ("User", "User"),
         ("Intake", "IntakeAgent"),
         ("Supervisor", "SuperVisorAgent"),
         ("Investigate", "InvestigateAgent"),
-        ("Approval", "ApprovalAgent"),
+        ("Approval", "ApprovalNode" if runtime_mode == "sample" else "ApprovalAgent"),
         ("TicketUpdate", "TicketUpdateAgent"),
-        ("Escalation", "BackSupportEscalationAgent"),
+        ("Escalation", "EscalationReview" if runtime_mode == "sample" else "BackSupportEscalationAgent"),
         ("Inquiry", "BackSupportInquiryWriterAgent"),
     ]
     used_roles = runtime_audit.get("used_roles") if isinstance(runtime_audit, dict) else None
@@ -789,7 +810,7 @@ def _sequence_participants(
             included.append((alias, label))
         elif alias == "Escalation" and "escalation_review" in workflow_path:
             included.append((alias, label))
-        elif alias == "Inquiry" and "escalation_review" in workflow_path:
+        elif alias == "Inquiry" and runtime_mode != "sample" and "escalation_review" in workflow_path:
             included.append((alias, label))
     return included
 
@@ -807,6 +828,7 @@ def _build_subgraph_sequence_diagrams(
     del control_catalog
     path = _workflow_path_for_report(state, runtime_audit)
     approval_route = _approval_route_for_report(state, runtime_audit)
+    runtime_mode = _runtime_mode_for_report(runtime_audit)
     intake_lines = [
         "sequenceDiagram",
         "    participant User as User",
@@ -844,7 +866,7 @@ def _build_subgraph_sequence_diagrams(
             "sequenceDiagram",
             "    participant Supervisor as SuperVisorAgent",
             "    participant Investigate as InvestigateAgent",
-            "    participant Approval as ApprovalAgent",
+            f"    participant Approval as {'ApprovalNode' if runtime_mode == 'sample' else 'ApprovalAgent'}",
             "    Supervisor->>Investigate: 調査結果を踏まえた回答ドラフト作成を依頼",
         ]
         for index in range(max(1, review_iterations)):
@@ -865,20 +887,31 @@ def _build_subgraph_sequence_diagrams(
         escalation_lines = [
             "sequenceDiagram",
             "    participant Supervisor as SuperVisorAgent",
-            "    participant Escalation as BackSupportEscalationAgent",
-            "    participant Inquiry as BackSupportInquiryWriterAgent",
-            "    participant Approval as ApprovalAgent",
+            f"    participant Escalation as {'EscalationReview' if runtime_mode == 'sample' else 'BackSupportEscalationAgent'}",
+            f"    participant Approval as {'ApprovalNode' if runtime_mode == 'sample' else 'ApprovalAgent'}",
             "    Supervisor->>Escalation: 判断根拠と不足情報を整理",
-            "    Escalation-->>Supervisor: エスカレーション要約を返却",
-            "    Supervisor->>Inquiry: バックサポート向け問い合わせ文案を依頼",
-            "    Inquiry-->>Supervisor: 問い合わせ文案を返却",
-            "    Supervisor->>Approval: 承認待ちへ回付",
         ]
+        if runtime_mode == "sample":
+            escalation_lines.append("    Escalation-->>Supervisor: エスカレーション要約と問い合わせ文案を返却")
+        else:
+            escalation_lines.extend(
+                [
+                    "    participant Inquiry as BackSupportInquiryWriterAgent",
+                    "    Escalation-->>Supervisor: エスカレーション要約を返却",
+                    "    Supervisor->>Inquiry: バックサポート向け問い合わせ文案を依頼",
+                    "    Inquiry-->>Supervisor: 問い合わせ文案を返却",
+                ]
+            )
+        escalation_lines.append("    Supervisor->>Approval: 承認待ちへ回付")
         if approval_route == "investigation":
             escalation_lines.append("    Approval->>Supervisor: 再調査判断を返却")
         elif approval_route == "draft_review":
             escalation_lines.append("    Approval->>Supervisor: 文案差戻しを返却")
-            escalation_lines.append("    Supervisor->>Inquiry: 修正版問い合わせ文案を依頼")
+            escalation_lines.append(
+                "    Supervisor->>Escalation: 修正版問い合わせ文案を依頼"
+                if runtime_mode == "sample"
+                else "    Supervisor->>Inquiry: 修正版問い合わせ文案を依頼"
+            )
         diagrams.append(
             SubgraphSequenceDiagram(
                 title="Escalation 準備フロー",
@@ -891,7 +924,7 @@ def _build_subgraph_sequence_diagrams(
                 title="TicketUpdateAgent サブグラフ",
                 diagram="\n".join([
                     "sequenceDiagram",
-                    "    participant Approval as ApprovalAgent",
+                    f"    participant Approval as {'ApprovalNode' if runtime_mode == 'sample' else 'ApprovalAgent'}",
                     "    participant TicketUpdate as TicketUpdateAgent",
                     "    participant Prepare as ticket_update_prepare",
                     "    participant Execute as ticket_update_execute",

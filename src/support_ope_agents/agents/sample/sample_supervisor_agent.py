@@ -20,8 +20,8 @@ from support_ope_agents.runtime.conversation_messages import extract_result_outp
 from support_ope_agents.util.formatting import format_result, format_ticket_context
 from support_ope_agents.util.workspace_evidence import find_attachment_files, find_evidence_log_file
 
-from support_ope_agents.agents.sample.sample_back_support_escalation_agent import SampleBackSupportEscalationAgent
 from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
+from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
 from support_ope_agents.models.state import CaseState
 from support_ope_agents.instructions import InstructionLoader
 
@@ -35,13 +35,13 @@ class SampleSupervisorAgent(AbstractAgent):
         self,
         config: Any,
         investigate_executor: "SampleInvestigateAgent | None" = None,
-        back_support_escalation_executor: "SampleBackSupportEscalationAgent | None" = None,
+        ticket_update_executor: "SampleTicketUpdateAgent | None" = None,
     ):
         from support_ope_agents.tools.registry import ToolRegistry
         self.config = config
         self.tool_registry = ToolRegistry(config)
         self.investigate_executor = investigate_executor
-        self.back_support_escalation_executor = back_support_escalation_executor
+        self.ticket_update_executor = ticket_update_executor
 
 
 
@@ -101,6 +101,17 @@ class SampleSupervisorAgent(AbstractAgent):
         if state.get("escalation_required"):
             return "escalation_review"
         return "draft_review"
+
+    @staticmethod
+    def route_after_approval(state: dict[str, object]) -> str:
+        decision = str(state.get("approval_decision", "pending")).lower()
+        if decision in {"approved", "approve"}:
+            return "ticket_update_subgraph"
+        if decision in {"rejected", "reject"}:
+            return "draft_review"
+        if decision == "reinvestigate":
+            return "investigation"
+        return "__end__"
 
     @staticmethod
     def route_entry(state: dict[str, object]) -> str:
@@ -327,13 +338,24 @@ class SampleSupervisorAgent(AbstractAgent):
 
         workspace_path = str(update.get("workspace_path") or "").strip()
         investigation_query = self._build_investigation_query(update, mode=mode)
-        result = self.investigate_executor.execute(
-            query=investigation_query,
-            mode=mode,
-            workspace_path=workspace_path or None,
-            instruction_text=instruction_text or None,
-            state=cast(dict[str, Any], update),
-        )
+        execute_kwargs: dict[str, Any] = {
+            "query": investigation_query,
+            "mode": mode,
+            "workspace_path": workspace_path or None,
+            "instruction_text": instruction_text or None,
+            "state": cast(dict[str, Any], update),
+        }
+        try:
+            signature = inspect.signature(self.investigate_executor.execute)
+            execute_kwargs = {
+                key: value
+                for key, value in execute_kwargs.items()
+                if key in signature.parameters
+            }
+        except (TypeError, ValueError):
+            pass
+
+        result = self.investigate_executor.execute(**execute_kwargs)
         return self._extract_investigation_summary(result).strip()
 
     @staticmethod
@@ -555,14 +577,7 @@ class SampleSupervisorAgent(AbstractAgent):
         return update
 
     def execute_escalation_review(self, state: "CaseState") -> "CaseState":
-        update = cast("CaseState", StateTransitionHelper.draft_ready(state))
-        if self.back_support_escalation_executor is not None:
-            try:
-                query = str(update.get("raw_issue") or "").strip() or None
-                update.update(cast("CaseState", self.back_support_escalation_executor.execute(query=query)))
-            except Exception:
-                pass
-
+        update = cast("CaseState", StateTransitionHelper.draft_ready(state, current_agent=SUPERVISOR_AGENT))
         update["escalation_required"] = True
         update["escalation_reason"] = str(update.get("escalation_reason") or "追加確認のためバックサポートへ問い合わせます。")
         update["escalation_summary"] = str(
@@ -587,14 +602,25 @@ class SampleSupervisorAgent(AbstractAgent):
         update["next_action"] = NextActionTexts.APPROVAL_REVIEW_DRAFT
         return update
 
+    def wait_for_approval(self, state: "CaseState") -> "CaseState":
+        return cast(
+            "CaseState",
+            StateTransitionHelper.waiting_for_approval(state, current_agent=SUPERVISOR_AGENT),
+        )
+
     def create_node(self) -> Any:
         from support_ope_agents.models.state import CaseState
+
+        if self.ticket_update_executor is None:
+            raise RuntimeError("SampleSupervisorAgent requires ticket_update_executor for the sample workflow.")
 
         graph = StateGraph(CaseState)
         graph.add_node("supervisor_entry", lambda state: cast(CaseState, dict(cast(dict[str, Any], state))))
         graph.add_node("investigation", self.execute_investigation)
         graph.add_node("draft_review", self.execute_draft_review)
         graph.add_node("escalation_review", self.execute_escalation_review)
+        graph.add_node("wait_for_approval", self.wait_for_approval)
+        graph.add_node("ticket_update_subgraph", self.ticket_update_executor.create_node())
         graph.add_edge(START, "supervisor_entry")
         graph.add_conditional_edges(
             "supervisor_entry",
@@ -612,8 +638,19 @@ class SampleSupervisorAgent(AbstractAgent):
                 "draft_review": "draft_review",
             },
         )
-        graph.add_edge("draft_review", END)
-        graph.add_edge("escalation_review", END)
+        graph.add_edge("draft_review", "wait_for_approval")
+        graph.add_edge("escalation_review", "wait_for_approval")
+        graph.add_conditional_edges(
+            "wait_for_approval",
+            lambda state: self.route_after_approval(cast(dict[str, object], state)),
+            {
+                "ticket_update_subgraph": "ticket_update_subgraph",
+                "draft_review": "draft_review",
+                "investigation": "investigation",
+                "__end__": END,
+            },
+        )
+        graph.add_edge("ticket_update_subgraph", END)
         return graph.compile()
 
     @classmethod

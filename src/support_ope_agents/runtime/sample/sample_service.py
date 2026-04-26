@@ -10,13 +10,10 @@ from typing import Any, cast
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from support_ope_agents.agents.catalog import build_default_agent_definitions
-from support_ope_agents.agents.sample.sample_approval_agent import SampleApprovalAgent
 from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
 from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
-from support_ope_agents.agents.roles import INVESTIGATE_AGENT
-from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.agents.roles import DEFAULT_AGENT_ROLES
 from support_ope_agents.config import AppConfig, load_config
 from support_ope_agents.instructions import InstructionLoader
@@ -47,8 +44,6 @@ from support_ope_agents.runtime.service_support import sync_case_title_from_stat
 from support_ope_agents.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_ope_agents.tools import ToolRegistry
 from support_ope_agents.tools.builtin_tools import TEXT_FILE_SUFFIXES
-from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
-from support_ope_agents.tools.prepare_ticket_update import build_default_prepare_ticket_update_tool
 from support_ope_agents.tools.mcp_client import McpToolClient
 from support_ope_agents.util.log_time_range import apply_derived_log_extract_range
 from support_ope_agents.workflow import (
@@ -93,25 +88,13 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             config=context.config,
             ticket_mcp_client=ticket_mcp_client,
         )
-        self._approval_executor = SampleApprovalAgent()
-        self._ticket_update_executor = SampleTicketUpdateAgent(
-            config=context.config,
-            ticket_mcp_client=ticket_mcp_client,
-            prepare_ticket_update_tool=build_default_prepare_ticket_update_tool(context.config),
-        )
+        self._ticket_update_executor = SampleTicketUpdateAgent(config=context.config)
+        self._ticket_update_executor.ticket_mcp_client = ticket_mcp_client
         self._investigate_executor = SampleInvestigateAgent(config=context.config)
-        case_memory_manager = CaseMemoryManager(context.config)
         self._supervisor_executor = SampleSupervisorAgent(
+            config=context.config,
             investigate_executor=self._investigate_executor,
-            back_support_escalation_executor=None,
-            load_instruction=lambda case_id, role: context.instruction_loader.load(
-                case_id,
-                role if role in {SUPERVISOR_AGENT, INVESTIGATE_AGENT} else SUPERVISOR_AGENT,
-            ),
-            read_shared_memory_tool=case_memory_manager.build_default_read_shared_memory_tool(),
-            read_working_memory_tool=case_memory_manager.build_default_read_working_memory_tool(INVESTIGATE_AGENT),
-            write_shared_memory_tool=case_memory_manager.build_default_write_shared_memory_tool(),
-            write_working_memory_tool=case_memory_manager.build_default_write_working_memory_tool(SUPERVISOR_AGENT),
+            ticket_update_executor=self._ticket_update_executor,
         )
 
     def describe_agents(self, case_id: str) -> list[dict[str, object]]:
@@ -136,6 +119,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             tool_registry=self._context.tool_registry,
             agent_definitions=build_default_agent_definitions(),
             runtime_harness_manager=self._context.runtime_harness_manager,
+            runtime_mode_override="sample",
         )
 
     def describe_runtime_audit(self, *, case_id: str, trace_id: str, workspace_path: str) -> dict[str, object]:
@@ -151,6 +135,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             config=self._context.config,
             instruction_loader=self._context.instruction_loader,
             runtime_harness_manager=self._context.runtime_harness_manager,
+            runtime_mode_override="sample",
         )
 
     def list_cases(self, cases_root: str) -> list[dict[str, object]]:
@@ -742,8 +727,6 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
     def print_workflow_nodes(self) -> list[str]:
         graph = SampleCaseWorkflow().build_case_workflow(
             intake_executor=self._intake_executor,
-            approval_executor=self._approval_executor,
-            ticket_update_executor=self._ticket_update_executor,
             supervisor_executor=self._supervisor_executor,
         ).get_graph()
         return sorted(node.id for node in graph.nodes.values())
@@ -872,8 +855,6 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return SampleCaseWorkflow().build_case_workflow(
             checkpointer=cast(Any, checkpointer),
             intake_executor=self._intake_executor,
-            approval_executor=self._approval_executor,
-            ticket_update_executor=self._ticket_update_executor,
             supervisor_executor=self._supervisor_executor,
         )
 

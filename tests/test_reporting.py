@@ -210,9 +210,11 @@ class ReportingEvaluationTests(unittest.TestCase):
                 "data_paths": {},
                 "interfaces": {},
                 "tools": {
-                    "ticket_sources": {
-                        "internal": {
+                    "mcp_manifest_path": "/tmp/mcp.json",
+                    "logical_tools": {
+                        "internal_ticket": {
                             "enabled": True,
+                            "provider": "mcp",
                             "server": "github",
                             "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
                         }
@@ -222,6 +224,7 @@ class ReportingEvaluationTests(unittest.TestCase):
                 "agents": {},
             }
         )
+        config.tools.mcp_manifest_path = None
 
         detail = _ticket_lookup_detail(
             {
@@ -245,9 +248,11 @@ class ReportingEvaluationTests(unittest.TestCase):
                 "data_paths": {},
                 "interfaces": {},
                 "tools": {
-                    "ticket_sources": {
-                        "internal": {
+                    "mcp_manifest_path": "/tmp/mcp.json",
+                    "logical_tools": {
+                        "internal_ticket": {
                             "enabled": True,
+                            "provider": "mcp",
                             "server": "github",
                             "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
                         }
@@ -257,6 +262,7 @@ class ReportingEvaluationTests(unittest.TestCase):
                 "agents": {},
             }
         )
+        config.tools.mcp_manifest_path = None
 
         status = _ticket_lookup_status(
             {
@@ -337,6 +343,45 @@ class ReportingEvaluationTests(unittest.TestCase):
         self.assertNotIn("participant TicketUpdate as TicketUpdateAgent", diagram)
         self.assertNotIn("participant Escalation as BackSupportEscalationAgent", diagram)
         self.assertNotIn("Supervisor->>LogAnalyzer: ログ解析を依頼", diagram)
+
+    def test_sequence_diagram_uses_sample_participants_when_runtime_audit_marks_sample_mode(self) -> None:
+        state: CaseState = {
+            "workflow_kind": "incident_investigation",
+            "intake_category": "incident_investigation",
+            "escalation_required": True,
+            "approval_decision": "approve",
+        }
+
+        diagram = _build_sequence_diagram(
+            state,
+            runtime_audit={
+                "summary": {"approval_route": "ticket_update_subgraph", "runtime_mode": "sample"},
+                "workflow_path": [
+                    "receive_case",
+                    "intake_prepare",
+                    "intake_classify",
+                    "intake_mcp_tickets",
+                    "intake_ticket_followup_decision",
+                    "intake_finalize",
+                    "investigation",
+                    "escalation_review",
+                    "wait_for_approval",
+                    "ticket_update_prepare",
+                    "ticket_update_execute",
+                ],
+                "used_roles": [
+                    "IntakeAgent",
+                    "SuperVisorAgent",
+                    "InvestigateAgent",
+                    "TicketUpdateAgent",
+                ],
+            },
+        )
+
+        self.assertIn("participant Approval as ApprovalNode", diagram)
+        self.assertIn("participant Escalation as EscalationReview", diagram)
+        self.assertNotIn("participant Inquiry as BackSupportInquiryWriterAgent", diagram)
+        self.assertIn("Escalation-->>Supervisor: エスカレーション要約と文案を返却", diagram)
 
     def test_extract_instruction_criteria_returns_expected_rubric(self) -> None:
         criteria = _extract_instruction_criteria(
@@ -436,6 +481,40 @@ class ReportingEvaluationTests(unittest.TestCase):
         self.assertIn("Approval->>Supervisor: 文案差戻しを返却", escalation_diagram.diagram)
         self.assertIn("Supervisor->>Inquiry: 修正版問い合わせ文案を依頼", escalation_diagram.diagram)
         self.assertNotIn("Approval->>Inquiry: 文案差戻しを返却", escalation_diagram.diagram)
+
+    def test_subgraph_sequence_diagrams_use_sample_escalation_review_participants(self) -> None:
+        state: CaseState = {
+            "workflow_kind": "incident_investigation",
+            "intake_category": "incident_investigation",
+            "escalation_required": True,
+            "approval_decision": "reject",
+        }
+
+        diagrams = _build_subgraph_sequence_diagrams(
+            state,
+            runtime_audit={
+                "summary": {"approval_route": "draft_review", "runtime_mode": "sample"},
+                "workflow_path": [
+                    "receive_case",
+                    "intake_prepare",
+                    "intake_classify",
+                    "intake_mcp_tickets",
+                    "intake_ticket_followup_decision",
+                    "intake_finalize",
+                    "investigation",
+                    "escalation_review",
+                    "wait_for_approval",
+                    "draft_review",
+                    "wait_for_approval",
+                ],
+            },
+        )
+        escalation_diagram = next(item for item in diagrams if item.title == "Escalation 準備フロー")
+
+        self.assertIn("participant Escalation as EscalationReview", escalation_diagram.diagram)
+        self.assertIn("participant Approval as ApprovalNode", escalation_diagram.diagram)
+        self.assertNotIn("participant Inquiry as BackSupportInquiryWriterAgent", escalation_diagram.diagram)
+        self.assertIn("Supervisor->>Escalation: 修正版問い合わせ文案を依頼", escalation_diagram.diagram)
 
     def test_build_objective_evaluation_filters_false_positive_improvement_points(self) -> None:
         structured_evaluation = SimpleNamespace(

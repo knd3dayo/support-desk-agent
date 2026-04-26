@@ -6,10 +6,8 @@ from typing import Any, cast
 from langgraph.graph import END, START, StateGraph
 
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
-from support_ope_agents.agents.sample.sample_approval_agent import SampleApprovalAgent
 from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
-from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
 from support_ope_agents.models.state import CaseState
 from support_ope_agents.models.state_transitions import CaseStatuses
 
@@ -20,16 +18,12 @@ class CaseWorkflow:
             *,
             checkpointer: Any | None = None,
             intake_executor: SampleIntakeAgent,
-            approval_executor: SampleApprovalAgent,
-            ticket_update_executor: SampleTicketUpdateAgent,
             supervisor_executor: SampleSupervisorAgent,
     ):
         graph = StateGraph(CaseState)
         graph.add_node("receive_case", self._receive_case)
         graph.add_node("intake_subgraph", intake_executor.create_node())
         graph.add_node("supervisor_subgraph", supervisor_executor.create_node())
-        graph.add_node("wait_for_approval", approval_executor.create_node())
-        graph.add_node("ticket_update_subgraph", ticket_update_executor.create_node())
 
         graph.add_edge(START, "receive_case")
         graph.add_edge("receive_case", "intake_subgraph")
@@ -41,18 +35,7 @@ class CaseWorkflow:
                 "__end__": END,
             },
         )
-        graph.add_edge("supervisor_subgraph", "wait_for_approval")
-        graph.add_conditional_edges(
-            "wait_for_approval",
-            self._route_after_approval,
-            {
-                "ticket_update_prepare": "ticket_update_subgraph",
-                "draft_review": "supervisor_subgraph",
-                "investigation": "supervisor_subgraph",
-                "__end__": END,
-            },
-        )
-        graph.add_edge("ticket_update_subgraph", END)
+        graph.add_edge("supervisor_subgraph", END)
         return graph.compile(checkpointer=checkpointer) if checkpointer is not None else graph.compile()
 
 
@@ -78,7 +61,7 @@ class CaseWorkflow:
             path.extend(["draft_review", "wait_for_approval"])
 
         after_approval = self._route_after_approval(state)
-        if after_approval == "ticket_update_prepare":
+        if after_approval == "ticket_update_subgraph":
             path.extend(["ticket_update_prepare", "ticket_update_execute"])
         elif after_approval == "draft_review":
             path.extend(["draft_review", "wait_for_approval"])
@@ -103,7 +86,7 @@ class CaseWorkflow:
     def _route_after_approval(self, state: CaseState) -> str:
         decision = str(state.get("approval_decision", "pending")).lower()
         if decision in {"approved", "approve"}:
-            return "ticket_update_prepare"
+            return "ticket_update_subgraph"
         if decision in {"rejected", "reject"}:
             return "draft_review"
         if decision == "reinvestigate":

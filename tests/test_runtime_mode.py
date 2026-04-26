@@ -54,8 +54,6 @@ class RuntimeModeSelectionTests(unittest.TestCase):
                     "intake_subgraph",
                     "receive_case",
                     "supervisor_subgraph",
-                    "ticket_update_subgraph",
-                    "wait_for_approval",
                 ],
             )
 

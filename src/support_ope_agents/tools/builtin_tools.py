@@ -30,6 +30,44 @@ from support_ope_agents.util.ai_chat_util_bridge import (
 
 ToolCallable = Callable[..., Any]
 
+TEXT_FILE_SUFFIXES = frozenset(
+    {
+        ".txt",
+        ".md",
+        ".json",
+        ".jsonl",
+        ".yaml",
+        ".yml",
+        ".xml",
+        ".csv",
+        ".tsv",
+        ".log",
+        ".ini",
+        ".cfg",
+        ".conf",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".java",
+        ".c",
+        ".cc",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".rb",
+        ".go",
+        ".rs",
+        ".sql",
+        ".html",
+        ".css",
+        ".scss",
+        ".sh",
+        ".bat",
+    }
+)
+
 @dataclass(frozen=True, slots=True)
 class BuiltinTool:
     name: str

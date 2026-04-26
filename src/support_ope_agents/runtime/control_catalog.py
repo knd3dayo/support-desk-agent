@@ -10,6 +10,7 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.tools.registry import ToolRegistry
+from support_ope_agents.workflow.sample.sample_case_workflow import CaseWorkflow as SampleCaseWorkflow
 from support_ope_agents.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
 from support_ope_agents.models.state import CaseState
 from support_ope_agents.models.state_transitions import CaseStatuses
@@ -26,95 +27,11 @@ def build_control_catalog(
     tool_registry: ToolRegistry,
     agent_definitions: list[AgentDefinition],
     runtime_harness_manager: RuntimeHarnessManager | None = None,
+    runtime_mode_override: str | None = None,
 ) -> dict[str, object]:
     harness = runtime_harness_manager or RuntimeHarnessManager(config)
-    workflow_nodes = [
-        "receive_case",
-        "intake_prepare",
-        "intake_mask",
-        "intake_hydrate_tickets",
-        "intake_classify",
-        "intake_finalize",
-        "supervisor_subgraph",
-        "investigation",
-        "draft_review",
-        "escalation_review",
-        "wait_for_customer_input",
-        "wait_for_approval",
-        "ticket_update_subgraph",
-        "ticket_update_prepare",
-        "ticket_update_execute",
-    ]
-    workflow_edges = [
-        {"from": "START", "to": "receive_case", "type": "direct"},
-        {"from": "receive_case", "to": "intake_subgraph", "type": "direct"},
-        {"from": "intake_prepare", "to": "intake_mask", "type": "direct"},
-        {"from": "intake_mask", "to": "intake_hydrate_tickets", "type": "direct"},
-        {"from": "intake_hydrate_tickets", "to": "intake_classify", "type": "direct"},
-        {"from": "intake_classify", "to": "intake_quality_gate", "type": "direct"},
-        {"from": "intake_quality_gate", "to": "intake_finalize", "type": "direct"},
-        {
-            "from": "intake_subgraph",
-            "to": "wait_for_customer_input",
-            "type": "conditional",
-            "condition": "state.status == 'WAITING_CUSTOMER_INPUT'",
-            "control_point_id": "workflow.route_after_intake.wait_for_customer_input",
-        },
-        {
-            "from": "intake_subgraph",
-            "to": "supervisor_subgraph",
-            "type": "conditional",
-            "condition": "otherwise",
-            "control_point_id": "workflow.route_after_intake.investigation",
-        },
-        {"from": "supervisor_subgraph", "to": "wait_for_approval", "type": "direct"},
-        {
-            "from": "investigation",
-            "to": "escalation_review",
-            "type": "conditional",
-            "condition": "state.escalation_required is true",
-            "control_point_id": "workflow.route_after_investigation.escalation_review",
-        },
-        {
-            "from": "investigation",
-            "to": "draft_review",
-            "type": "conditional",
-            "condition": "otherwise",
-            "control_point_id": "workflow.route_after_investigation.draft_review",
-        },
-        {"from": "escalation_review", "to": "wait_for_approval", "type": "direct"},
-        {"from": "draft_review", "to": "wait_for_approval", "type": "direct"},
-        {
-            "from": "wait_for_approval",
-            "to": "ticket_update_subgraph",
-            "type": "conditional",
-            "condition": "state.approval_decision in {'approved', 'approve'}",
-            "control_point_id": "workflow.route_after_approval.approved",
-        },
-        {
-            "from": "wait_for_approval",
-            "to": "supervisor_subgraph",
-            "type": "conditional",
-            "condition": "state.approval_decision in {'rejected', 'reject'}",
-            "control_point_id": "workflow.route_after_approval.rejected",
-        },
-        {
-            "from": "wait_for_approval",
-            "to": "supervisor_subgraph",
-            "type": "conditional",
-            "condition": "state.approval_decision == 'reinvestigate'",
-            "control_point_id": "workflow.route_after_approval.reinvestigate",
-        },
-        {
-            "from": "wait_for_approval",
-            "to": "END",
-            "type": "conditional",
-            "condition": "otherwise",
-            "control_point_id": "workflow.route_after_approval.end",
-        },
-        {"from": "ticket_update_subgraph", "to": "END", "type": "direct"},
-        {"from": "ticket_update_prepare", "to": "ticket_update_execute", "type": "direct"},
-    ]
+    runtime_mode = runtime_mode_override or str(config.runtime.mode or "production")
+    workflow_nodes, workflow_edges = _workflow_catalog(runtime_mode)
 
     instructions = _build_instruction_catalog(config, agent_definitions)
     agents = [_build_agent_entry(config, tool_registry, definition, instructions) for definition in agent_definitions]
@@ -157,11 +74,13 @@ def build_runtime_audit(
     config: AppConfig,
     instruction_loader: InstructionLoader,
     runtime_harness_manager: RuntimeHarnessManager | None = None,
+    runtime_mode_override: str | None = None,
 ) -> dict[str, object]:
     harness = runtime_harness_manager or RuntimeHarnessManager(config)
-    workflow_path = list(ProductionCaseWorkflow().reconstruct_main_workflow_path(state))
+    runtime_mode = runtime_mode_override or str(config.runtime.mode or "production")
+    workflow_path = list(_workflow_builder_for_mode(runtime_mode).reconstruct_main_workflow_path(state))
     workflow_kind = _effective_workflow_kind(state)
-    used_roles = _resolve_used_roles(workflow_path, workflow_kind)
+    used_roles = _resolve_used_roles(workflow_path, workflow_kind, runtime_mode)
     common_instruction_constraints = _infer_instruction_constraints(_load_common_instruction_text(config))
     instruction_resolution = [
         _build_instruction_resolution_entry(
@@ -184,6 +103,7 @@ def build_runtime_audit(
             "case_id": case_id,
             "trace_id": str(state.get("trace_id") or ""),
             "status": str(state.get("status") or "unknown"),
+            "runtime_mode": runtime_mode,
             "execution_mode": str(state.get("execution_mode") or ""),
             "workflow_kind": workflow_kind,
             "result": _result_label(state),
@@ -564,10 +484,10 @@ def _effective_workflow_kind(state: CaseState) -> str:
 
 def _approval_route(state: CaseState) -> str:
     if str(state.get("status") or "") == CaseStatuses.CLOSED or str(state.get("ticket_update_result") or "").strip():
-        return "ticket_update_prepare"
+        return "ticket_update_subgraph"
     decision = str(state.get("approval_decision") or "").strip().lower()
     if decision in {"approved", "approve"}:
-        return "ticket_update_prepare"
+        return "ticket_update_subgraph"
     if decision in {"rejected", "reject"}:
         return "draft_review"
     if decision == "reinvestigate":
@@ -575,19 +495,208 @@ def _approval_route(state: CaseState) -> str:
     return "__end__"
 
 
-def _resolve_used_roles(workflow_path: list[str], workflow_kind: str) -> list[str]:
+def _resolve_used_roles(workflow_path: list[str], workflow_kind: str, runtime_mode: str) -> list[str]:
+    del workflow_kind
     ordered_roles: list[str] = ["IntakeAgent", "SuperVisorAgent"]
     if "wait_for_customer_input" in workflow_path:
         return ordered_roles
     if "investigation" in workflow_path:
         ordered_roles.append("InvestigateAgent")
-    if "escalation_review" in workflow_path:
+    if runtime_mode != "sample" and "escalation_review" in workflow_path:
         ordered_roles.extend(["BackSupportEscalationAgent", "BackSupportInquiryWriterAgent", "ApprovalAgent"])
-    elif "draft_review" in workflow_path:
+    elif runtime_mode != "sample" and "draft_review" in workflow_path:
         ordered_roles.append("ApprovalAgent")
     if "ticket_update_execute" in workflow_path:
         ordered_roles.append("TicketUpdateAgent")
     return ordered_roles
+
+
+def _workflow_builder_for_mode(runtime_mode: str) -> ProductionCaseWorkflow | SampleCaseWorkflow:
+    if runtime_mode == "sample":
+        return SampleCaseWorkflow()
+    return ProductionCaseWorkflow()
+
+
+def _workflow_catalog(runtime_mode: str) -> tuple[list[str], list[dict[str, object]]]:
+    if runtime_mode == "sample":
+        return (
+            [
+                "receive_case",
+                "intake_prepare",
+                "intake_classify",
+                "intake_mcp_tickets",
+                "intake_ticket_followup_decision",
+                "intake_request_customer_input",
+                "intake_finalize",
+                "supervisor_subgraph",
+                "investigation",
+                "draft_review",
+                "escalation_review",
+                "wait_for_approval",
+                "ticket_update_subgraph",
+                "ticket_update_prepare",
+                "ticket_update_execute",
+            ],
+            [
+                {"from": "START", "to": "receive_case", "type": "direct"},
+                {"from": "receive_case", "to": "intake_subgraph", "type": "direct"},
+                {"from": "intake_prepare", "to": "intake_classify", "type": "direct"},
+                {"from": "intake_classify", "to": "intake_mcp_tickets", "type": "direct"},
+                {"from": "intake_mcp_tickets", "to": "intake_ticket_followup_decision", "type": "direct"},
+                {
+                    "from": "intake_subgraph",
+                    "to": "wait_for_customer_input",
+                    "type": "conditional",
+                    "condition": "state.status == 'WAITING_CUSTOMER_INPUT'",
+                    "control_point_id": "workflow.route_after_intake.wait_for_customer_input",
+                },
+                {
+                    "from": "intake_subgraph",
+                    "to": "supervisor_subgraph",
+                    "type": "conditional",
+                    "condition": "otherwise",
+                    "control_point_id": "workflow.route_after_intake.investigation",
+                },
+                {"from": "intake_ticket_followup_decision", "to": "intake_finalize", "type": "conditional", "condition": "investigate"},
+                {"from": "intake_ticket_followup_decision", "to": "intake_request_customer_input", "type": "conditional", "condition": "request_customer_input"},
+                {
+                    "from": "investigation",
+                    "to": "escalation_review",
+                    "type": "conditional",
+                    "condition": "state.escalation_required is true",
+                    "control_point_id": "workflow.route_after_investigation.escalation_review",
+                },
+                {
+                    "from": "investigation",
+                    "to": "draft_review",
+                    "type": "conditional",
+                    "condition": "otherwise",
+                    "control_point_id": "workflow.route_after_investigation.draft_review",
+                },
+                {"from": "draft_review", "to": "wait_for_approval", "type": "direct"},
+                {"from": "escalation_review", "to": "wait_for_approval", "type": "direct"},
+                {
+                    "from": "wait_for_approval",
+                    "to": "ticket_update_subgraph",
+                    "type": "conditional",
+                    "condition": "state.approval_decision in {'approved', 'approve'}",
+                    "control_point_id": "workflow.route_after_approval.approved",
+                },
+                {
+                    "from": "wait_for_approval",
+                    "to": "draft_review",
+                    "type": "conditional",
+                    "condition": "state.approval_decision in {'rejected', 'reject'}",
+                    "control_point_id": "workflow.route_after_approval.rejected",
+                },
+                {
+                    "from": "wait_for_approval",
+                    "to": "investigation",
+                    "type": "conditional",
+                    "condition": "state.approval_decision == 'reinvestigate'",
+                    "control_point_id": "workflow.route_after_approval.reinvestigate",
+                },
+                {
+                    "from": "wait_for_approval",
+                    "to": "END",
+                    "type": "conditional",
+                    "condition": "otherwise",
+                    "control_point_id": "workflow.route_after_approval.end",
+                },
+                {"from": "ticket_update_subgraph", "to": "END", "type": "direct"},
+                {"from": "ticket_update_prepare", "to": "ticket_update_execute", "type": "direct"},
+            ],
+        )
+
+    return (
+        [
+            "receive_case",
+            "intake_prepare",
+            "intake_mask",
+            "intake_hydrate_tickets",
+            "intake_classify",
+            "intake_finalize",
+            "supervisor_subgraph",
+            "investigation",
+            "draft_review",
+            "escalation_review",
+            "wait_for_customer_input",
+            "wait_for_approval",
+            "ticket_update_subgraph",
+            "ticket_update_prepare",
+            "ticket_update_execute",
+        ],
+        [
+            {"from": "START", "to": "receive_case", "type": "direct"},
+            {"from": "receive_case", "to": "intake_subgraph", "type": "direct"},
+            {"from": "intake_prepare", "to": "intake_mask", "type": "direct"},
+            {"from": "intake_mask", "to": "intake_hydrate_tickets", "type": "direct"},
+            {"from": "intake_hydrate_tickets", "to": "intake_classify", "type": "direct"},
+            {"from": "intake_classify", "to": "intake_quality_gate", "type": "direct"},
+            {"from": "intake_quality_gate", "to": "intake_finalize", "type": "direct"},
+            {
+                "from": "intake_subgraph",
+                "to": "wait_for_customer_input",
+                "type": "conditional",
+                "condition": "state.status == 'WAITING_CUSTOMER_INPUT'",
+                "control_point_id": "workflow.route_after_intake.wait_for_customer_input",
+            },
+            {
+                "from": "intake_subgraph",
+                "to": "supervisor_subgraph",
+                "type": "conditional",
+                "condition": "otherwise",
+                "control_point_id": "workflow.route_after_intake.investigation",
+            },
+            {"from": "supervisor_subgraph", "to": "wait_for_approval", "type": "direct"},
+            {
+                "from": "investigation",
+                "to": "escalation_review",
+                "type": "conditional",
+                "condition": "state.escalation_required is true",
+                "control_point_id": "workflow.route_after_investigation.escalation_review",
+            },
+            {
+                "from": "investigation",
+                "to": "draft_review",
+                "type": "conditional",
+                "condition": "otherwise",
+                "control_point_id": "workflow.route_after_investigation.draft_review",
+            },
+            {"from": "escalation_review", "to": "wait_for_approval", "type": "direct"},
+            {"from": "draft_review", "to": "wait_for_approval", "type": "direct"},
+            {
+                "from": "wait_for_approval",
+                "to": "ticket_update_subgraph",
+                "type": "conditional",
+                "condition": "state.approval_decision in {'approved', 'approve'}",
+                "control_point_id": "workflow.route_after_approval.approved",
+            },
+            {
+                "from": "wait_for_approval",
+                "to": "supervisor_subgraph",
+                "type": "conditional",
+                "condition": "state.approval_decision in {'rejected', 'reject'}",
+                "control_point_id": "workflow.route_after_approval.rejected",
+            },
+            {
+                "from": "wait_for_approval",
+                "to": "supervisor_subgraph",
+                "type": "conditional",
+                "condition": "state.approval_decision == 'reinvestigate'",
+                "control_point_id": "workflow.route_after_approval.reinvestigate",
+            },
+            {
+                "from": "wait_for_approval",
+                "to": "END",
+                "type": "conditional",
+                "condition": "otherwise",
+                "control_point_id": "workflow.route_after_approval.end",
+            },
+            {"from": "ticket_update_subgraph", "to": "END", "type": "direct"},
+            {"from": "ticket_update_prepare", "to": "ticket_update_execute", "type": "direct"},
+        ],
+    )
 
 
 def _build_runtime_decision_log(
