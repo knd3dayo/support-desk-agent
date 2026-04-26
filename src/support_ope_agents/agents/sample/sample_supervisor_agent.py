@@ -74,6 +74,20 @@ class SampleSupervisorAgent(AbstractAgent):
         return "Supervisor followup notes:\n" + "\n".join(f"- {note}" for note in normalized_notes)
 
     @staticmethod
+    def _build_evidence_log_preview(evidence_path: str) -> str:
+        normalized_path = evidence_path.strip()
+        if not normalized_path:
+            return ""
+        try:
+            lines = Path(normalized_path).read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            return ""
+        preview_lines = [line.rstrip() for line in lines[:20] if line.strip()]
+        if not preview_lines:
+            return ""
+        return "\n".join(preview_lines)
+
+    @staticmethod
     def _build_review_notes(*, label: str, summary: str, score: int, improvement_points: list[str]) -> list[str]:
         notes = [f"{label} score: {score}"]
         normalized_summary = summary.strip()
@@ -209,6 +223,20 @@ class SampleSupervisorAgent(AbstractAgent):
             if evidence_path
             else ""
         )
+        evidence_preview = self._build_evidence_log_preview(evidence_path)
+        evidence_preview_section = (
+            "\n".join(
+                [
+                    "Evidence log preview:",
+                    evidence_preview,
+                    "上記は Supervisor が存在確認済みの実ファイル内容です。"
+                    "このログが存在しない、見つからない、移動されたと断定してはいけません。"
+                    "まずこの内容を根拠に分析してください。",
+                ]
+            )
+            if evidence_preview
+            else ""
+        )
         attachment_paths = [str(path).strip() for path in list(state.get("investigation_attachment_paths") or []) if str(path).strip()]
         attachment_section = (
             "\n".join(
@@ -251,6 +279,7 @@ class SampleSupervisorAgent(AbstractAgent):
                 investigate_working_memory_section,
                 log_range_section,
                 evidence_section,
+                evidence_preview_section,
                 attachment_section,
                 plan_section,
                 followup_notes_section,

@@ -50,11 +50,17 @@ class SampleInvestigateAgent(AbstractAgent):
             mode_instruction = (
                 "現在は計画策定フェーズです。調査を実行せず、"
                 "必要な確認順序、使うべき根拠、未解決論点を整理した計画だけを返してください。"
+                "出力は必ず日本語で、計画要約・主要ステップ・未解決論点・次アクションの順で整理してください。"
             )
         else:
             mode_instruction = (
                 "現在は調査実行フェーズです。与えられた計画と followup notes を踏まえ、"
                 "必要な調査を実行して結果を返してください。"
+                "出力は必ず日本語で、少なくとも『結論』『根拠』『原因候補』『次アクション』の4見出しを含めてください。"
+                "根拠では、実際に確認したログ断片・ファイル名・設定名を具体的に示してください。"
+                "Supervisor から existence 確認済みの evidence preview が与えられている場合、そのファイルが見つからないとは書かず、"
+                "preview に含まれる内容を一次情報として扱ってください。"
+                "英語だけの回答は禁止です。日本語で完結にまとめ、サポート担当者がそのまま使える文面にしてください。"
             )
         prompt = f"{prompt}\n\n実行モード: {mode}\n{mode_instruction}"
         instruction = instruction_text.strip()

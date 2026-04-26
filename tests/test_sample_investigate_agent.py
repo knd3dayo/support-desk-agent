@@ -236,6 +236,18 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("extract_zip", prompt)
         self.assertIn("list_zip_contents", prompt)
         self.assertIn("extract_zip", prompt)
+        self.assertIn("結論", prompt)
+        self.assertIn("根拠", prompt)
+        self.assertIn("英語だけの回答は禁止", prompt)
+
+    def test_plan_mode_prompt_requests_japanese_structured_plan(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        prompt = agent._build_system_prompt("ログを調べて", mode=SampleInvestigateAgent.PLAN_MODE)
+
+        self.assertIn("計画要約", prompt)
+        self.assertIn("主要ステップ", prompt)
+        self.assertIn("未解決論点", prompt)
 
     def test_supervisor_includes_attachment_paths_and_evidence_in_query(self) -> None:
         executor = _CapturingInvestigateExecutor()
@@ -275,6 +287,8 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                 )
 
         self.assertIn("Evidence file: vdp.log", executor.query)
+        self.assertIn("Evidence log preview:", executor.query)
+        self.assertIn("error line", executor.query)
         self.assertIn("Working memory tool parameters", executor.query)
         self.assertIn("CASE-TEST-SAMPLE-ATTACH-001", executor.query)
         self.assertIn("guide.pdf", executor.query)

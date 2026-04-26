@@ -63,6 +63,27 @@ class ObjectiveEvaluatorTests(unittest.TestCase):
         self.assertIsInstance(messages[1], HumanMessage)
         self.assertIn("plan を評価", messages[1].content)
 
+    def test_evaluate_includes_result_quality_priority_instruction(self) -> None:
+        model = Mock()
+        structured_model = Mock()
+        structured_model.invoke.return_value = ObjectiveEvaluatorStructuredResult(
+            criterion_evaluations=[],
+            agent_evaluations=[],
+            overall_summary="ok",
+            improvement_points=[],
+            overall_score=80,
+        )
+        model.with_structured_output.return_value = structured_model
+
+        evaluator = ObjectiveEvaluator(config=self._build_config(), instruction_text="instruction")
+
+        with patch("support_ope_agents.agents.objective_evaluator.build_chat_openai_model", return_value=model):
+            evaluator.evaluate(evidence={"investigation_summary": "test"}, evaluation_target="result")
+
+        messages = structured_model.invoke.call_args.args[0]
+        self.assertIn("日本語で完結", messages[0].content)
+        self.assertIn("working memory や progress への記録不足だけで過剰に減点せず", messages[0].content)
+
 
 if __name__ == "__main__":
     unittest.main()
