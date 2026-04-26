@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Literal
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -46,18 +47,43 @@ class ObjectiveEvaluator:
         self,
         *,
         evidence: dict[str, Any],
+        evaluation_target: Literal["plan", "result"] = "result",
     ) -> ObjectiveEvaluatorStructuredResult:
-        return self._invoke_structured_evaluation(evidence)
+        return self._invoke_structured_evaluation(evidence, evaluation_target=evaluation_target)
 
-    def _invoke_structured_evaluation(self, evidence: dict[str, Any]) -> ObjectiveEvaluatorStructuredResult:
+    @staticmethod
+    def _build_target_instruction(evaluation_target: Literal["plan", "result"]) -> str:
+        if evaluation_target == "plan":
+            return (
+                "評価対象は調査計画です。"
+                "調査範囲の妥当性、根拠ソースの優先順位、不要な作業の有無、"
+                "実行順序の適切性、未解決論点の明確さを中心に評価してください。"
+            )
+        return (
+            "評価対象は調査結果です。"
+            "根拠の十分性、説明の明確さ、追加調査の必要性、"
+            "次アクションの妥当性を中心に評価してください。"
+        )
+
+    def _invoke_structured_evaluation(
+        self,
+        evidence: dict[str, Any],
+        *,
+        evaluation_target: Literal["plan", "result"],
+    ) -> ObjectiveEvaluatorStructuredResult:
         model = build_chat_openai_model(self.config)
         try:
             structured_model = model.with_structured_output(ObjectiveEvaluatorStructuredResult)
             response = structured_model.invoke([
-                SystemMessage(content=self.instruction_text.strip()),
+                SystemMessage(
+                    content=(
+                        f"{self.instruction_text.strip()}\n\n"
+                        f"{self._build_target_instruction(evaluation_target)}"
+                    ).strip()
+                ),
                 HumanMessage(
                     content=(
-                        "以下の証拠パックを用いてサポート対応を評価してください。"
+                        f"以下の証拠パックを用いて {evaluation_target} を評価してください。"
                         "structured output schema に厳密に従い、日本語で返してください。\n"
                         + json.dumps(evidence, ensure_ascii=False)
                     )

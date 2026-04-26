@@ -26,6 +26,9 @@ from langgraph.graph.state import CompiledStateGraph
 
 
 class SampleInvestigateAgent(AbstractAgent):
+    PLAN_MODE = "plan"
+    ACTION_MODE = "action"
+
     @staticmethod
     def _agent_memory_sources() -> list[str]:
         agents_memory_path = Path(__file__).resolve().parents[2] / "AGENTS.md"
@@ -41,8 +44,19 @@ class SampleInvestigateAgent(AbstractAgent):
     def _default_query() -> str:
         return "調査すべき内容をここに記載してください"
 
-    def _build_system_prompt(self, query: str, instruction_text: str = "") -> str:
+    def _build_system_prompt(self, query: str, instruction_text: str = "", mode: str = ACTION_MODE) -> str:
         prompt = INVESTIGATE_SYSTEM_PROMPT_TEMPLATE.format(query=query)
+        if mode == self.PLAN_MODE:
+            mode_instruction = (
+                "現在は計画策定フェーズです。調査を実行せず、"
+                "必要な確認順序、使うべき根拠、未解決論点を整理した計画だけを返してください。"
+            )
+        else:
+            mode_instruction = (
+                "現在は調査実行フェーズです。与えられた計画と followup notes を踏まえ、"
+                "必要な調査を実行して結果を返してください。"
+            )
+        prompt = f"{prompt}\n\n実行モード: {mode}\n{mode_instruction}"
         instruction = instruction_text.strip()
         if instruction:
             prompt = f"{prompt}\n\n追加 instruction:\n{instruction}"
@@ -69,6 +83,7 @@ class SampleInvestigateAgent(AbstractAgent):
         self,
         query: str,
         instruction_text: str = "",
+        mode: str = ACTION_MODE,
         document_sources: Sequence[Any] = (),
         route_base: str = "docs",
         workspace_path: str | None = None,
@@ -79,7 +94,7 @@ class SampleInvestigateAgent(AbstractAgent):
             route_base=route_base,
         )
         tools = {t.name: wrap_tool_handler_sync(t.handler) for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
-        system_prompt = self._build_system_prompt(query, instruction_text)
+        system_prompt = self._build_system_prompt(query, instruction_text, mode=mode)
         model = build_chat_openai_model(self.config)
         memory_sources = self._agent_memory_sources()
         # Avoid create_deep_agent here because it auto-injects middleware such as
@@ -124,6 +139,7 @@ class SampleInvestigateAgent(AbstractAgent):
         self,
         *,
         query: str,
+        mode: str = ACTION_MODE,
         workspace_path: str | None = None,
         instruction_text: str | None = None,
         state: dict[str, Any] | None = None,
@@ -132,9 +148,11 @@ class SampleInvestigateAgent(AbstractAgent):
         sub_agent = self.create_sub_agent(
             query=effective_query,
             instruction_text=instruction_text or "",
+            mode=mode,
             workspace_path=workspace_path,
         )
         context = self._build_context(workspace_path=workspace_path, state=state)
+        context["execution_mode"] = cast(Any, mode)
         model = getattr(sub_agent, "_support_ope_chat_model", None)
         try:
             return self._invoke_sub_agent(

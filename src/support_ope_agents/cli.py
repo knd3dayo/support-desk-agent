@@ -8,6 +8,7 @@ from typing import Any
 from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluator
 from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR
 from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
+from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.config.loader import load_config
 from support_ope_agents.instructions.loader import InstructionLoader
 from support_ope_agents.memory.file_store import CaseMemoryStore
@@ -266,6 +267,42 @@ def _cmd_evaluate_investigate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_run_sample_supervisor(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    memory_store = CaseMemoryStore(config)
+    case_id = _resolve_case_id(memory_store, args.workspace_path, explicit_case_id=args.case_id)
+    investigate_agent = SampleInvestigateAgent(config)
+    supervisor = SampleSupervisorAgent(config=config, investigate_executor=investigate_agent)
+
+    state: dict[str, Any] = {
+        "case_id": case_id,
+        "workspace_path": args.workspace_path,
+        "raw_issue": args.prompt,
+    }
+    investigated_state = supervisor.execute_investigation(state)
+    route = supervisor.route_after_investigation(investigated_state)
+    if route == "escalation_review":
+        final_state = supervisor.execute_escalation_review(investigated_state)
+    else:
+        final_state = supervisor.execute_draft_review(investigated_state)
+
+    payload = {
+        "case_id": case_id,
+        "workspace_path": args.workspace_path,
+        "prompt": args.prompt,
+        "route": route,
+        "state": final_state,
+    }
+    output_path = str(getattr(args, "output", "") or "").strip()
+    if output_path:
+        target = Path(output_path).expanduser().resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        payload["output_path"] = str(target)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="support-ope-agents CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -387,6 +424,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path to save the evaluation result JSON.",
     )
     evaluate_investigate.set_defaults(func=_cmd_evaluate_investigate)
+
+    run_sample_supervisor = subparsers.add_parser(
+        "run-sample-supervisor",
+        help="Run Sample SuperVisorAgent from a workspace and return the resulting state",
+        parents=[common],
+    )
+    run_sample_supervisor.add_argument("prompt", help="User request to start the supervisor investigation flow")
+    run_sample_supervisor.add_argument("--workspace-path", required=True, help="Workspace path for the case")
+    run_sample_supervisor.add_argument("--case-id", default=None, help="Optional case identifier override")
+    run_sample_supervisor.add_argument(
+        "--output",
+        default=None,
+        help="Optional path to save the supervisor result JSON.",
+    )
+    run_sample_supervisor.set_defaults(func=_cmd_run_sample_supervisor)
 
     return parser
 

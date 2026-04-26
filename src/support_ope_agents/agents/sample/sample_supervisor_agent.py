@@ -10,6 +10,8 @@ from langgraph.graph import END, START, StateGraph
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
+from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluator
+from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR
 from support_ope_agents.agents.roles import INVESTIGATE_AGENT
 from support_ope_agents.agents.roles import SUPERVISOR_AGENT
 from support_ope_agents.models.state_transitions import NextActionTexts, StateTransitionHelper
@@ -25,6 +27,10 @@ from support_ope_agents.instructions import InstructionLoader
 
 
 class SampleSupervisorAgent(AbstractAgent):
+    PLAN_PASS_SCORE = 80
+    RESULT_PASS_SCORE = 80
+    MAX_INVESTIGATION_FOLLOWUP_LOOPS = 1
+
     def __init__(
         self,
         config: Any,
@@ -42,6 +48,39 @@ class SampleSupervisorAgent(AbstractAgent):
     @staticmethod
     def _extract_investigation_summary(result: Any) -> str:
         return extract_result_output_text(result) or format_result(result)
+
+    @staticmethod
+    def _extract_plan_steps(plan_text: str) -> list[str]:
+        bullet_prefixes = ("- ", "* ", "1. ", "2. ", "3. ", "4. ", "5. ")
+        lines = [line.strip() for line in plan_text.splitlines() if line.strip()]
+        bullet_lines = [line for line in lines if line.startswith(bullet_prefixes)]
+        if bullet_lines:
+            return [line.split(" ", 1)[1].strip() if " " in line else line for line in bullet_lines]
+        if len(lines) <= 1:
+            return lines
+        return lines[1:]
+
+    @staticmethod
+    def _format_plan_steps(plan_steps: list[str]) -> str:
+        if not plan_steps:
+            return ""
+        return "\n".join(f"- {step}" for step in plan_steps)
+
+    @staticmethod
+    def _format_supervisor_followup_notes(notes: list[str]) -> str:
+        normalized_notes = [note.strip() for note in notes if note and note.strip()]
+        if not normalized_notes:
+            return ""
+        return "Supervisor followup notes:\n" + "\n".join(f"- {note}" for note in normalized_notes)
+
+    @staticmethod
+    def _build_review_notes(*, label: str, summary: str, score: int, improvement_points: list[str]) -> list[str]:
+        notes = [f"{label} score: {score}"]
+        normalized_summary = summary.strip()
+        if normalized_summary:
+            notes.append(normalized_summary)
+        notes.extend(point.strip() for point in improvement_points if point and point.strip())
+        return notes
 
     @staticmethod
     def route_after_investigation(state: dict[str, object]) -> str:
@@ -113,7 +152,7 @@ class SampleSupervisorAgent(AbstractAgent):
             sections.append(f"{label}:\n{value}")
         return "\n\n".join(sections)
 
-    def _build_investigation_query(self, state: "CaseState") -> str:
+    def _build_investigation_query(self, state: "CaseState", *, mode: str) -> str:
         raw_issue = str(state.get("raw_issue") or "").strip()
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
@@ -182,6 +221,25 @@ class SampleSupervisorAgent(AbstractAgent):
             if attachment_paths
             else ""
         )
+        plan_summary = str(state.get("plan_summary") or "").strip()
+        plan_steps = [str(step).strip() for step in list(state.get("plan_steps") or []) if str(step).strip()]
+        plan_section = (
+            "\n\n".join(
+                part
+                for part in (
+                    f"確定した調査計画:\n{plan_summary}" if plan_summary else "",
+                    f"計画ステップ:\n{self._format_plan_steps(plan_steps)}" if plan_steps else "",
+                )
+                if part
+            )
+            if mode == SampleInvestigateAgent.ACTION_MODE
+            else ""
+        )
+        followup_notes_section = (
+            self._format_supervisor_followup_notes(list(state.get("supervisor_followup_notes") or []))
+            if mode == SampleInvestigateAgent.ACTION_MODE
+            else ""
+        )
 
         extra_sections = [
             section
@@ -194,6 +252,8 @@ class SampleSupervisorAgent(AbstractAgent):
                 log_range_section,
                 evidence_section,
                 attachment_section,
+                plan_section,
+                followup_notes_section,
             )
             if section
         ]
@@ -208,7 +268,44 @@ class SampleSupervisorAgent(AbstractAgent):
             )
 
         parts = [part for part in (preface, f"元の問い合わせ:\n{raw_issue}" if raw_issue else "", *extra_sections) if part]
-        return "\n\n".join(parts)
+        mode_preface = "調査計画だけを作成してください。実際の調査はまだ実行しないでください。" if mode == SampleInvestigateAgent.PLAN_MODE else "確定した調査計画と followup notes を踏まえて調査を実行してください。"
+        return "\n\n".join([mode_preface, *parts])
+
+    def _build_objective_evidence(self, state: "CaseState", *, evaluation_target: str) -> dict[str, Any]:
+        evidence: dict[str, Any] = {
+            "evaluation_target": evaluation_target,
+            "raw_issue": str(state.get("raw_issue") or "").strip(),
+            "plan_summary": str(state.get("plan_summary") or "").strip(),
+            "plan_steps": list(state.get("plan_steps") or []),
+            "investigation_summary": str(state.get("investigation_summary") or "").strip(),
+            "supervisor_followup_notes": list(state.get("supervisor_followup_notes") or []),
+            "investigation_evidence_log_path": str(state.get("investigation_evidence_log_path") or "").strip(),
+            "investigation_attachment_paths": list(state.get("investigation_attachment_paths") or []),
+        }
+        return evidence
+
+    def _evaluate_objective(self, state: "CaseState", *, case_id: str, evaluation_target: str) -> Any:
+        instruction_text = InstructionLoader(self.config).load(case_id, OBJECTIVE_EVALUATOR)
+        evaluator = ObjectiveEvaluator(config=self.config, instruction_text=instruction_text)
+        return evaluator.evaluate(
+            evidence=self._build_objective_evidence(state, evaluation_target=evaluation_target),
+            evaluation_target=cast(Any, evaluation_target),
+        )
+
+    def _execute_mode(self, update: "CaseState", *, mode: str, instruction_text: str | None) -> str:
+        if self.investigate_executor is None:
+            raise RuntimeError("SampleSupervisorAgent requires investigate_executor for the sample workflow.")
+
+        workspace_path = str(update.get("workspace_path") or "").strip()
+        investigation_query = self._build_investigation_query(update, mode=mode)
+        result = self.investigate_executor.execute(
+            query=investigation_query,
+            mode=mode,
+            workspace_path=workspace_path or None,
+            instruction_text=instruction_text or None,
+            state=cast(dict[str, Any], update),
+        )
+        return self._extract_investigation_summary(result).strip()
 
     @staticmethod
     def _collect_adopted_sources(state: "CaseState") -> list[str]:
@@ -378,33 +475,46 @@ class SampleSupervisorAgent(AbstractAgent):
 
     def execute_investigation(self, state: "CaseState") -> "CaseState":
         update = cast("CaseState", StateTransitionHelper.supervisor_investigating(state))
+        case_id = str(update.get("case_id") or "").strip()
+        workspace_path = str(update.get("workspace_path") or "").strip()
+        evidence_log = find_evidence_log_file(workspace_path)
+        attachment_paths = find_attachment_files(workspace_path)
+        update["investigation_evidence_log_path"] = str(evidence_log) if evidence_log is not None else ""
+        update["investigation_attachment_paths"] = [str(path) for path in attachment_paths]
 
-        raw_issue = str(update.get("raw_issue") or "").strip()
-        investigation_summary = str(update.get("investigation_summary") or "").strip()
-        if not investigation_summary:
-            if self.investigate_executor is not None and raw_issue:
-                try:
-                    case_id = str(update.get("case_id") or "").strip()
-                    workspace_path = str(update.get("workspace_path") or "").strip()
-                    evidence_log = find_evidence_log_file(workspace_path)
-                    attachment_paths = find_attachment_files(workspace_path)
-                    update["investigation_evidence_log_path"] = str(evidence_log) if evidence_log is not None else ""
-                    update["investigation_attachment_paths"] = [str(path) for path in attachment_paths]
-                    investigation_query = self._build_investigation_query(update)
-                    instruction_text = InstructionLoader(self.config).load(case_id, SUPERVISOR_AGENT)
-                    investigation_result = self.investigate_executor.execute(
-                        query=investigation_query,
-                        workspace_path=workspace_path or None,
-                        instruction_text=instruction_text or None,
-                        state=cast(dict[str, Any], update),
-                    )
-                    investigation_summary = self._extract_investigation_summary(investigation_result)
-                except Exception:
-                    investigation_summary = self._fallback_investigation_summary(raw_issue)
-            else:
-                investigation_summary = self._fallback_investigation_summary(raw_issue)
+        instruction_text = InstructionLoader(self.config).load(case_id, SUPERVISOR_AGENT)
+        plan_summary = self._execute_mode(update, mode=SampleInvestigateAgent.PLAN_MODE, instruction_text=instruction_text)
+        update["plan_summary"] = plan_summary
+        update["plan_steps"] = self._extract_plan_steps(plan_summary)
 
-        update["investigation_summary"] = investigation_summary
+        plan_evaluation = self._evaluate_objective(update, case_id=case_id, evaluation_target="plan")
+        update["plan_evaluation_summary"] = str(plan_evaluation.overall_summary)
+        update["plan_evaluation_score"] = int(plan_evaluation.overall_score)
+        update["supervisor_followup_notes"] = self._build_review_notes(
+            label="Plan review",
+            summary=str(plan_evaluation.overall_summary),
+            score=int(plan_evaluation.overall_score),
+            improvement_points=list(plan_evaluation.improvement_points),
+        )
+
+        followup_loops = int(update.get("investigation_followup_loops") or 0)
+        while True:
+            update["investigation_followup_loops"] = followup_loops
+            investigation_summary = self._execute_mode(update, mode=SampleInvestigateAgent.ACTION_MODE, instruction_text=instruction_text)
+            update["investigation_summary"] = investigation_summary
+            result_evaluation = self._evaluate_objective(update, case_id=case_id, evaluation_target="result")
+            update["investigation_evaluation_summary"] = str(result_evaluation.overall_summary)
+            update["investigation_evaluation_score"] = int(result_evaluation.overall_score)
+            if int(result_evaluation.overall_score) >= self.RESULT_PASS_SCORE or followup_loops >= self.MAX_INVESTIGATION_FOLLOWUP_LOOPS:
+                break
+            followup_loops += 1
+            update["supervisor_followup_notes"] = self._build_review_notes(
+                label="Result review",
+                summary=str(result_evaluation.overall_summary),
+                score=int(result_evaluation.overall_score),
+                improvement_points=list(result_evaluation.improvement_points),
+            )
+
         self._write_shared_memory(update, investigation_summary)
         update["escalation_required"] = self._should_escalate(cast(dict[str, Any], update))
         if update["escalation_required"]:

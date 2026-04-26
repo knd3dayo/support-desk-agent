@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
+from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluatorStructuredResult
 from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
 from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_ope_agents.config.models import AppConfig
@@ -39,12 +40,13 @@ class _WorkspaceAwareInvestigateExecutor:
         self,
         *,
         query: str,
+        mode: str = "action",
         workspace_path: str | None = None,
         instruction_text: str | None = None,
         state: dict[str, object] | None = None,
     ) -> dict[str, object]:
         del query, instruction_text, state
-        return {"output": f"workspace={workspace_path or 'missing'}"}
+        return {"output": f"{mode}:workspace={workspace_path or 'missing'}"}
 
 
 class _CapturingInvestigateExecutor:
@@ -52,11 +54,13 @@ class _CapturingInvestigateExecutor:
         self.query: str = ""
         self.instruction_text: str = ""
         self.workspace_path: str | None = None
+        self.modes: list[str] = []
 
     def execute(
         self,
         *,
         query: str,
+        mode: str = "action",
         workspace_path: str | None = None,
         instruction_text: str | None = None,
         state: dict[str, object] | None = None,
@@ -64,8 +68,9 @@ class _CapturingInvestigateExecutor:
         self.query = query
         self.instruction_text = instruction_text or ""
         self.workspace_path = workspace_path
+        self.modes.append(mode)
         del state
-        return {"output": "captured"}
+        return {"output": f"captured:{mode}"}
 
 
 class _CapturingSubAgent:
@@ -244,13 +249,30 @@ class SampleInvestigateAgentTests(unittest.TestCase):
             attachment_dir.mkdir(parents=True, exist_ok=True)
             (attachment_dir / "guide.pdf").write_text("pdf payload", encoding="utf-8")
             (attachment_dir / "screen.png").write_text("png payload", encoding="utf-8")
-            supervisor.execute_investigation(
-                {
-                    "case_id": "CASE-TEST-SAMPLE-ATTACH-001",
-                    "workspace_path": tmpdir,
-                    "raw_issue": "添付を含めて調べて",
-                }
-            )
+            with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+                evaluate_mock.side_effect = [
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="plan ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="result ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                ]
+                supervisor.execute_investigation(
+                    {
+                        "case_id": "CASE-TEST-SAMPLE-ATTACH-001",
+                        "workspace_path": tmpdir,
+                        "raw_issue": "添付を含めて調べて",
+                    }
+                )
 
         self.assertIn("Evidence file: vdp.log", executor.query)
         self.assertIn("Working memory tool parameters", executor.query)
@@ -312,19 +334,14 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertEqual(cast(dict[str, object], context).get("case_id"), "CASE-CTX-001")
         self.assertEqual(cast(dict[str, object], context).get("workspace_path"), "/tmp/sample-case")
 
-    def test_execute_closes_attached_chat_model(self) -> None:
+    def test_execute_tolerates_attached_chat_model_cleanup_hook(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
         capturing_sub_agent = _CapturingSubAgent(output="補足なし")
         attached_model = object()
         setattr(capturing_sub_agent, "_support_ope_chat_model", attached_model)
 
         with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
-            with patch(
-                "support_ope_agents.agents.sample.sample_investigate_agent.close_chat_openai_model"
-            ) as close_mock:
-                agent.execute(query="仕様を確認して")
-
-        close_mock.assert_called_once_with(attached_model)
+            agent.execute(query="仕様を確認して")
 
     def test_execute_raises_when_sub_agent_invocation_fails(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
@@ -336,42 +353,80 @@ class SampleInvestigateAgentTests(unittest.TestCase):
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
         supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=_WorkspaceAwareInvestigateExecutor())
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = supervisor.execute_investigation(
-                {
-                    "case_id": "CASE-TEST-SAMPLE-001",
-                    "workspace_path": tmpdir,
-                    "raw_issue": "このログのフォーマットを教えて",
-                }
-            )
+        with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+            evaluate_mock.side_effect = [
+                ObjectiveEvaluatorStructuredResult(
+                    criterion_evaluations=[],
+                    agent_evaluations=[],
+                    overall_summary="plan ok",
+                    improvement_points=[],
+                    overall_score=90,
+                ),
+                ObjectiveEvaluatorStructuredResult(
+                    criterion_evaluations=[],
+                    agent_evaluations=[],
+                    overall_summary="result ok",
+                    improvement_points=[],
+                    overall_score=90,
+                ),
+            ]
 
-        self.assertEqual(str(result.get("investigation_summary") or ""), f"workspace={tmpdir}")
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = supervisor.execute_investigation(
+                    {
+                        "case_id": "CASE-TEST-SAMPLE-001",
+                        "workspace_path": tmpdir,
+                        "raw_issue": "このログのフォーマットを教えて",
+                    }
+                )
+
+        self.assertEqual(str(result.get("investigation_summary") or ""), f"action:workspace={tmpdir}")
+        self.assertEqual(str(result.get("plan_summary") or ""), f"plan:workspace={tmpdir}")
 
     def test_supervisor_builds_ticket_aware_query_from_followup_context(self) -> None:
         executor = _CapturingInvestigateExecutor()
         supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
 
-        result = supervisor.execute_investigation(
-            {
-                "case_id": "CASE-TEST-SAMPLE-TICKET-001",
-                "workspace_path": "/tmp/sample-case",
-                "raw_issue": "顧客がログイン時の 500 エラーについて問い合わせています。",
-                "customer_followup_answers": {
-                    "internal_ticket_confirmation": {
-                        "question": "候補は Issue #2 で正しいですか?",
-                        "answer": "はい。Issue #2 の件です。"
-                    }
-                },
-                "intake_ticket_context_summary": {
-                    "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、暫定回避策は再認証です。"
-                },
-            }
-        )
+        with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+            evaluate_mock.side_effect = [
+                ObjectiveEvaluatorStructuredResult(
+                    criterion_evaluations=[],
+                    agent_evaluations=[],
+                    overall_summary="plan ok",
+                    improvement_points=[],
+                    overall_score=90,
+                ),
+                ObjectiveEvaluatorStructuredResult(
+                    criterion_evaluations=[],
+                    agent_evaluations=[],
+                    overall_summary="result ok",
+                    improvement_points=[],
+                    overall_score=90,
+                ),
+            ]
+            result = supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-SAMPLE-TICKET-001",
+                    "workspace_path": "/tmp/sample-case",
+                    "raw_issue": "顧客がログイン時の 500 エラーについて問い合わせています。",
+                    "customer_followup_answers": {
+                        "internal_ticket_confirmation": {
+                            "question": "候補は Issue #2 で正しいですか?",
+                            "answer": "はい。Issue #2 の件です。"
+                        }
+                    },
+                    "intake_ticket_context_summary": {
+                        "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、暫定回避策は再認証です。"
+                    },
+                }
+            )
 
-        self.assertEqual(str(result.get("investigation_summary") or ""), "captured")
+        self.assertEqual(str(result.get("investigation_summary") or ""), "captured:action")
+        self.assertEqual(str(result.get("plan_summary") or ""), "captured:plan")
         self.assertIn("顧客がログイン時の 500 エラー", executor.query)
         self.assertIn("はい。Issue #2 の件です。", executor.query)
         self.assertIn("Issue #2: SSO ログイン時に 500 エラー", executor.query)
+        self.assertEqual(executor.modes, ["plan", "action"])
 
     def test_supervisor_passes_loaded_instruction_text_to_investigation(self) -> None:
         executor = _CapturingInvestigateExecutor()
@@ -379,15 +434,36 @@ class SampleInvestigateAgentTests(unittest.TestCase):
 
         with patch(
             "support_ope_agents.agents.sample.sample_supervisor_agent.InstructionLoader.load",
-            return_value="instruction:CASE-TEST-SAMPLE-INSTRUCTION-001:SuperVisorAgent",
+            side_effect=[
+                "instruction:CASE-TEST-SAMPLE-INSTRUCTION-001:SuperVisorAgent",
+                "instruction:CASE-TEST-SAMPLE-INSTRUCTION-001:ObjectiveEvaluator",
+                "instruction:CASE-TEST-SAMPLE-INSTRUCTION-001:ObjectiveEvaluator",
+            ],
         ):
-            supervisor.execute_investigation(
-                {
-                    "case_id": "CASE-TEST-SAMPLE-INSTRUCTION-001",
-                    "workspace_path": "/tmp/sample-case",
-                    "raw_issue": "チケットの状況を確認したいです。",
-                }
-            )
+            with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+                evaluate_mock.side_effect = [
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="plan ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="result ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                ]
+                supervisor.execute_investigation(
+                    {
+                        "case_id": "CASE-TEST-SAMPLE-INSTRUCTION-001",
+                        "workspace_path": "/tmp/sample-case",
+                        "raw_issue": "チケットの状況を確認したいです。",
+                    }
+                )
 
         self.assertIn("instruction:CASE-TEST-SAMPLE-INSTRUCTION-001", executor.instruction_text)
 
@@ -419,27 +495,47 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                 return_value="## Investigate Result\n- 未解決事項: SSO 側ログの追加確認が必要",
             ):
                 with patch.object(supervisor.tool_registry, "invoke_tool", side_effect=_invoke_tool):
-                    result = supervisor.execute_investigation(
-                        {
-                            "case_id": "CASE-TEST-SAMPLE-MEMORY-001",
-                            "workspace_path": "/tmp/sample-case",
-                            "raw_issue": "ログイン時の 500 エラーについて調査してください。",
-                            "customer_followup_answers": {
-                                "internal_ticket_confirmation": {
-                                    "question": "候補は Issue #2 で正しいですか?",
-                                    "answer": "はい。Issue #2 で合っています。",
-                                }
-                            },
-                            "intake_incident_timeframe": "2025-10-21 20:55 頃",
-                            "log_extract_range_start": "2025-10-21T20:40:00",
-                            "log_extract_range_end": "2025-10-21T21:10:00",
-                            "intake_ticket_context_summary": {
-                                "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。"
-                            },
-                        }
-                    )
+                    with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+                        evaluate_mock.side_effect = [
+                            ObjectiveEvaluatorStructuredResult(
+                                criterion_evaluations=[],
+                                agent_evaluations=[],
+                                overall_summary="plan ok",
+                                improvement_points=["調査順序を維持してください"],
+                                overall_score=90,
+                            ),
+                            ObjectiveEvaluatorStructuredResult(
+                                criterion_evaluations=[],
+                                agent_evaluations=[],
+                                overall_summary="result ok",
+                                improvement_points=[],
+                                overall_score=90,
+                            ),
+                        ]
+                        result = supervisor.execute_investigation(
+                            {
+                                "case_id": "CASE-TEST-SAMPLE-MEMORY-001",
+                                "workspace_path": "/tmp/sample-case",
+                                "raw_issue": "ログイン時の 500 エラーについて調査してください。",
+                                "customer_followup_answers": {
+                                    "internal_ticket_confirmation": {
+                                        "question": "候補は Issue #2 で正しいですか?",
+                                        "answer": "はい。Issue #2 で合っています。",
+                                    }
+                                },
+                                "intake_incident_timeframe": "2025-10-21 20:55 頃",
+                                "log_extract_range_start": "2025-10-21T20:40:00",
+                                "log_extract_range_end": "2025-10-21T21:10:00",
+                                "intake_ticket_context_summary": {
+                                    "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。"
+                                },
+                            }
+                        )
 
-        self.assertEqual(str(result.get("investigation_summary") or ""), "captured")
+        self.assertEqual(str(result.get("investigation_summary") or ""), "captured:action")
+        self.assertEqual(str(result.get("plan_summary") or ""), "captured:plan")
+        self.assertEqual(int(result.get("plan_evaluation_score") or 0), 90)
+        self.assertEqual(int(result.get("investigation_evaluation_score") or 0), 90)
         self.assertIn("Issue #2 が有力候補", executor.query)
         self.assertIn("認証基盤で再現あり", executor.query)
         self.assertIn("Investigate working memory", executor.query)
@@ -456,6 +552,47 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("Judgment rationale:", json.dumps(written.get("summary_content"), ensure_ascii=False))
         self.assertIn("Next action:", json.dumps(written.get("summary_content"), ensure_ascii=False))
         self.assertIn("Adopted sources:", json.dumps(written.get("summary_content"), ensure_ascii=False))
+
+    def test_supervisor_retries_action_when_result_evaluation_is_low(self) -> None:
+        executor = _CapturingInvestigateExecutor()
+        supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
+
+        with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+            evaluate_mock.side_effect = [
+                ObjectiveEvaluatorStructuredResult(
+                    criterion_evaluations=[],
+                    agent_evaluations=[],
+                    overall_summary="plan ok",
+                    improvement_points=["ログ範囲を優先してください"],
+                    overall_score=90,
+                ),
+                ObjectiveEvaluatorStructuredResult(
+                    criterion_evaluations=[],
+                    agent_evaluations=[],
+                    overall_summary="result needs more evidence",
+                    improvement_points=["evidence を追加してください"],
+                    overall_score=60,
+                ),
+                ObjectiveEvaluatorStructuredResult(
+                    criterion_evaluations=[],
+                    agent_evaluations=[],
+                    overall_summary="result ok",
+                    improvement_points=[],
+                    overall_score=90,
+                ),
+            ]
+            result = supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-SAMPLE-LOOP-001",
+                    "workspace_path": "/tmp/sample-case",
+                    "raw_issue": "vdp.log の原因を調査してください。",
+                }
+            )
+
+        self.assertEqual(executor.modes, ["plan", "action", "action"])
+        self.assertEqual(int(result.get("investigation_followup_loops") or 0), 1)
+        self.assertEqual(int(result.get("investigation_evaluation_score") or 0), 90)
+        self.assertIn("Result review score: 60", list(result.get("supervisor_followup_notes") or []))
 
 
 if __name__ == "__main__":

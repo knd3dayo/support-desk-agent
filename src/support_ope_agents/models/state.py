@@ -57,8 +57,12 @@ class CaseState(TypedDict, total=False):
     internal_ticket_lookup_enabled: bool
     plan_summary: str
     plan_steps: list[str]
+    plan_evaluation_summary: str
+    plan_evaluation_score: int
     investigation_summary: str
     investigation_followup_loops: int
+    investigation_evaluation_summary: str
+    investigation_evaluation_score: int
     supervisor_followup_notes: list[str]
     log_analysis_summary: str
     log_analysis_file: str
