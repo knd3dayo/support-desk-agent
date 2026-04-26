@@ -58,48 +58,61 @@ Deep Agents と LangGraph を組み合わせて、カスタマーサポート業
 
 ## ワークフローとエージェント
 
-このプロジェクトでは、問い合わせ対応を workflow で段階的に進めながら、各フェーズを担当するエージェントを切り替えます。大きな流れは、受付、調査方針決定、専門調査、回答またはエスカレーション案の作成、人間承認、チケット更新、事後評価です。
+sample runtime の main workflow は、receive_case -> intake_subgraph -> supervisor_subgraph という骨格で動きます。実際に役割を持つ実行主体は主に SampleIntakeAgent、SampleSupervisorAgent、SampleInvestigateAgent、SampleTicketUpdateAgent であり、承認待ちや review は独立 agent ではなく workflow node として扱われます。
+
+まず、main workflow 全体は次のとおりです。
 
 ```mermaid
 flowchart TD
   Start["問い合わせ受領"] --> Intake["SampleIntakeAgent
-受付と初期整理"]
-  Intake --> SupervisorEntry["SampleSupervisorAgent
-調査方針決定"]
-  SupervisorEntry --> PlanMode["SampleInvestigateAgent
-plan モード"]
-  PlanMode --> ActionMode["SampleInvestigateAgent
-action モード"]
-  ActionMode --> ResultReview{"SampleSupervisorAgent
-結果評価 OK"}
-  ResultReview -->|No| Followup["SampleSupervisorAgent
-followup notes 更新"]
-  Followup --> ActionMode
-  ResultReview -->|Yes| EscalationCheck{"エスカレーション要否"}
-  EscalationCheck -->|通常回答| DraftReview["SampleSupervisorAgent
-draft_review"]
-  EscalationCheck -->|要エスカレーション| Escalation["SampleSupervisorAgent
-escalation_review"]
-  DraftReview --> Approval["承認ノード
+受付と初期整理
+intake_subgraph"]
+    Intake --> Supervisor["SampleSupervisorAgent
+supervisor_subgraph"]
+    Supervisor --> Approval["wait_for_approval
 WAITING_APPROVAL"]
-  Escalation --> Approval
-  Approval -->|approve| TicketUpdate["SampleTicketUpdateAgent
-外部チケット更新"]
-  Approval -->|reject| DraftReview
-  Approval -->|reinvestigate| SupervisorEntry
+    Approval -->|approve| TicketUpdate["SampleTicketUpdateAgent
+ticket_update_subgraph"]
+    Approval -->|reject / reinvestigate| Supervisor
   TicketUpdate --> Closed["クローズ"]
-  Approval -.-> Evaluator["ObjectiveEvaluator
-事後評価"]
-  Closed -.-> Evaluator
+```
+
+SampleSupervisorAgent の内部ワークフローは次のとおりです。
+
+```mermaid
+flowchart TD
+    SupervisorEntry["investigation
+node"] --> PlanMode["SampleInvestigateAgent
+plan モード"]
+    PlanMode --> ActionMode["SampleInvestigateAgent
+action モード"]
+    ActionMode --> ResultReview{"SampleSupervisorAgent
+結果評価 OK"}
+    ResultReview -->|No| Followup["SampleSupervisorAgent
+followup notes 更新"]
+    Followup --> ActionMode
+    ResultReview -->|Yes| EscalationCheck{"エスカレーション要否"}
+    EscalationCheck -->|通常回答| DraftReview["SampleSupervisorAgent
+draft_review"]
+    EscalationCheck -->|要エスカレーション| Escalation["SampleSupervisorAgent
+escalation_review"]
+    DraftReview --> Approval["wait_for_approval
+WAITING_APPROVAL"]
+    Escalation --> Approval
+    Approval -->|approve| TicketUpdate["SampleTicketUpdateAgent
+ticket_update_subgraph"]
+    Approval -->|reject| DraftReview
+    Approval -->|reinvestigate| SupervisorEntry
 ```
 
 現在の sample 系で中心となるエージェントは次のとおりです。
 
 - SampleIntakeAgent: 問い合わせ受付時の定型前処理を担当する。入力問い合わせを正規化し、問い合わせ分類や不足情報を整理して、後続フェーズへ渡す。
-- SampleSupervisorAgent: sample workflow 全体の進行管理を担う親エージェントである。ケース全体を見て調査方針を決め、SampleInvestigateAgent を呼び出し、結果を見て通常回答に進むかエスカレーションに進むかを判断する。
+- SampleSupervisorAgent: sample workflow 全体の進行管理を担う親エージェントである。investigation node の中で SampleInvestigateAgent を plan モードと action モードで呼び出し、結果を見て draft_review へ進むか escalation_review へ進むかを判断する。
 - SampleInvestigateAgent: sample 版の中核となる調査エージェントである。仕様確認、ログ解析、ナレッジ探索、回答ドラフト作成を一体で担い、問い合わせ種別に応じて必要な証跡確認と文書探索を行い、その結果を investigation_summary と draft_response にまとめる。
-- SampleTicketUpdateAgent: 承認後に外部チケット更新内容を確定し、外部チケット反映を段階的に進める sample 版の更新エージェントである。更新前には必ず HITL を挟み、人間が最終確認してから実行する。
-- ObjectiveEvaluator: 改善レポート専用の評価エージェントである。workflow state、shared memory、各エージェントの working memory、成果物を照合して、ケース対応の品質を客観評価する。
+- SampleTicketUpdateAgent: 承認後に外部チケット更新内容を確定し、外部チケット反映を段階的に進める sample 版の更新エージェントである。sample workflow では ticket_update_subgraph の実行主体として使われる。
+
+ObjectiveEvaluator は sample main workflow の独立 node ではありません。SampleSupervisorAgent の investigation フェーズ内で action 結果の採点に使われ、あわせて改善レポート生成でも利用されます。
 
 承認は独立した sample agent ではなく、SampleSupervisorAgent 配下の workflow 停止ノードとして扱います。WAITING_APPROVAL で人間の判断を受け付け、承認、差戻し、再調査のいずれかに応じて後続フェーズへ戻します。
 
@@ -108,13 +121,13 @@ sample の escalation_review も独立 agent ではなく、SampleSupervisorAgen
 workflow 上の主な接続イメージは次のとおりです。
 
 1. SampleIntakeAgent が問い合わせを受け付け、入力を整える
-2. SampleSupervisorAgent が調査方針を決め、まず SampleInvestigateAgent を plan モードで呼び出す
-3. SampleInvestigateAgent が action モードで調査と回答ドラフト作成を進める
+2. SampleSupervisorAgent の investigation node が調査方針を決め、まず SampleInvestigateAgent を plan モードで呼び出す
+3. 同じ investigation node の中で、SampleInvestigateAgent が action モードで調査と回答ドラフト作成を進める
 4. SampleSupervisorAgent が action 結果を評価し、必要なら followup notes を更新して SampleInvestigateAgent を再実行する
 5. 結果が十分なら、SampleSupervisorAgent が通常回答の draft_review へ進めるか、escalation_review へ進めるかを決める
 6. SampleSupervisorAgent 配下の承認ノードが人間の承認、差戻し、再調査要求を受け付ける
 7. SampleTicketUpdateAgent が承認済み内容を外部チケットへ反映する
-8. ObjectiveEvaluator が最終的な対応品質を評価する
+8. ObjectiveEvaluator は investigation の採点と改善レポート生成で補助的に利用される
 
 action モードのループは、SampleSupervisorAgent の investigation フェーズ内で実行されます。現行 sample 実装では、plan モードで調査計画を作成したあと、action モードの結果を ObjectiveEvaluator で採点し、基準点未満かつ followup 上限未到達であれば、Supervisor が followup notes を更新して SampleInvestigateAgent を再実行します。
 

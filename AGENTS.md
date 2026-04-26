@@ -8,3 +8,7 @@
 
 ## 規約
 * LLM呼び出し時にはtemperatureを指定しないでください。それはmodelによりサポートされていないパラメータです。
+
+
+## 実行
+* CLI実行時の実行例は[quickstart](docs/quickstart.md)を参考にしてください。
