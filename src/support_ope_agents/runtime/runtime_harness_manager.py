@@ -150,7 +150,7 @@ class RuntimeHarnessManager:
             self._policy(
                 "runtime.control_catalog.instruction_excerpt_max_chars",
                 self._CONTROL_CATALOG_INSTRUCTION_EXCERPT_MAX_CHARS,
-                source="runtime.control_catalog._summarize_text",
+                source="runtime.production.control_catalog._instruction_excerpt",
                 applies_when="control catalog and audit excerpt rendering",
                 effect_summary="instruction excerpts shown in audit and reports are shortened to this size",
             ),

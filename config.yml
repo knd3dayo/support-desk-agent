@@ -6,10 +6,12 @@ support_ope_agents:
     provider: openai
 
     # 使用するモデル名です。
-    model: gpt-4.1
+    model: poc-chat-model
 
     # 環境変数参照です。実際の値は LLM_API_KEY から読み込みます。
     api_key: os.environ/LLM_API_KEY
+
+    base_url: http://localhost:4000
 
   # 静的な設定ファイルや指示ファイルの場所です。
   # 既定値のままでよければ未指定で構いません。

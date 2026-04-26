@@ -24,13 +24,13 @@ from support_ope_agents.runtime.abstract_service import AbstractRuntimeService
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages
-from support_ope_agents.runtime.control_catalog import build_control_catalog, build_runtime_audit
 from support_ope_agents.runtime.followup_context import build_conversation_messages
 from support_ope_agents.runtime.followup_context import resolve_action_prompt
 from support_ope_agents.runtime.followup_context import resolve_saved_conversation_messages
 from support_ope_agents.runtime.mcp_startup_validation import validate_ticket_sources_startup
 from support_ope_agents.runtime.reporting import build_support_improvement_report
 from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
+from support_ope_agents.runtime.sample.sample_control_catalog import build_sample_control_catalog, build_sample_runtime_audit
 from support_ope_agents.runtime.service_support import append_chat_message
 from support_ope_agents.runtime.service_support import backfill_case_title
 from support_ope_agents.runtime.service_support import build_assistant_history_content
@@ -114,12 +114,11 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return agents
 
     def describe_control_catalog(self) -> dict[str, object]:
-        return build_control_catalog(
+        return build_sample_control_catalog(
             config=self._context.config,
             tool_registry=self._context.tool_registry,
             agent_definitions=build_default_agent_definitions(),
             runtime_harness_manager=self._context.runtime_harness_manager,
-            runtime_mode_override="sample",
         )
 
     def describe_runtime_audit(self, *, case_id: str, trace_id: str, workspace_path: str) -> dict[str, object]:
@@ -129,13 +128,12 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         return self._build_runtime_audit_for_state(case_id=case_id, state=state)
 
     def _build_runtime_audit_for_state(self, *, case_id: str, state: CaseState) -> dict[str, object]:
-        return build_runtime_audit(
+        return build_sample_runtime_audit(
             case_id=case_id,
             state=state,
             config=self._context.config,
             instruction_loader=self._context.instruction_loader,
             runtime_harness_manager=self._context.runtime_harness_manager,
-            runtime_mode_override="sample",
         )
 
     def list_cases(self, cases_root: str) -> list[dict[str, object]]:
@@ -669,7 +667,8 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             }
             if record_key == "intake_incident_timeframe":
                 resumed_state["intake_incident_timeframe"] = normalized_additional_input
-                apply_derived_log_extract_range(resumed_state, normalized_additional_input, config=self.context.config)
+                # resumed_state is a CaseState TypedDict; cast to dict[str, Any] to satisfy type checkers.
+                apply_derived_log_extract_range(cast(dict[str, Any], resumed_state), normalized_additional_input, config=self._context.config)
         resumed_state["customer_followup_answers"] = answer_records
         resumed_state["next_action"] = NextActionTexts.RESUME_INTAKE
 

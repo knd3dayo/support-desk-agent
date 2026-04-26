@@ -41,7 +41,11 @@ class SampleTicketUpdateAgent(AbstractAgent):
         from support_ope_agents.tools.registry import ToolRegistry
         self.config = config
         self.tool_registry = ToolRegistry(config)
-        self.ticket_mcp_client = None
+        # Explicitly annotate the attribute to allow assigning a McpToolClient or None.
+        # Without this annotation some type checkers infer the attribute as having the
+        # literal type "None", which prevents later assignment of a McpToolClient
+        # instance. Use the imported McpToolClient type.
+        self.ticket_mcp_client: McpToolClient | None = None
 
     def _invoke_tool(self, tool: Any, *args: object, **kwargs: object) -> str:
         try:

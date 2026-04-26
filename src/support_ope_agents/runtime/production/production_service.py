@@ -32,7 +32,7 @@ from support_ope_agents.runtime.abstract_service import AbstractRuntimeService
 from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
 from support_ope_agents.runtime.case_titles import derive_case_title
 from support_ope_agents.runtime.conversation_messages import append_serialized_message, coerce_serialized_conversation_messages
-from support_ope_agents.runtime.control_catalog import build_control_catalog, build_runtime_audit
+from support_ope_agents.runtime.production.control_catalog import build_control_catalog, build_runtime_audit
 from support_ope_agents.runtime.followup_context import build_conversation_messages
 from support_ope_agents.runtime.followup_context import resolve_action_prompt
 from support_ope_agents.runtime.followup_context import resolve_saved_conversation_messages
@@ -719,7 +719,9 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             }
             if record_key == "intake_incident_timeframe":
                 resumed_state["intake_incident_timeframe"] = normalized_additional_input
-                apply_derived_log_extract_range(resumed_state, normalized_additional_input, config=self.context.config)
+                # apply_derived_log_extract_range expects a MutableMapping[str, Any].
+                # resumed_state is a CaseState TypedDict; cast to dict[str, Any] to satisfy type checkers.
+                apply_derived_log_extract_range(cast(dict[str, Any], resumed_state), normalized_additional_input, config=self._context.config)
         resumed_state["customer_followup_answers"] = answer_records
         resumed_state["next_action"] = NextActionTexts.RESUME_INTAKE
 
