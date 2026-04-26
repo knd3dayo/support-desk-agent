@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from deepagents import create_deep_agent
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
@@ -17,7 +16,7 @@ from support_ope_agents.config.models import AppConfig
 from support_ope_agents.util.deep_agents_extension import FilteredFilesystemBackend
 
 from support_ope_agents.util.formatting import format_result
-from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.langchain import build_chat_openai_model, create_deep_agent_compatible_agent, wrap_tool_handler_sync
 from support_ope_agents.instructions.back_support_escalation_system_prompt import SYSTEM_PROMPT
 from support_ope_agents.instructions.back_support_escalation_user_prompt import USER_PROMPT_TEMPLATE
 from support_ope_agents.tools.registry import ToolRegistry
@@ -65,11 +64,11 @@ class SampleBackSupportEscalationAgent(AbstractAgent):
         )
         # 必要なツールがあればToolRegistryから取得してtoolsに追加
         # get_toolsはToolRegistryのpublicメソッド
-        tools = {t.name: t.handler for t in self.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)}
+        tools = {t.name: wrap_tool_handler_sync(t.handler) for t in self.tool_registry.get_tools(BACK_SUPPORT_ESCALATION_AGENT)}
         # ToolRegistry._configはprivate属性なので、コンストラクタでAppConfigを保持しておく
         # _configはprivate属性なので、self._config(AppConfig)を使う
         model = build_chat_openai_model(self.config)
-        return create_deep_agent(
+        return create_deep_agent_compatible_agent(
             model=model,
             backend=backend,
             system_prompt=self._build_system_prompt(),

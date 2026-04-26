@@ -8,14 +8,9 @@ from pydantic import BaseModel, Field
 
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
 from support_ope_agents.runtime.conversation_messages import deserialize_langchain_messages
-from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.langchain import build_chat_openai_model, create_deep_agent_compatible_agent
 
 from ..util.document.document_source_backend import build_document_source_backend, read_backend_file_data
-
-try:
-    from deepagents import create_deep_agent
-except Exception:  # pragma: no cover
-    create_deep_agent = None
 
 
 class _DeepAgentSourceResult(BaseModel):
@@ -74,10 +69,7 @@ def _invoke_deepagents_search(
     extraction_mode: Literal["relaxed", "raw_backend"],
     conversation_messages: list[dict[str, object]] | None = None,
 ) -> dict[str, dict[str, Any]] | None:
-    if create_deep_agent is None:
-        return None
-
-    agent = create_deep_agent(
+    agent = create_deep_agent_compatible_agent(
         model=build_chat_openai_model(config, temperature=0),
         backend=backend,
         system_prompt=(
@@ -139,8 +131,6 @@ def build_default_search_documents_tool(config: AppConfig):
             raise RuntimeError(
                 "Knowledge document backend could not be initialized. Check agents.InvestigateAgent.document_sources."
             )
-        if create_deep_agent is None:
-            raise RuntimeError("DeepAgents search is unavailable because deepagents could not be imported.")
 
         normalized_by_source = _invoke_deepagents_search(
             config=config,

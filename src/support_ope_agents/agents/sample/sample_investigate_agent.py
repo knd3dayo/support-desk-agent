@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import inspect
 import json
 import re
 from dataclasses import dataclass
-from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Protocol, Sequence, cast
 
@@ -20,12 +18,11 @@ from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
 from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
-from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.langchain import build_chat_openai_model, create_deep_agent_compatible_agent, wrap_tool_handler_sync
 from support_ope_agents.util.workspace_evidence import build_workspace_evidence_source, find_evidence_log_file
 from ...tools.registry import ToolRegistry
 from ...instructions.investigate_system_prompt import INVESTIGATE_SYSTEM_PROMPT_TEMPLATE
 from langchain_core.messages import HumanMessage
-from deepagents import create_deep_agent
 from langgraph.graph.state import CompiledStateGraph
 
 
@@ -54,18 +51,19 @@ class SampleInvestigateAgent(AbstractAgent):
         normalized = document_summary.strip().lower()
         if not normalized:
             return False
-        missing_markers = (
-            "見つから",
-            "存在しない",
-            "存在していない",
-            "不足している",
-            "アップロードされていない",
-            "再提供",
-            "not found",
-            "missing",
-            "does not exist",
+        file_missing_markers = (
+            f"{log_path.name.lower()} file",
+            f"file {log_path.name.lower()}",
+            f"{log_path.name.lower()} が見つから",
+            f"{log_path.name.lower()} は見つから",
+            f"{log_path.name.lower()} ファイルが見つから",
+            f"{log_path.name.lower()} ファイルは見つから",
+            f"{log_path.name.lower()} が存在しない",
+            f"{log_path.name.lower()} は存在しない",
+            f"{log_path.name.lower()} がアップロードされていない",
+            f"{log_path.name.lower()} の再提供",
         )
-        return log_path.name.lower() in normalized and any(marker in normalized for marker in missing_markers)
+        return any(marker in normalized for marker in file_missing_markers)
 
     def _resolve_document_sources(self, workspace_path: str | None) -> list[KnowledgeDocumentSource]:
         sources = list(self.config.agents.InvestigateAgent.document_sources)
@@ -84,18 +82,6 @@ class SampleInvestigateAgent(AbstractAgent):
         """
         return self.tool_registry.read_investigate_working_memory_for_case(case_id, workspace_path, role=INVESTIGATE_AGENT)
 
-    @staticmethod
-    def _wrap_tool_handler(handler: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(handler)
-        def _wrapped(*args: Any, **kwargs: Any) -> Any:
-            result = handler(*args, **kwargs)
-            if inspect.isawaitable(result):
-                return run_awaitable_sync(cast(Any, result))
-            return result
-
-        return _wrapped
-
-
     def create_sub_agent(
         self,
         query: str,
@@ -109,12 +95,12 @@ class SampleInvestigateAgent(AbstractAgent):
             document_sources=effective_document_sources,
             route_base=route_base,
         )
-        tools = {t.name: self._wrap_tool_handler(t.handler) for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
+        tools = {t.name: wrap_tool_handler_sync(t.handler) for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
         system_prompt = self._build_system_prompt(query, instruction_text)
         model = build_chat_openai_model(self.config)
         return cast(
             CompiledStateGraph,
-            create_deep_agent(
+            create_deep_agent_compatible_agent(
                 model=model,
                 backend=backend,
                 system_prompt=system_prompt,
@@ -142,24 +128,31 @@ class SampleInvestigateAgent(AbstractAgent):
         log_path_value = str((state or {}).get("investigation_evidence_log_path") or "").strip()
         log_path = Path(log_path_value) if log_path_value else find_evidence_log_file(workspace_path)
 
-        try:
-            sub_agent = self.create_sub_agent(
-                query=effective_query,
-                instruction_text=instruction_text or "",
-                workspace_path=workspace_path,
-            )
-            result = self._invoke_sub_agent(
-                sub_agent,
-                {
-                    "messages": [
-                        HumanMessage(content=effective_query),
-                    ]
-                },
-            )
-        except Exception:
+        last_error: Exception | None = None
+        for _attempt in range(2):
+            try:
+                sub_agent = self.create_sub_agent(
+                    query=effective_query,
+                    instruction_text=instruction_text or "",
+                    workspace_path=workspace_path,
+                )
+                result = self._invoke_sub_agent(
+                    sub_agent,
+                    {
+                        "messages": [
+                            HumanMessage(content=effective_query),
+                        ]
+                    },
+                )
+                break
+            except Exception as exc:
+                last_error = exc
+        else:
             if log_path is not None:
                 return f"Evidence file: {log_path.name}\nEvidence path: {log_path}"
-            raise
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError("SampleInvestigateAgent execution failed without an explicit error")
 
         document_summary = extract_result_output_text(result)
         if not document_summary and isinstance(result, dict):
@@ -191,7 +184,7 @@ def _extract_result_output(result: Any) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the sample investigate deep agent")
+    parser = argparse.ArgumentParser(description="Run the sample investigate agent")
     parser.add_argument("query", nargs="?", default=SampleInvestigateAgent._default_query(), help="Investigation query")
     parser.add_argument("--config", default="config.yml", help="Path to config.yml")
     parser.add_argument("--workspace-path", default=None, help="Path to workspace directory")

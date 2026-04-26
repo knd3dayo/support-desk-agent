@@ -142,7 +142,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         agent = SampleInvestigateAgent(self._build_config())
 
         with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
-            with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent") as create_mock:
+            with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
                 backend_mock.return_value = object()
                 create_mock.return_value = object()
                 agent.create_sub_agent(query="ログを調べて")
@@ -172,7 +172,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
 
         with patch.object(agent.tool_registry, "get_tools", return_value=[fake_tool]):
             with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
-                with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent") as create_mock:
+                with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
                     backend_mock.return_value = object()
                     create_mock.return_value = object()
                     agent.create_sub_agent(query="ログを調べて")
@@ -187,7 +187,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
             evidence_dir = Path(tmpdir) / ".evidence"
             evidence_dir.mkdir(parents=True, exist_ok=True)
             with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
-                with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent") as create_mock:
+                with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
                     backend_mock.return_value = object()
                     create_mock.return_value = object()
                     agent.create_sub_agent(query="ログを調べて", workspace_path=tmpdir)
@@ -276,6 +276,27 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         payload_text = str(capturing_sub_agent.payloads[0])
         self.assertIn("ログを調べて", payload_text)
         self.assertNotIn("Evidence file:", payload_text)
+
+    def test_execute_retries_once_before_evidence_fallback(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+        capturing_sub_agent = _CapturingSubAgent(
+            output="The issue is caused by missing data source vdpcachedatasource in Denodo cache configuration."
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "vdp.log").write_text("sample", encoding="utf-8")
+            with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
+                with patch.object(
+                    agent,
+                    "_invoke_sub_agent",
+                    side_effect=[RuntimeError("transient"), {"output": capturing_sub_agent.output}],
+                ) as invoke_mock:
+                    result = agent.execute(query="ログを調べて", workspace_path=tmpdir)
+
+        self.assertEqual(invoke_mock.call_count, 2)
+        self.assertIn("vdpcachedatasource", str(result))
 
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
         supervisor = SampleSupervisorAgent(investigate_executor=_WorkspaceAwareInvestigateExecutor())

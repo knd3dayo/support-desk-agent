@@ -106,6 +106,23 @@ class MemoryToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("# Working Memory: KnowledgeRetrieverAgent", parsed["content"])
         self.assertIn("Summary: architecture overview", parsed["content"])
 
+    async def test_write_working_memory_returns_error_payload_for_invalid_workspace_path(self) -> None:
+        case_memory_manager = CaseMemoryManager(self.config)
+        tool = case_memory_manager.build_default_write_working_memory_tool(KNOWLEDGE_RETRIEVER_AGENT)
+
+        raw = await tool(
+            "CASE-TEST-INVALID-001",
+            "/docs/workspace-evidence/vdp.log",
+            {"title": "Knowledge Retrieval Result", "bullets": ["Summary: architecture overview"]},
+            "append",
+        )
+
+        parsed = json.loads(raw)
+        self.assertEqual(parsed["agent_name"], KNOWLEDGE_RETRIEVER_AGENT)
+        self.assertEqual(parsed["working_memory_path"], "")
+        self.assertIn("error", parsed)
+        self.assertIn("workspace_path", parsed)
+
     async def test_write_draft_writes_markdown_artifact(self) -> None:
         tool = build_default_write_draft_tool(self.config, "customer_response_draft")
 

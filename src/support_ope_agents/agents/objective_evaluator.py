@@ -11,6 +11,7 @@ from support_ope_agents.agents.agent_definition import AgentDefinition
 from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR, SUPERVISOR_AGENT
 from support_ope_agents.config.models import AppConfig
 from support_ope_agents.util.langchain import build_chat_openai_model
+from support_ope_agents.util.langchain.chat_model import close_chat_openai_model
 
 
 class StructuredCriterionEvaluation(BaseModel):
@@ -50,24 +51,27 @@ class ObjectiveEvaluator:
 
     def _invoke_structured_evaluation(self, evidence: dict[str, Any]) -> ObjectiveEvaluatorStructuredResult:
         model = build_chat_openai_model(self.config)
-        structured_model = model.with_structured_output(ObjectiveEvaluatorStructuredResult)
-        response = structured_model.invoke([
-            SystemMessage(content=self.instruction_text.strip()),
-            HumanMessage(
-                content=(
-                    "以下の証拠パックを用いてサポート対応を評価してください。"
-                    "structured output schema に厳密に従い、日本語で返してください。\n"
-                    + json.dumps(evidence, ensure_ascii=False)
-                )
-            ),
-        ])
-        if isinstance(response, ObjectiveEvaluatorStructuredResult):
-            return response
-        if isinstance(response, dict):
-            return ObjectiveEvaluatorStructuredResult.model_validate(response)
-        if hasattr(response, "model_dump"):
-            return ObjectiveEvaluatorStructuredResult.model_validate(response.model_dump())
-        raise ValueError("ObjectiveEvaluator returned an unsupported structured output payload.")
+        try:
+            structured_model = model.with_structured_output(ObjectiveEvaluatorStructuredResult)
+            response = structured_model.invoke([
+                SystemMessage(content=self.instruction_text.strip()),
+                HumanMessage(
+                    content=(
+                        "以下の証拠パックを用いてサポート対応を評価してください。"
+                        "structured output schema に厳密に従い、日本語で返してください。\n"
+                        + json.dumps(evidence, ensure_ascii=False)
+                    )
+                ),
+            ])
+            if isinstance(response, ObjectiveEvaluatorStructuredResult):
+                return response
+            if isinstance(response, dict):
+                return ObjectiveEvaluatorStructuredResult.model_validate(response)
+            if hasattr(response, "model_dump"):
+                return ObjectiveEvaluatorStructuredResult.model_validate(response.model_dump())
+            raise ValueError("ObjectiveEvaluator returned an unsupported structured output payload.")
+        finally:
+            close_chat_openai_model(model)
 
     @staticmethod
     def build_objective_evaluator_definition() -> AgentDefinition:
