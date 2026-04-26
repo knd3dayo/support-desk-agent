@@ -38,6 +38,18 @@ class ToolRegistryTests(unittest.TestCase):
 
         self.assertEqual(result, "working")
 
+    def test_invoke_tool_resolves_async_handler(self) -> None:
+        registry = ToolRegistry(self._build_config())
+
+        async def _handler(*, value: str) -> str:
+            return f"handled:{value}"
+
+        registry.get_tools = lambda _role: [_FakeTool("write_shared_memory", _handler)]  # type: ignore[method-assign]
+
+        result = registry.invoke_tool("write_shared_memory", "SupervisorAgent", value="ok")
+
+        self.assertEqual(result, "handled:ok")
+
 
 if __name__ == "__main__":
     unittest.main()

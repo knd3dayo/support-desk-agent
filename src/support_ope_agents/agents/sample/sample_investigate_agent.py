@@ -11,13 +11,12 @@ from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
 from support_ope_agents.models.state import CaseState
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
-from support_ope_agents.tools.builtin_tools import build_builtin_tools
-from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
 from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model, create_deep_agent_compatible_agent, wrap_tool_handler_sync
-from support_ope_agents.util.workspace_evidence import build_workspace_evidence_source, find_evidence_log_file
+from support_ope_agents.util.langchain.chat_model import close_chat_openai_model
+from support_ope_agents.util.workspace_evidence import build_workspace_evidence_source
 from ...tools.registry import ToolRegistry
 from ...instructions.investigate_system_prompt import INVESTIGATE_SYSTEM_PROMPT_TEMPLATE
 from langchain_core.messages import HumanMessage
@@ -88,7 +87,7 @@ class SampleInvestigateAgent(AbstractAgent):
         # the source of residual warning/resourcewarning behavior in standalone runs.
         # Rebuild only the middleware we need through the shared create_agent-based
         # wrapper so other agents can reuse the same controlled setup.
-        return cast(
+        compiled_agent = cast(
             CompiledStateGraph,
             create_deep_agent_compatible_agent(
                 model=model,
@@ -100,6 +99,11 @@ class SampleInvestigateAgent(AbstractAgent):
                 name="investigate-sample",
             ),
         )
+        try:
+            setattr(compiled_agent, "_support_ope_chat_model", model)
+        except AttributeError:
+            pass
+        return compiled_agent
 
     def create_node(self) -> CompiledStateGraph:
         return self.create_sub_agent(query=self._default_query())
@@ -131,15 +135,20 @@ class SampleInvestigateAgent(AbstractAgent):
             workspace_path=workspace_path,
         )
         context = self._build_context(workspace_path=workspace_path, state=state)
-        return self._invoke_sub_agent(
-            sub_agent,
-            {
-                "messages": [
-                    HumanMessage(content=effective_query),
-                ]
-            },
-            context=context,
-        )
+        model = getattr(sub_agent, "_support_ope_chat_model", None)
+        try:
+            return self._invoke_sub_agent(
+                sub_agent,
+                {
+                    "messages": [
+                        HumanMessage(content=effective_query),
+                    ]
+                },
+                context=context,
+            )
+        finally:
+            if model is not None:
+                close_chat_openai_model(model)
 
     @classmethod
     def build_agent_definition(cls) -> AgentDefinition:

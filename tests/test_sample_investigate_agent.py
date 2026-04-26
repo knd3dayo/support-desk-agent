@@ -312,6 +312,20 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertEqual(cast(dict[str, object], context).get("case_id"), "CASE-CTX-001")
         self.assertEqual(cast(dict[str, object], context).get("workspace_path"), "/tmp/sample-case")
 
+    def test_execute_closes_attached_chat_model(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+        capturing_sub_agent = _CapturingSubAgent(output="補足なし")
+        attached_model = object()
+        setattr(capturing_sub_agent, "_support_ope_chat_model", attached_model)
+
+        with patch.object(agent, "create_sub_agent", return_value=capturing_sub_agent):
+            with patch(
+                "support_ope_agents.agents.sample.sample_investigate_agent.close_chat_openai_model"
+            ) as close_mock:
+                agent.execute(query="仕様を確認して")
+
+        close_mock.assert_called_once_with(attached_model)
+
     def test_execute_raises_when_sub_agent_invocation_fails(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
 
@@ -320,7 +334,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                 agent.execute(query="ログがなくても仕様を確認して")
 
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
-        supervisor = SampleSupervisorAgent(investigate_executor=_WorkspaceAwareInvestigateExecutor())
+        supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=_WorkspaceAwareInvestigateExecutor())
 
         with tempfile.TemporaryDirectory() as tmpdir:
             result = supervisor.execute_investigation(
@@ -335,7 +349,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
 
     def test_supervisor_builds_ticket_aware_query_from_followup_context(self) -> None:
         executor = _CapturingInvestigateExecutor()
-        supervisor = SampleSupervisorAgent(investigate_executor=executor)
+        supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
 
         result = supervisor.execute_investigation(
             {
@@ -361,62 +375,69 @@ class SampleInvestigateAgentTests(unittest.TestCase):
 
     def test_supervisor_passes_loaded_instruction_text_to_investigation(self) -> None:
         executor = _CapturingInvestigateExecutor()
-        supervisor = SampleSupervisorAgent(
-            investigate_executor=executor,
-            load_instruction=lambda case_id, role: f"instruction:{case_id}:{role}",
-        )
+        supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
 
-        supervisor.execute_investigation(
-            {
-                "case_id": "CASE-TEST-SAMPLE-INSTRUCTION-001",
-                "workspace_path": "/tmp/sample-case",
-                "raw_issue": "チケットの状況を確認したいです。",
-            }
-        )
+        with patch(
+            "support_ope_agents.agents.sample.sample_supervisor_agent.InstructionLoader.load",
+            return_value="instruction:CASE-TEST-SAMPLE-INSTRUCTION-001:SuperVisorAgent",
+        ):
+            supervisor.execute_investigation(
+                {
+                    "case_id": "CASE-TEST-SAMPLE-INSTRUCTION-001",
+                    "workspace_path": "/tmp/sample-case",
+                    "raw_issue": "チケットの状況を確認したいです。",
+                }
+            )
 
         self.assertIn("instruction:CASE-TEST-SAMPLE-INSTRUCTION-001", executor.instruction_text)
 
     def test_supervisor_reads_and_updates_shared_memory_for_ticket_followup(self) -> None:
         executor = _CapturingInvestigateExecutor()
         writer = _CapturingSharedMemoryWriter()
-        supervisor = SampleSupervisorAgent(
-            investigate_executor=executor,
-            read_shared_memory_tool=lambda **_kwargs: json.dumps(
-                {
-                    "context": "既知事実: 認証基盤で再現あり",
-                    "progress": "前回調査: 候補チケットを確認中",
-                    "summary": "Issue #2 が有力候補",
-                },
-                ensure_ascii=False,
-            ),
-            read_working_memory_tool=lambda **_kwargs: json.dumps(
-                {
-                    "content": "## Investigate Result\n- 未解決事項: SSO 側ログの追加確認が必要",
-                },
-                ensure_ascii=False,
-            ),
-            write_shared_memory_tool=writer,
-        )
+        supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
 
-        result = supervisor.execute_investigation(
-            {
-                "case_id": "CASE-TEST-SAMPLE-MEMORY-001",
-                "workspace_path": "/tmp/sample-case",
-                "raw_issue": "ログイン時の 500 エラーについて調査してください。",
-                "customer_followup_answers": {
-                    "internal_ticket_confirmation": {
-                        "question": "候補は Issue #2 で正しいですか?",
-                        "answer": "はい。Issue #2 で合っています。",
-                    }
-                },
-                "intake_incident_timeframe": "2025-10-21 20:55 頃",
-                "log_extract_range_start": "2025-10-21T20:40:00",
-                "log_extract_range_end": "2025-10-21T21:10:00",
-                "intake_ticket_context_summary": {
-                    "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。"
-                },
-            }
-        )
+        def _invoke_tool(tool_name: str, role: str, **kwargs: object) -> str:
+            del role
+            if tool_name == "write_shared_memory":
+                return writer(**kwargs)
+            if tool_name == "write_working_memory":
+                return json.dumps({"ok": True}, ensure_ascii=False)
+            raise AssertionError(f"unexpected tool_name: {tool_name}")
+
+        with patch.object(
+            supervisor.tool_registry,
+            "read_shared_memory_for_case",
+            return_value={
+                "context": "既知事実: 認証基盤で再現あり",
+                "progress": "前回調査: 候補チケットを確認中",
+                "summary": "Issue #2 が有力候補",
+            },
+        ):
+            with patch.object(
+                supervisor.tool_registry,
+                "read_investigate_working_memory_for_case",
+                return_value="## Investigate Result\n- 未解決事項: SSO 側ログの追加確認が必要",
+            ):
+                with patch.object(supervisor.tool_registry, "invoke_tool", side_effect=_invoke_tool):
+                    result = supervisor.execute_investigation(
+                        {
+                            "case_id": "CASE-TEST-SAMPLE-MEMORY-001",
+                            "workspace_path": "/tmp/sample-case",
+                            "raw_issue": "ログイン時の 500 エラーについて調査してください。",
+                            "customer_followup_answers": {
+                                "internal_ticket_confirmation": {
+                                    "question": "候補は Issue #2 で正しいですか?",
+                                    "answer": "はい。Issue #2 で合っています。",
+                                }
+                            },
+                            "intake_incident_timeframe": "2025-10-21 20:55 頃",
+                            "log_extract_range_start": "2025-10-21T20:40:00",
+                            "log_extract_range_end": "2025-10-21T21:10:00",
+                            "intake_ticket_context_summary": {
+                                "internal_ticket": "Issue #2: SSO ログイン時に 500 エラーが発生し、再認証で一時回避できます。"
+                            },
+                        }
+                    )
 
         self.assertEqual(str(result.get("investigation_summary") or ""), "captured")
         self.assertIn("Issue #2 が有力候補", executor.query)

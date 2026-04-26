@@ -88,7 +88,7 @@ class ToolRegistry:
         handler = self.get_tool_handler(tool_name, role)
         if handler is None:
             raise ValueError(f"Tool handler for '{tool_name}' not found for role '{role}'")
-        return handler(**kwargs)
+        return self._resolve_tool_result(handler(**kwargs))
 
     def read_shared_memory_for_case(self, case_id: str, workspace_path: str, role: str = SUPERVISOR_AGENT) -> dict[str, str]:
         """
