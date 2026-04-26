@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import re
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
-from typing import Any, Coroutine, Protocol, Sequence, cast
+from typing import Any, Callable, Coroutine, Protocol, Sequence, cast
 
 from support_ope_agents.agents.abstract_agent import AbstractAgent
 from support_ope_agents.agents.agent_definition import AgentDefinition
@@ -82,6 +84,17 @@ class SampleInvestigateAgent(AbstractAgent):
         """
         return self.tool_registry.read_investigate_working_memory_for_case(case_id, workspace_path, role=INVESTIGATE_AGENT)
 
+    @staticmethod
+    def _wrap_tool_handler(handler: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(handler)
+        def _wrapped(*args: Any, **kwargs: Any) -> Any:
+            result = handler(*args, **kwargs)
+            if inspect.isawaitable(result):
+                return run_awaitable_sync(cast(Any, result))
+            return result
+
+        return _wrapped
+
 
     def create_sub_agent(
         self,
@@ -96,7 +109,7 @@ class SampleInvestigateAgent(AbstractAgent):
             document_sources=effective_document_sources,
             route_base=route_base,
         )
-        tools = {t.name: t.handler for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
+        tools = {t.name: self._wrap_tool_handler(t.handler) for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
         system_prompt = self._build_system_prompt(query, instruction_text)
         model = build_chat_openai_model(self.config)
         return cast(

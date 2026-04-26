@@ -162,6 +162,24 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("convert_pdf_files_to_images", tool_names)
         self.assertIn("write_working_memory", tool_names)
 
+    def test_create_sub_agent_wraps_async_tools_synchronously(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        async def _async_tool(*_args: object, **_kwargs: object) -> str:
+            return "ok"
+
+        fake_tool = type("FakeTool", (), {"name": "write_working_memory", "handler": _async_tool})()
+
+        with patch.object(agent.tool_registry, "get_tools", return_value=[fake_tool]):
+            with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+                with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent") as create_mock:
+                    backend_mock.return_value = object()
+                    create_mock.return_value = object()
+                    agent.create_sub_agent(query="ログを調べて")
+
+        wrapped_tool = create_mock.call_args.kwargs["tools"][0]
+        self.assertEqual(wrapped_tool(), "ok")
+
     def test_create_sub_agent_adds_workspace_evidence_to_document_sources(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
 

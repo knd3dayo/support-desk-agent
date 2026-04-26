@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
@@ -28,6 +29,7 @@ from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
 from .mcp_client import McpToolClient, ToolConfigurationError
 from .case_memory_manager import CaseMemoryManager
+from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 
 ToolCallable = Callable[..., Any]
 
@@ -65,6 +67,12 @@ def _unavailable_tool(message: str) -> ToolCallable:
 
 
 class ToolRegistry:
+    @staticmethod
+    def _resolve_tool_result(result: Any) -> Any:
+        if inspect.isawaitable(result):
+            return run_awaitable_sync(result)
+        return result
+
     def get_tool_handler(self, tool_name: str, role: str) -> ToolCallable | None:
         """
         指定したroleのツール群からtool_nameに該当するハンドラを返す。見つからない場合はNone。
@@ -92,7 +100,7 @@ class ToolRegistry:
         if handler is None:
             return {"context": "", "progress": "", "summary": ""}
         try:
-            raw_result = handler(case_id=case_id, workspace_path=workspace_path)
+            raw_result = self._resolve_tool_result(handler(case_id=case_id, workspace_path=workspace_path))
             try:
                 parsed = json.loads(raw_result)
             except Exception:
@@ -117,7 +125,7 @@ class ToolRegistry:
             if handler is None:
                 return ""
             try:
-                raw_result = handler(case_id=case_id, workspace_path=workspace_path)
+                raw_result = self._resolve_tool_result(handler(case_id=case_id, workspace_path=workspace_path))
                 parsed = json.loads(raw_result)
             except Exception:
                 return ""
