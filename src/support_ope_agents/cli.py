@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+from support_ope_agents.models.state import CaseState
 
 from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluator
 from support_ope_agents.agents.roles import OBJECTIVE_EVALUATOR
@@ -274,13 +275,14 @@ def _cmd_run_sample_supervisor(args: argparse.Namespace) -> int:
     investigate_agent = SampleInvestigateAgent(config)
     supervisor = SampleSupervisorAgent(config=config, investigate_executor=investigate_agent)
 
-    state: dict[str, Any] = {
+    state: CaseState = {
         "case_id": case_id,
         "workspace_path": args.workspace_path,
         "raw_issue": args.prompt,
     }
     investigated_state = supervisor.execute_investigation(state)
-    route = supervisor.route_after_investigation(investigated_state)
+    # route_after_investigation expects a plain mapping type; cast to satisfy static type
+    route = supervisor.route_after_investigation(cast(dict[str, object], investigated_state))
     if route == "escalation_review":
         final_state = supervisor.execute_escalation_review(investigated_state)
     else:
