@@ -298,14 +298,16 @@ def _ticket_lookup_status(state: CaseState, *, config: AppConfig, ticket_kind: s
         enabled = True
         if config.tools.mcp_manifest_path is None:
             return "enabled: true だがfetch不可: MCP manifest 未設定"
-    else:
-        logical_tool = config.tools.get_logical_tool(f"{ticket_kind}_ticket")
-        enabled = logical_tool is not None and getattr(logical_tool, "enabled", False)
-        if enabled:
-            if logical_tool.provider == "mcp" and config.tools.mcp_manifest_path is None:
-                return "enabled: true だがfetch不可: MCP manifest 未設定"
         else:
-            return "未実行: logical tool 無効"
+            logical_tool = config.tools.get_logical_tool(f"{ticket_kind}_ticket")
+            enabled = logical_tool is not None and getattr(logical_tool, "enabled", False)
+            if enabled:
+                # logical_tool may be None in some static analysis paths; use getattr to avoid
+                # Pylance warnings about accessing attributes on possibly-None objects.
+                if getattr(logical_tool, "provider", None) == "mcp" and config.tools.mcp_manifest_path is None:
+                    return "enabled: true だがfetch不可: MCP manifest 未設定"
+            else:
+                return "未実行: logical tool 無効"
 
     if enabled and not bool(state.get(f"{ticket_kind}_ticket_lookup_enabled")):
         return "enabled: true だがfetch不可: lookup 無効"
