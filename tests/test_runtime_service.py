@@ -1107,10 +1107,11 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertNotIn("External ticket ID", meta_section)
         self.assertNotIn("Internal ticket ID", meta_section)
         self.assertLess(content.index("## Meta"), content.index("## 総合評価"))
-        self.assertLess(content.index("## 総合評価"), content.index("## エージェント別評価"))
+        self.assertLess(content.index("## 総合評価"), content.index("## Evaluator 評価観点一覧"))
+        self.assertLess(content.index("## Evaluator 評価観点一覧"), content.index("## エージェント別評価"))
         self.assertLess(content.index("## エージェント別評価"), content.index("## 問い合わせ内容"))
         self.assertLess(content.index("## 調査に使用したログ・成果物"), content.index("## チケット情報"))
-        self.assertLess(content.index("## チケット情報"), content.index("## 結果と評価"))
+        self.assertLess(content.index("## チケット情報"), content.index("## 問合せ対応結果"))
         self.assertIn("### 発火した制御", content)
         self.assertIn("共通 instruction 制約", content)
         self.assertIn("役割別の想定 instruction 制約", content)
@@ -1155,6 +1156,8 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertIn("## 情報伝達監査", content)
         self.assertIn("Evaluation rubric", content)
         self.assertRegex(content, r"- IntakeAgent: \d{1,3} / 100 - ")
+        self.assertIn("## 問合せ対応結果", content)
+        self.assertNotIn("## 結果と評価", content)
         self.assertNotIn("## このリポジトリが扱うこと", content)
 
     def test_generate_support_improvement_report_lists_evidence_files(self) -> None:

@@ -14,7 +14,13 @@
 - SuperVisorAgent の判断が最終状態と整合していても、根拠不足や記録不足があれば減点してください。
 - 可能な限り、Summary、Adopted sources、Intake category、Intake urgency、Incident timeframe などの構造化項目単位で確認してください。
 - shared/progress.md については、単に存在するかではなく、各 agent の「実施」「確認結果」「判断」「次アクション」が追える粒度かを確認してください。
+- 添付ファイルに zip が含まれている場合、展開後ファイルや解凍済み成果物への参照が state、shared memory、working memory、artifact_paths のいずれかに残っているかを確認し、適切に解凍できたかを評価してください。
+- 添付ファイルに画像または PDF が含まれている場合、analyze_image_files または analyze_pdf_files の利用痕跡、もしくはそれらの添付を実際に読んだことが分かる調査要約・shared memory・working memory 上の記録が残っているかを確認し、適切に分析できたかを評価してください。
+- 添付ファイルに Office ドキュメントが含まれている場合、PDF 化の実施痕跡と、その後に PDF を分析した痕跡の両方を確認し、適切に PDF 化および分析できたかを評価してください。
+- 上記観点は、添付ファイルが実際に含まれている場合のみ評価対象としてください。該当添付が無いケースでは減点対象にしないでください。
+- 解凍・変換・分析の成功を断定できる痕跡が不足している場合は、即座に失敗扱いにせず、「確認不能」または「記録不足」として評価し、改善提案ではどの agent がどの memory に何を残すべきかまで具体的に示してください。
 - improvement_points では、agent 名、対象 memory、追記すべき内容が分かる粒度で改善案を書いてください。例えば「InvestigateAgent が shared/progress.md に採用根拠と除外仮説を残す」のように具体化してください。
+- improvement_points では、必要に応じて「InvestigateAgent が shared/progress.md に展開後ファイル一覧と採用した添付を残す」「InvestigateAgent が working memory に PDF 化の結果と分析対象ページを残す」のように、再実行時の記録改善まで具体化してください。
 
 ## 出力上の注意
 - 断定できない場合は、その旨を明記したうえで warning としてください。
