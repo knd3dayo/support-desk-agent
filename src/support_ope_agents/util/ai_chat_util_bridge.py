@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from ai_chat_util.ai_chat_util_base.chat import create_llm_client
@@ -115,6 +116,61 @@ async def infer_log_header_pattern(
     sample_line_limit: int = 100,
 ) -> str:
     client = create_ai_chat_util_client(config)
+    if not hasattr(AnalysisService, "infer_log_header_pattern"):
+        path = Path(file_path).expanduser().resolve()
+        sample_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()[:sample_line_limit]
+        if not sample_lines:
+            return json.dumps(
+                {
+                    "status": "unavailable",
+                    "file_path": str(path),
+                    "sample_line_limit": sample_line_limit,
+                    "sample_preview": [],
+                    "header_pattern": "",
+                    "timestamp_start": -1,
+                    "timestamp_end": -1,
+                    "timestamp_format": "",
+                    "confidence": 0.0,
+                    "reason": "ログファイルが空です。",
+                },
+                ensure_ascii=False,
+            )
+
+        prompt = (
+            "You analyze log headers. Return JSON only without markdown. "
+            "Keys: header_pattern, timestamp_start, timestamp_end, timestamp_format, confidence, reason. "
+            "header_pattern must match the beginning of each record header line. "
+            "timestamp_start and timestamp_end are zero-based slice offsets for the timestamp text on the header line. "
+            "timestamp_format must be datetime.strptime-compatible when possible.\n\n"
+            f"file_path: {path}\n"
+            f"sample_line_limit: {sample_line_limit}\n"
+            "sample_lines:\n"
+            + "\n".join(f"{index + 1:03d}: {line}" for index, line in enumerate(sample_lines))
+        )
+        raw_response = await client.simple_chat(prompt)
+        try:
+            parsed = json.loads(raw_response.output)
+        except json.JSONDecodeError:
+            parsed = {}
+        timestamp_start = int(parsed.get("timestamp_start", -1) or -1)
+        timestamp_end = int(parsed.get("timestamp_end", -1) or -1)
+        return json.dumps(
+            {
+                "status": "matched"
+                if str(parsed.get("header_pattern") or "").strip() and timestamp_start >= 0 and timestamp_end > timestamp_start
+                else "unavailable",
+                "file_path": str(path),
+                "sample_line_limit": sample_line_limit,
+                "sample_preview": sample_lines[:10],
+                "header_pattern": str(parsed.get("header_pattern") or ""),
+                "timestamp_start": timestamp_start,
+                "timestamp_end": timestamp_end,
+                "timestamp_format": str(parsed.get("timestamp_format") or ""),
+                "confidence": float(parsed.get("confidence", 0.0) or 0.0),
+                "reason": str(parsed.get("reason") or ""),
+            },
+            ensure_ascii=False,
+        )
     return await AnalysisService.infer_log_header_pattern(
         client,
         file_path,

@@ -11,7 +11,6 @@ from support_ope_agents.config.loader import load_config
 from support_ope_agents.config.models import AppConfig, KnowledgeDocumentSource
 from support_ope_agents.models.state import CaseState
 from support_ope_agents.runtime.conversation_messages import extract_result_output_text
-from support_ope_agents.util.asyncio_utils import run_awaitable_sync
 from support_ope_agents.util.document import build_filtered_document_source_backend
 from support_ope_agents.util.formatting import format_result
 from support_ope_agents.util.langchain import build_chat_openai_model, create_deep_agent_compatible_agent, wrap_tool_handler_sync
@@ -139,7 +138,7 @@ class SampleInvestigateAgent(AbstractAgent):
     @staticmethod
     def _invoke_sub_agent(sub_agent: CompiledStateGraph, payload: dict[str, Any], *, context: CaseState) -> Any:
         runnable = cast(Any, sub_agent)
-        return run_awaitable_sync(runnable.ainvoke(payload, context=context))
+        return runnable.invoke(payload, context=context)
 
     def execute(
         self,
