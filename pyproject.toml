@@ -37,7 +37,7 @@ dependencies = [
 ai-chat-util = { path = "../ai-chat-util/app", editable = true }
 
 [project.scripts]
-support-ope-agents = "support_desk_agent.cli:main"
+support-desk-agent = "support_desk_agent.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

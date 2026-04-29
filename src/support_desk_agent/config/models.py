@@ -109,7 +109,7 @@ class WorkflowSettings(StrictConfigModel):
 class TracingSettings(StrictConfigModel):
     enabled: bool = False
     provider: str = "langfuse"
-    project_name: str = "support-ope-agents"
+    project_name: str = "support-desk-agent"
 
 
 class KnowledgeDocumentSource(StrictConfigModel):

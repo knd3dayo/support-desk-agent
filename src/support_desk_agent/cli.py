@@ -306,7 +306,7 @@ def _cmd_run_sample_supervisor(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="support-ope-agents CLI")
+    parser = argparse.ArgumentParser(description="support-desk-agent CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     common = argparse.ArgumentParser(add_help=False)

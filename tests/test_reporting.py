@@ -302,7 +302,7 @@ class ReportingEvaluationTests(unittest.TestCase):
                             "enabled": True,
                             "provider": "mcp",
                             "server": "github",
-                            "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
+                            "arguments": {"owner": "knd3dayo", "repo": "support-desk-agent"},
                         }
                     }
                 },
@@ -340,7 +340,7 @@ class ReportingEvaluationTests(unittest.TestCase):
                             "enabled": True,
                             "provider": "mcp",
                             "server": "github",
-                            "arguments": {"owner": "knd3dayo", "repo": "support-ope-agents"},
+                            "arguments": {"owner": "knd3dayo", "repo": "support-desk-agent"},
                         }
                     }
                 },

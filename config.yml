@@ -74,7 +74,7 @@ support_desk_agent:
   #   provider: langfuse
   #
   #   # トレースのプロジェクト名です。
-  #   project_name: support-ope-agents
+  #   project_name: support-desk-agent
 
   # runtime 実装の切り替え設定です。
   # 通常運用は production、サンプル構成を使う場合は sample を指定します。

@@ -13,7 +13,7 @@ import type {
   WorkspaceUploadResponse,
 } from './types';
 
-const AUTH_TOKEN_STORAGE_KEY = 'support-ope-agents-auth-token';
+const AUTH_TOKEN_STORAGE_KEY = 'support-desk-agent-auth-token';
 
 type TicketIdOptions = {
   externalTicketId?: string;

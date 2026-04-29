@@ -17,13 +17,13 @@ from support_desk_agent.tools import ToolConfigurationError
 
 class SampleConfigTests(unittest.TestCase):
     def test_support_desk_agent_sample_uses_sample_runtime_mode(self) -> None:
-        config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
+        config_path = Path(__file__).resolve().parents[1] / "samples" / "support-desk-agent" / "config-sample.yml"
         loaded = load_config(config_path)
 
         self.assertEqual(loaded.runtime.mode, "sample")
 
     def test_support_desk_agent_sample_uses_default_constraint_mode_by_default(self) -> None:
-        config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
+        config_path = Path(__file__).resolve().parents[1] / "samples" / "support-desk-agent" / "config-sample.yml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
         settings = AgentCatalogSettings.model_validate(raw["support_desk_agent"]["agents"])
@@ -33,7 +33,7 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(settings.resolve_constraint_mode(SUPERVISOR_AGENT), "default")
 
     def test_support_desk_agent_sample_configures_github_ticket_logical_tools(self) -> None:
-        config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
+        config_path = Path(__file__).resolve().parents[1] / "samples" / "support-desk-agent" / "config-sample.yml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
         logical_tools = raw["support_desk_agent"]["tools"]["logical_tools"]

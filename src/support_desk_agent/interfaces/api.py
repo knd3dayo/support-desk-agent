@@ -120,7 +120,7 @@ def create_app(config_path: str = "config.yml", cases_root: str | None = None) -
             await _probe_llm_backend(context.config)
         yield
 
-    app = FastAPI(title="support-ope-agents API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="support-desk-agent API", version="0.1.0", lifespan=lifespan)
     base_dir = Path(config_path).resolve().parent
     default_cases_root = Path(cases_root).expanduser().resolve() if cases_root else base_dir / "work"
 

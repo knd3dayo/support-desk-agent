@@ -13,7 +13,7 @@ class SupportOpeMcpAdapter:
 
     def manifest(self) -> dict[str, Any]:
         return {
-            "server": "support-ope-agents",
+            "server": "support-desk-agent",
             "transport": self._service.context.config.interfaces.mcp_transport,
             "tools": [
                 {

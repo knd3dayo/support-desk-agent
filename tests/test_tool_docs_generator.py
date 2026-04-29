@@ -14,7 +14,7 @@ class ToolDocsGeneratorTests(unittest.TestCase):
             stale.write_text("stale", encoding="utf-8")
 
             generated = export_tool_docs(
-                "/home/user/source/repos/support-ope-agents/config.yml",
+                "/home/user/source/repos/support-desk-agent/config.yml",
                 tmpdir,
             )
 
