@@ -23,7 +23,7 @@
 例:
 
 ```yaml
-support_ope_agents:
+support_desk_agent:
   agents:
     InvestigateAgent:
       result_mode: relaxed
@@ -110,11 +110,11 @@ MCP を使う場合は `tools.mcp_manifest_path` を設定する。
 
 | 項目 | 実装箇所 | 役割 |
 | --- | --- | --- |
-| 制約の解決 | `src/support_ope_agents/runtime/runtime_harness_manager.py` | `constraint_mode` を解決する |
-| instruction 読み込み | `src/support_ope_agents/instructions/loader.py` | role instruction を構成する |
-| Investigate 実行 | `src/support_ope_agents/agents/investigate_agent.py` | 調査、検索、ドラフト作成を統合する |
-| Supervisor 制御 | `src/support_ope_agents/agents/supervisor_agent.py` | 再調査、承認前の統制、エスカレーションを制御する |
-| Tool binding | `src/support_ope_agents/tools/registry.py` | role ごとの論理ツールを解決する |
+| 制約の解決 | `src/support_desk_agent/runtime/runtime_harness_manager.py` | `constraint_mode` を解決する |
+| instruction 読み込み | `src/support_desk_agent/instructions/loader.py` | role instruction を構成する |
+| Investigate 実行 | `src/support_desk_agent/agents/investigate_agent.py` | 調査、検索、ドラフト作成を統合する |
+| Supervisor 制御 | `src/support_desk_agent/agents/supervisor_agent.py` | 再調査、承認前の統制、エスカレーションを制御する |
+| Tool binding | `src/support_desk_agent/tools/registry.py` | role ごとの論理ツールを解決する |
 
 ## 9. 推奨方針
 

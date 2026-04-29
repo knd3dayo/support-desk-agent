@@ -3837,7 +3837,7 @@ wheels = [
 ]
 
 [[package]]
-name = "support-ope-agents"
+name = "support-desk-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

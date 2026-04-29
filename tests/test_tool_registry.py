@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import unittest
 
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.registry import ToolRegistry
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.tools.registry import ToolRegistry
 
 
 class _FakeTool:

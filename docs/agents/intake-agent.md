@@ -116,7 +116,7 @@ subgraph 内の標準ノード構成は次の通りとする。
 - intake_quality_gate
 - intake_finalize
 
-validation API として、少なくとも次の static / class method を [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) に持つ。
+validation API として、少なくとも次の static / class method を [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/intake_agent.py) に持つ。
 
 - resolve_intake_category(state, memory_snapshot)
 - resolve_intake_urgency(state, memory_snapshot)
@@ -159,9 +159,9 @@ shared/progress.md の初期記録例:
 
 ## 9. 実装方針
 
-- agent 定義メタデータは [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) の build_intake_agent_definition に残す
+- agent 定義メタデータは [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/intake_agent.py) の build_intake_agent_definition に残す
 - 複雑化する処理は専用の実行クラスへ切り出す
-- intake subgraph の生成責務は [src/support_ope_agents/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/intake_agent.py) 側に置き、workflow 側は subgraph を呼び出すだけにする
+- intake subgraph の生成責務は [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/intake_agent.py) 側に置き、workflow 側は subgraph を呼び出すだけにする
 - workflow が呼ぶ入口は IntakeAgent.create_node() と IntakeAgent.create_wait_node() とし、未注入は wiring ミスとして早期に検出する
 - 実行クラスは pii_mask、external_ticket、internal_ticket、classify_ticket、write_shared_memory を必要に応じて呼び出したうえで、state 更新、workspace への ticket hydration、品質ゲート、共有メモリ初期化、plan / action 分岐を担う
 - 品質ゲート判定ロジックは IntakeAgent の validation API として同居させ、Supervisor からはその API を参照する

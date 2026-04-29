@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluator, ObjectiveEvaluatorStructuredResult
-from support_ope_agents.config.models import AppConfig
+from support_desk_agent.agents.objective_evaluator import ObjectiveEvaluator, ObjectiveEvaluatorStructuredResult
+from support_desk_agent.config.models import AppConfig
 
 
 class ObjectiveEvaluatorTests(unittest.TestCase):
@@ -35,7 +35,7 @@ class ObjectiveEvaluatorTests(unittest.TestCase):
 
         evaluator = ObjectiveEvaluator(config=self._build_config(), instruction_text="instruction")
 
-        with patch("support_ope_agents.agents.objective_evaluator.build_chat_openai_model", return_value=model):
+        with patch("support_desk_agent.agents.objective_evaluator.build_chat_openai_model", return_value=model):
             result = evaluator.evaluate(evidence={"raw_issue": "test"})
 
         self.assertEqual(result.overall_score, 80)
@@ -58,7 +58,7 @@ class ObjectiveEvaluatorTests(unittest.TestCase):
 
         evaluator = ObjectiveEvaluator(config=self._build_config(), instruction_text="instruction")
 
-        with patch("support_ope_agents.agents.objective_evaluator.build_chat_openai_model", return_value=model):
+        with patch("support_desk_agent.agents.objective_evaluator.build_chat_openai_model", return_value=model):
             evaluator.evaluate(evidence={"plan_summary": "test"}, evaluation_target="plan")
 
         messages = structured_model.invoke.call_args.args[0]
@@ -81,7 +81,7 @@ class ObjectiveEvaluatorTests(unittest.TestCase):
 
         evaluator = ObjectiveEvaluator(config=self._build_config(), instruction_text="instruction")
 
-        with patch("support_ope_agents.agents.objective_evaluator.build_chat_openai_model", return_value=model):
+        with patch("support_desk_agent.agents.objective_evaluator.build_chat_openai_model", return_value=model):
             evaluator.evaluate(evidence={"investigation_summary": "test"}, evaluation_target="result")
 
         messages = structured_model.invoke.call_args.args[0]

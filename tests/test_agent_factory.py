@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from support_ope_agents.util.langchain.agent_factory import create_deep_agent_compatible_agent
+from support_desk_agent.util.langchain.agent_factory import create_deep_agent_compatible_agent
 
 
 class _FakeCompiledAgent:
@@ -21,7 +21,7 @@ class AgentFactoryTests(unittest.TestCase):
         fake_agent = _FakeCompiledAgent()
         context_schema = type("ContextSchema", (), {})
 
-        with patch("support_ope_agents.util.langchain.agent_factory.create_agent", return_value=fake_agent) as create_agent_mock:
+        with patch("support_desk_agent.util.langchain.agent_factory.create_agent", return_value=fake_agent) as create_agent_mock:
             create_deep_agent_compatible_agent(
                 model=SimpleNamespace(),
                 tools=[],
@@ -37,12 +37,12 @@ class AgentFactoryTests(unittest.TestCase):
         fake_agent = _FakeCompiledAgent()
         fake_model = SimpleNamespace()
 
-        with patch("support_ope_agents.util.langchain.agent_factory.create_agent", return_value=fake_agent) as create_agent_mock:
-            with patch("support_ope_agents.util.langchain.agent_factory.StateBackend", return_value="state-backend"):
-                with patch("support_ope_agents.util.langchain.agent_factory.FilesystemMiddleware", side_effect=lambda **kwargs: ("fs", kwargs)):
-                    with patch("support_ope_agents.util.langchain.agent_factory.PatchToolCallsMiddleware", return_value=("patch", {})):
-                        with patch("support_ope_agents.util.langchain.agent_factory.MemoryMiddleware", side_effect=lambda **kwargs: ("memory", kwargs)):
-                            with patch("support_ope_agents.util.langchain.agent_factory.SkillsMiddleware", side_effect=lambda **kwargs: ("skills", kwargs)):
+        with patch("support_desk_agent.util.langchain.agent_factory.create_agent", return_value=fake_agent) as create_agent_mock:
+            with patch("support_desk_agent.util.langchain.agent_factory.StateBackend", return_value="state-backend"):
+                with patch("support_desk_agent.util.langchain.agent_factory.FilesystemMiddleware", side_effect=lambda **kwargs: ("fs", kwargs)):
+                    with patch("support_desk_agent.util.langchain.agent_factory.PatchToolCallsMiddleware", return_value=("patch", {})):
+                        with patch("support_desk_agent.util.langchain.agent_factory.MemoryMiddleware", side_effect=lambda **kwargs: ("memory", kwargs)):
+                            with patch("support_desk_agent.util.langchain.agent_factory.SkillsMiddleware", side_effect=lambda **kwargs: ("skills", kwargs)):
                                 create_deep_agent_compatible_agent(
                                     model=fake_model,
                                     tools=[],
@@ -64,11 +64,11 @@ class AgentFactoryTests(unittest.TestCase):
 
         fake_model = _FakeModel()
 
-        with patch("support_ope_agents.util.langchain.agent_factory.create_agent", return_value=fake_agent) as create_agent_mock:
-            with patch("support_ope_agents.util.langchain.agent_factory.BaseChatModel", _FakeModel):
-                with patch("support_ope_agents.util.langchain.agent_factory.StateBackend", return_value="state-backend"):
-                    with patch("support_ope_agents.util.langchain.agent_factory.FilesystemMiddleware", side_effect=lambda **kwargs: ("fs", kwargs)):
-                        with patch("support_ope_agents.util.langchain.agent_factory.PatchToolCallsMiddleware", return_value=("patch", {})):
+        with patch("support_desk_agent.util.langchain.agent_factory.create_agent", return_value=fake_agent) as create_agent_mock:
+            with patch("support_desk_agent.util.langchain.agent_factory.BaseChatModel", _FakeModel):
+                with patch("support_desk_agent.util.langchain.agent_factory.StateBackend", return_value="state-backend"):
+                    with patch("support_desk_agent.util.langchain.agent_factory.FilesystemMiddleware", side_effect=lambda **kwargs: ("fs", kwargs)):
+                        with patch("support_desk_agent.util.langchain.agent_factory.PatchToolCallsMiddleware", return_value=("patch", {})):
                             create_deep_agent_compatible_agent(
                                 model=fake_model,
                                 tools=[],

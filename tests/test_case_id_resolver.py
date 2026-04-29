@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import unittest
 
-from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
+from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
 
 
 class CaseIdResolverServiceTests(unittest.TestCase):

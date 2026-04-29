@@ -7,16 +7,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent
-from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeClassification
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.instructions.loader import InstructionLoader
-from support_ope_agents.memory.file_store import CaseMemoryStore
-from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
-from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.runtime.sample.sample_service import SampleRuntimeContext
-from support_ope_agents.runtime.sample.sample_service import SampleRuntimeService
-from support_ope_agents.tools import ToolRegistry
+from support_desk_agent.agents.sample.sample_intake_agent import SampleIntakeAgent
+from support_desk_agent.agents.sample.sample_intake_agent import SampleIntakeClassification
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.instructions.loader import InstructionLoader
+from support_desk_agent.memory.file_store import CaseMemoryStore
+from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
+from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
+from support_desk_agent.runtime.sample.sample_service import SampleRuntimeContext
+from support_desk_agent.runtime.sample.sample_service import SampleRuntimeService
+from support_desk_agent.tools import ToolRegistry
 
 
 def _llm_api_key() -> str:
@@ -122,7 +122,7 @@ class SampleRuntimeServiceFlowTests(unittest.TestCase):
         )
 
         with patch(
-            "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+            "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
             return_value=_FakeStructuredClassifier(),
         ):
             initial = self.service.action(
@@ -188,7 +188,7 @@ class SampleRuntimeServiceFlowTests(unittest.TestCase):
         )
 
         with patch(
-            "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+            "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
             return_value=_FakeStructuredClassifier(),
         ):
             initial = self.service.action(
@@ -212,7 +212,7 @@ class SampleRuntimeServiceFlowTests(unittest.TestCase):
 
     def test_action_derives_log_extract_range_from_incident_timeframe(self) -> None:
         with patch(
-            "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+            "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
             return_value=_IncidentStructuredClassifier(),
         ):
             result = self.service.action(

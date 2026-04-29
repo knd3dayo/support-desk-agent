@@ -5,11 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support_ope_agents.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.memory.file_store import CaseMemoryStore
-from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
-from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
+from support_desk_agent.agents.roles import KNOWLEDGE_RETRIEVER_AGENT
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.memory.file_store import CaseMemoryStore
+from support_desk_agent.tools.case_memory_manager import CaseMemoryManager
+from support_desk_agent.tools.default_write_draft import build_default_write_draft_tool
 
 
 class MemoryToolTests(unittest.IsolatedAsyncioTestCase):

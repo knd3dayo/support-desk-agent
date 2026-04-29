@@ -34,6 +34,6 @@ CaseState へ反映する主な項目は次のとおり。
 
 ## 5. 実装メモ
 
-- 実行本体は [src/support_ope_agents/agents/investigate_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/investigate_agent.py) にある
+- 実行本体は [src/support_desk_agent/agents/investigate_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/investigate_agent.py) にある
 - 内部では log_analyzer_executor、knowledge_retriever_executor、draft_writer_executor を組み合わせる
 - user-facing な出力では旧 split role 名を出さず、調査結果と根拠資料として表現する

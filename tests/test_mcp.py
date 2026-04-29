@@ -6,13 +6,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
-from support_ope_agents.agents.objective_evaluator import (
+from support_desk_agent.agents.objective_evaluator import (
     ObjectiveEvaluator,
     ObjectiveEvaluatorStructuredResult,
     StructuredAgentEvaluation,
     StructuredCriterionEvaluation,
 )
-from support_ope_agents.interfaces.mcp import SupportOpeMcpAdapter
+from support_desk_agent.interfaces.mcp import SupportOpeMcpAdapter
 
 
 def _fake_objective_evaluation_result() -> ObjectiveEvaluatorStructuredResult:
@@ -57,7 +57,7 @@ class McpAdapterTests(unittest.TestCase):
             return_value=_fake_objective_evaluation_result(),
         )
         self._classify_model_patcher = patch(
-            "support_ope_agents.tools.default_classify_ticket.build_chat_openai_model",
+            "support_desk_agent.tools.default_classify_ticket.build_chat_openai_model",
             return_value=_FakeClassifierModel(),
         )
         self._objective_eval_patcher.start()
@@ -70,7 +70,7 @@ class McpAdapterTests(unittest.TestCase):
         config_path = self.repo_root / "config.yml"
         config_path.write_text(
                         "\n".join([
-                                "support_ope_agents:",
+                                "support_desk_agent:",
                                 "  llm:",
                                 "    provider: openai",
                                 "    model: gpt-4.1",

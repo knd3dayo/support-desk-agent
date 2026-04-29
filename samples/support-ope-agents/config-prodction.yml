@@ -1,4 +1,4 @@
-support_ope_agents:
+support_desk_agent:
   # このファイルは production 実装をこの repository で試すための実行用 config です。
   # 利用時は config.yml としてコピーして使う想定です。
   llm:

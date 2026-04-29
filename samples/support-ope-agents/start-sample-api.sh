@@ -108,4 +108,4 @@ if [[ "${SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE}" == "1" ]]; then
 fi
 
 cd "${REPO_ROOT}"
-exec uv run -m support_ope_agents.interfaces.api
+exec uv run -m support_desk_agent.interfaces.api

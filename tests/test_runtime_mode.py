@@ -4,14 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support_ope_agents.config import load_config
-from support_ope_agents.runtime import build_runtime_service
+from support_desk_agent.config import load_config
+from support_desk_agent.runtime import build_runtime_service
 
 
 class RuntimeModeSelectionTests(unittest.TestCase):
     def _write_config(self, *, root: Path, mode: str | None) -> Path:
         lines = [
-            "support_ope_agents:",
+            "support_desk_agent:",
             "  llm:",
             "    provider: openai",
             "    model: gpt-4.1",
@@ -45,7 +45,7 @@ class RuntimeModeSelectionTests(unittest.TestCase):
             config_path = self._write_config(root=root, mode="sample")
             service = build_runtime_service(config_path)
 
-            self.assertEqual(type(service).__module__, "support_ope_agents.runtime.sample.sample_service")
+            self.assertEqual(type(service).__module__, "support_desk_agent.runtime.sample.sample_service")
             self.assertEqual(
                 service.print_workflow_nodes(),
                 [
@@ -63,7 +63,7 @@ class RuntimeModeSelectionTests(unittest.TestCase):
             config_path = self._write_config(root=root, mode=None)
             service = build_runtime_service(config_path)
 
-            self.assertEqual(type(service).__module__, "support_ope_agents.runtime.production.production_service")
+            self.assertEqual(type(service).__module__, "support_desk_agent.runtime.production.production_service")
             self.assertEqual(
                 service.print_workflow_nodes(),
                 [

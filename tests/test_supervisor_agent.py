@@ -6,10 +6,10 @@ import unittest
 from asyncio import run
 from pathlib import Path
 
-from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
-from support_ope_agents.agents.production.supervisor_agent import SupervisorPhaseExecutor
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
+from support_desk_agent.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
+from support_desk_agent.agents.production.supervisor_agent import SupervisorPhaseExecutor
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.tools.case_memory_manager import CaseMemoryManager
 
 
 class SupervisorPhaseExecutorHelpersTests(unittest.TestCase):

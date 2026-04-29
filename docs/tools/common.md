@@ -44,9 +44,9 @@
 
 ## 7. 実装上の接続点
 
-- ToolRegistry: [src/support_ope_agents/tools/registry.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/registry.py)
-- builtin tools: [src/support_ope_agents/tools/builtin_tools.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/builtin_tools.py)
-- shared memory payload: [src/support_ope_agents/util/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/util/shared_memory_payload.py)
+- ToolRegistry: [src/support_desk_agent/tools/registry.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/tools/registry.py)
+- builtin tools: [src/support_desk_agent/tools/builtin_tools.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/tools/builtin_tools.py)
+- shared memory payload: [src/support_desk_agent/util/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/util/shared_memory_payload.py)
 - config override: [config.yml](/home/user/source/repos/support-ope-agents/config.yml)
 
 ## 8. 未実装の論理ツール

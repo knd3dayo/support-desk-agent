@@ -4,7 +4,7 @@ import unittest
 
 from xml.etree import ElementTree
 
-from support_ope_agents.util.parsing import extract_xml_block, parse_mcp_tool_selection_xml, parse_xml_mapping
+from support_desk_agent.util.parsing import extract_xml_block, parse_mcp_tool_selection_xml, parse_xml_mapping
 
 
 class StructuredOutputUtilTests(unittest.TestCase):

@@ -8,13 +8,13 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluatorStructuredResult
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.instructions.loader import InstructionLoader
-from support_ope_agents.memory.file_store import CaseMemoryStore
-from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, build_support_improvement_report, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_instruction_policy, _render_ticket_fetch_error_section, _render_ticket_info_section, _ticket_lookup_detail, _ticket_lookup_status
-from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.models.state import CaseState
+from support_desk_agent.agents.objective_evaluator import ObjectiveEvaluatorStructuredResult
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.instructions.loader import InstructionLoader
+from support_desk_agent.memory.file_store import CaseMemoryStore
+from support_desk_agent.runtime.reporting import MemoryConsistencyFinding, build_support_improvement_report, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_instruction_policy, _render_ticket_fetch_error_section, _render_ticket_info_section, _ticket_lookup_detail, _ticket_lookup_status
+from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
+from support_desk_agent.models.state import CaseState
 
 
 class ReportingEvaluationTests(unittest.TestCase):
@@ -91,7 +91,7 @@ class ReportingEvaluationTests(unittest.TestCase):
             loader = InstructionLoader(config, memory_store, RuntimeHarnessManager(config))
 
             with patch(
-                "support_ope_agents.runtime.reporting.ObjectiveEvaluator.evaluate",
+                "support_desk_agent.runtime.reporting.ObjectiveEvaluator.evaluate",
                 return_value=ObjectiveEvaluatorStructuredResult(
                     criterion_evaluations=[],
                     agent_evaluations=[],

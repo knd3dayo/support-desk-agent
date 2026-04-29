@@ -40,7 +40,7 @@ API と React UI を使って試す場合は、このディレクトリに追加
 /home/user/source/repos/support-ope-agents/samples/support-ope-agents/start-sample-react.sh
 ```
 
-API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ個別に起動したい場合は `start-sample-react.sh` も引き続き使えます。API 起動スクリプトは `--workspace-root` または `SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT` を必須とし、指定したディレクトリをケース作成先として使ったうえで、内部的には `uv run -m support_ope_agents.interfaces.api` を呼び出します。sample API は UI テストを優先して、既定では起動時の LLM probe を skip します。実 backend の疎通確認も startup で行いたい場合は `SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE=0` を付けて起動してください。React 起動スクリプトはリポジトリ直下の frontend を開発モードで起動し、`API_PORT` が指定されていればそのポートの API を proxy します。
+API だけ個別に起動したい場合は `start-sample-api.sh`、React だけ個別に起動したい場合は `start-sample-react.sh` も引き続き使えます。API 起動スクリプトは `--workspace-root` または `SUPPORT_OPE_SAMPLE_WORKSPACE_ROOT` を必須とし、指定したディレクトリをケース作成先として使ったうえで、内部的には `uv run -m support_desk_agent.interfaces.api` を呼び出します。sample API は UI テストを優先して、既定では起動時の LLM probe を skip します。実 backend の疎通確認も startup で行いたい場合は `SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE=0` を付けて起動してください。React 起動スクリプトはリポジトリ直下の frontend を開発モードで起動し、`API_PORT` が指定されていればそのポートの API を proxy します。
 
 sample API 起動スクリプトは sibling の ai-chat-util ソース `/home/user/source/repos/ai-chat-util/app/src` を `PYTHONPATH` の先頭へ追加します。`uv sync -U` を実行しても、ローカル directory dependency が non-editable install のまま同じ version だと site-packages 側の古いビルドを掴み続けることがあるためです。sample 実行では source tree を優先し、support-ope-agents と ai-chat-util を同時開発している状態でも `AnalysisService` の最新 API を使います。
 
@@ -77,7 +77,7 @@ HOST=0.0.0.0 PORT=5174 /home/user/source/repos/support-ope-agents/samples/suppor
 実行例:
 
 ```bash
-python -m support_ope_agents.cli action \
+python -m support_desk_agent.cli action \
   "ai-chat-util の利用方法について問い合わせがあります。関連資料を調査し、必要に応じてバックサポート向け問い合わせ文も作成してください。" \
   --workspace-path /tmp/support-ope-agents-support-case \
   --external-ticket-id 101 \

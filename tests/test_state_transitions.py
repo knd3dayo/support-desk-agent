@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from support_ope_agents.agents.roles import APPROVAL_AGENT
-from support_ope_agents.agents.roles import INTAKE_AGENT
-from support_ope_agents.agents.roles import SUPERVISOR_AGENT
-from support_ope_agents.agents.roles import TICKET_UPDATE_AGENT
-from support_ope_agents.models.state_transitions import StateTransitionHelper
+from support_desk_agent.agents.roles import APPROVAL_AGENT
+from support_desk_agent.agents.roles import INTAKE_AGENT
+from support_desk_agent.agents.roles import SUPERVISOR_AGENT
+from support_desk_agent.agents.roles import TICKET_UPDATE_AGENT
+from support_desk_agent.models.state_transitions import StateTransitionHelper
 
 
 class StateTransitionHelperTests(unittest.TestCase):

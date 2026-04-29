@@ -7,14 +7,14 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
-from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluatorStructuredResult
-from support_ope_agents.agents.sample.sample_investigate_agent import SampleInvestigateAgent
-from support_ope_agents.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.instructions.loader import InstructionLoader
-from support_ope_agents.memory.file_store import CaseMemoryStore
-from support_ope_agents.models.state import CaseState
-from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
+from support_desk_agent.agents.objective_evaluator import ObjectiveEvaluatorStructuredResult
+from support_desk_agent.agents.sample.sample_investigate_agent import SampleInvestigateAgent
+from support_desk_agent.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.instructions.loader import InstructionLoader
+from support_desk_agent.memory.file_store import CaseMemoryStore
+from support_desk_agent.models.state import CaseState
+from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
 
 
 class _FakeSubAgent:
@@ -153,8 +153,8 @@ class SampleInvestigateAgentTests(unittest.TestCase):
     def test_create_sub_agent_passes_investigate_tools_to_deep_agent(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
 
-        with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
-            with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
+        with patch("support_desk_agent.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+            with patch("support_desk_agent.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
                 backend_mock.return_value = object()
                 create_mock.return_value = object()
                 agent.create_sub_agent(query="ログを調べて")
@@ -183,8 +183,8 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         fake_tool = type("FakeTool", (), {"name": "write_working_memory", "handler": _async_tool})()
 
         with patch.object(agent.tool_registry, "get_tools", return_value=[fake_tool]):
-            with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
-                with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
+            with patch("support_desk_agent.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+                with patch("support_desk_agent.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
                     backend_mock.return_value = object()
                     create_mock.return_value = object()
                     agent.create_sub_agent(query="ログを調べて")
@@ -198,8 +198,8 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             evidence_dir = Path(tmpdir) / ".evidence"
             evidence_dir.mkdir(parents=True, exist_ok=True)
-            with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
-                with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
+            with patch("support_desk_agent.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+                with patch("support_desk_agent.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
                     backend_mock.return_value = object()
                     create_mock.return_value = object()
                     agent.create_sub_agent(query="ログを調べて", workspace_path=tmpdir)
@@ -211,15 +211,15 @@ class SampleInvestigateAgentTests(unittest.TestCase):
     def test_create_sub_agent_enables_agents_memory_and_context_schema(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
 
-        with patch("support_ope_agents.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
-            with patch("support_ope_agents.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
+        with patch("support_desk_agent.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+            with patch("support_desk_agent.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
                 backend_mock.return_value = object()
                 create_mock.return_value = object()
                 agent.create_sub_agent(query="ドキュメントから仕様を確認して")
 
         memory_sources = create_mock.call_args.kwargs["memory"]
         self.assertTrue(memory_sources)
-        self.assertTrue(str(memory_sources[0]).endswith("/support_ope_agents/AGENTS.md"))
+        self.assertTrue(str(memory_sources[0]).endswith("/support_desk_agent/AGENTS.md"))
         self.assertIs(create_mock.call_args.kwargs["context_schema"], CaseState)
 
     def test_system_prompt_instructs_checklist_memory_and_attachment_analysis(self) -> None:
@@ -261,7 +261,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
             attachment_dir.mkdir(parents=True, exist_ok=True)
             (attachment_dir / "guide.pdf").write_text("pdf payload", encoding="utf-8")
             (attachment_dir / "screen.png").write_text("png payload", encoding="utf-8")
-            with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+            with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
                 evaluate_mock.side_effect = [
                     ObjectiveEvaluatorStructuredResult(
                         criterion_evaluations=[],
@@ -305,7 +305,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
             evidence_dir = Path(tmpdir) / ".evidence"
             evidence_dir.mkdir(parents=True, exist_ok=True)
             (evidence_dir / "bundle.zip").write_text("zip payload", encoding="utf-8")
-            with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+            with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
                 evaluate_mock.side_effect = [
                     ObjectiveEvaluatorStructuredResult(
                         criterion_evaluations=[],
@@ -353,7 +353,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
             excluded_dir = evidence_dir / "excluded"
             excluded_dir.mkdir(parents=True, exist_ok=True)
             (excluded_dir / "secret.log").write_text("secret", encoding="utf-8")
-            with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+            with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
                 evaluate_mock.side_effect = [
                     ObjectiveEvaluatorStructuredResult(
                         criterion_evaluations=[],
@@ -388,7 +388,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
             evidence_dir.mkdir(parents=True, exist_ok=True)
             (evidence_dir / "custom-name.txt").write_text("hello", encoding="utf-8")
 
-            from support_ope_agents.util.workspace_evidence import find_evidence_log_file
+            from support_desk_agent.util.workspace_evidence import find_evidence_log_file
 
             result = find_evidence_log_file(tmpdir)
 
@@ -467,7 +467,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
     def test_supervisor_passes_workspace_path_to_sample_investigation(self) -> None:
         supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=_WorkspaceAwareInvestigateExecutor())
 
-        with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+        with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
             evaluate_mock.side_effect = [
                 ObjectiveEvaluatorStructuredResult(
                     criterion_evaluations=[],
@@ -501,7 +501,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         executor = _CapturingInvestigateExecutor()
         supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
 
-        with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+        with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
             evaluate_mock.side_effect = [
                 ObjectiveEvaluatorStructuredResult(
                     criterion_evaluations=[],
@@ -547,14 +547,14 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
 
         with patch(
-            "support_ope_agents.agents.sample.sample_supervisor_agent.InstructionLoader.load",
+            "support_desk_agent.agents.sample.sample_supervisor_agent.InstructionLoader.load",
             side_effect=[
                 "instruction:CASE-TEST-SAMPLE-INSTRUCTION-001:SuperVisorAgent",
                 "instruction:CASE-TEST-SAMPLE-INSTRUCTION-001:ObjectiveEvaluator",
                 "instruction:CASE-TEST-SAMPLE-INSTRUCTION-001:ObjectiveEvaluator",
             ],
         ):
-            with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+            with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
                 evaluate_mock.side_effect = [
                     ObjectiveEvaluatorStructuredResult(
                         criterion_evaluations=[],
@@ -609,7 +609,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                 return_value="## Investigate Result\n- 未解決事項: SSO 側ログの追加確認が必要",
             ):
                 with patch.object(supervisor.tool_registry, "invoke_tool", side_effect=_invoke_tool):
-                    with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+                    with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
                         evaluate_mock.side_effect = [
                             ObjectiveEvaluatorStructuredResult(
                                 criterion_evaluations=[],
@@ -671,7 +671,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         executor = _CapturingInvestigateExecutor()
         supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
 
-        with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+        with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
             evaluate_mock.side_effect = [
                 ObjectiveEvaluatorStructuredResult(
                     criterion_evaluations=[],

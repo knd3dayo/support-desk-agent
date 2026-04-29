@@ -8,35 +8,35 @@ from unittest.mock import patch
 
 import yaml
 
-from support_ope_agents.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
-from support_ope_agents.config import load_config
-from support_ope_agents.config.models import AgentCatalogSettings, AppConfig
-from support_ope_agents.runtime.sample.sample_service import build_runtime_context
-from support_ope_agents.tools import ToolConfigurationError
+from support_desk_agent.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
+from support_desk_agent.config import load_config
+from support_desk_agent.config.models import AgentCatalogSettings, AppConfig
+from support_desk_agent.runtime.sample.sample_service import build_runtime_context
+from support_desk_agent.tools import ToolConfigurationError
 
 
 class SampleConfigTests(unittest.TestCase):
-    def test_support_ope_agents_sample_uses_sample_runtime_mode(self) -> None:
+    def test_support_desk_agent_sample_uses_sample_runtime_mode(self) -> None:
         config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
         loaded = load_config(config_path)
 
         self.assertEqual(loaded.runtime.mode, "sample")
 
-    def test_support_ope_agents_sample_uses_default_constraint_mode_by_default(self) -> None:
+    def test_support_desk_agent_sample_uses_default_constraint_mode_by_default(self) -> None:
         config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-        settings = AgentCatalogSettings.model_validate(raw["support_ope_agents"]["agents"])
+        settings = AgentCatalogSettings.model_validate(raw["support_desk_agent"]["agents"])
 
         self.assertEqual(settings.default_constraint_mode, "default")
         self.assertEqual(settings.resolve_constraint_mode(INVESTIGATE_AGENT), "default")
         self.assertEqual(settings.resolve_constraint_mode(SUPERVISOR_AGENT), "default")
 
-    def test_support_ope_agents_sample_configures_github_ticket_logical_tools(self) -> None:
+    def test_support_desk_agent_sample_configures_github_ticket_logical_tools(self) -> None:
         config_path = Path(__file__).resolve().parents[1] / "samples" / "support-ope-agents" / "config-sample.yml"
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-        logical_tools = raw["support_ope_agents"]["tools"]["logical_tools"]
+        logical_tools = raw["support_desk_agent"]["tools"]["logical_tools"]
         external_ticket = logical_tools["external_ticket"]
         internal_ticket = logical_tools["internal_ticket"]
 
@@ -53,7 +53,7 @@ class SampleConfigTests(unittest.TestCase):
             config_path.write_text(
                 "\n".join(
                     [
-                        "support_ope_agents:",
+                        "support_desk_agent:",
                         "  llm:",
                         "    provider: openai",
                         "    model: poc-chat-model",
@@ -89,7 +89,7 @@ class SampleConfigTests(unittest.TestCase):
             config_path.write_text(
                 "\n".join(
                     [
-                        "support_ope_agents:",
+                        "support_desk_agent:",
                         "  llm:",
                         "    provider: openai",
                         "    model: gpt-4.1",
@@ -144,7 +144,7 @@ class SampleConfigTests(unittest.TestCase):
             config_path.write_text(
                 "\n".join(
                     [
-                        "support_ope_agents:",
+                        "support_desk_agent:",
                         "  llm:",
                         "    provider: openai",
                         "    model: gpt-4.1",
@@ -177,7 +177,7 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(external_ticket.arguments, {"repo": "external-support"})
         self.assertEqual(external_ticket.candidate_matching.max_question_candidates, 3)
 
-    def test_load_config_requires_support_ope_agents_root_key(self) -> None:
+    def test_load_config_requires_support_desk_agent_root_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.yml"
             config_path.write_text(
@@ -194,7 +194,7 @@ class SampleConfigTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(ValueError, "config root 'support_ope_agents' is required"):
+            with self.assertRaisesRegex(ValueError, "config root 'support_desk_agent' is required"):
                 load_config(config_path)
 
     def test_sample_runtime_context_validates_enabled_ticket_sources_on_startup(self) -> None:
@@ -203,7 +203,7 @@ class SampleConfigTests(unittest.TestCase):
             config_path.write_text(
                 "\n".join(
                     [
-                        "support_ope_agents:",
+                        "support_desk_agent:",
                         "  llm:",
                         "    provider: openai",
                         "    model: gpt-4.1",
@@ -239,7 +239,7 @@ class SampleConfigTests(unittest.TestCase):
             fake_client = _FakeMcpClient()
 
             with patch(
-                "support_ope_agents.runtime.sample.sample_service.McpToolClient.from_config",
+                "support_desk_agent.runtime.sample.sample_service.McpToolClient.from_config",
                 return_value=fake_client,
             ):
                 build_runtime_context(str(config_path))
@@ -252,7 +252,7 @@ class SampleConfigTests(unittest.TestCase):
             config_path.write_text(
                 "\n".join(
                     [
-                        "support_ope_agents:",
+                        "support_desk_agent:",
                         "  llm:",
                         "    provider: openai",
                         "    model: gpt-4.1",
@@ -285,7 +285,7 @@ class SampleConfigTests(unittest.TestCase):
                     )
 
             with patch(
-                "support_ope_agents.runtime.sample.sample_service.McpToolClient.from_config",
+                "support_desk_agent.runtime.sample.sample_service.McpToolClient.from_config",
                 return_value=_FailingMcpClient(),
             ):
                 with self.assertRaisesRegex(ToolConfigurationError, "tools.logical_tools.external_ticket"):

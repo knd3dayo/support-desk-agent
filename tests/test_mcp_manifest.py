@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from support_ope_agents.config import McpConfigError, McpManifest
+from support_desk_agent.config import McpConfigError, McpManifest
 
 
 class McpManifestTests(unittest.TestCase):

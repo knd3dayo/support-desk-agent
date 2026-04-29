@@ -1,4 +1,4 @@
-support_ope_agents:
+support_desk_agent:
   # LLM の接続設定です。
   # api_key は YAML に直書きせず、環境変数または .env から読み込む前提です。
   llm:

@@ -11,7 +11,7 @@
 ## 3. 既定実装 / 接続点
 
 - 論理ツール名: analyze_image_files
-- 既定実装: [src/support_ope_agents/tools/builtin_tools.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/tools/builtin_tools.py)
+- 既定実装: [src/support_desk_agent/tools/builtin_tools.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/tools/builtin_tools.py)
 - エラーダイアログ、UI 上のメッセージ、グラフ異常の確認に使う
 
 ## 4. 実装状況

@@ -6,12 +6,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from support_ope_agents.config import McpManifest
-from support_ope_agents.config import McpServerConfig
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.config.models import McpToolBinding
-from support_ope_agents.tools.mcp_client import McpToolClient
-from support_ope_agents.tools.registry import ToolRegistry, ToolSpec
+from support_desk_agent.config import McpManifest
+from support_desk_agent.config import McpServerConfig
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.config.models import McpToolBinding
+from support_desk_agent.tools.mcp_client import McpToolClient
+from support_desk_agent.tools.registry import ToolRegistry, ToolSpec
 
 
 class McpToolClientTests(unittest.TestCase):
@@ -134,7 +134,7 @@ class McpToolClientTests(unittest.TestCase):
             def validate_logical_tool(self, *, logical_tool_name: str, binding) -> None:
                 return None
 
-        with patch("support_ope_agents.tools.registry.McpToolClient.from_config", return_value=_FakeMcpClient()) as from_config:
+        with patch("support_desk_agent.tools.registry.McpToolClient.from_config", return_value=_FakeMcpClient()) as from_config:
             ToolRegistry(config)
 
         from_config.assert_called_once_with(config)

@@ -103,8 +103,8 @@ shared/progress.md には次を残す。
 
 ## 9. 実装方針
 
-- agent 定義メタデータは [src/support_ope_agents/agents/supervisor_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/supervisor_agent.py) の build_supervisor_agent_definition に残す
-- workflow 側の入口は [src/support_ope_agents/agents/supervisor_agent.py](/home/user/source/repos/support-ope-agents/src/support_ope_agents/agents/supervisor_agent.py) の create_node() とし、親 graph は `supervisor_subgraph` を呼び出すだけにする
+- agent 定義メタデータは [src/support_desk_agent/agents/supervisor_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/supervisor_agent.py) の build_supervisor_agent_definition に残す
+- workflow 側の入口は [src/support_desk_agent/agents/supervisor_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/supervisor_agent.py) の create_node() とし、親 graph は `supervisor_subgraph` を呼び出すだけにする
 - subgraph 内部ノードは investigation、draft_review、escalation_review を維持し、runtime audit / reporting / control catalog との互換を保つ
 - reject 時は draft_review から、initial / reinvestigate 時は investigation から再入場できる entry routing を持たせる
 - workflow_kind と intake_category は同じ語彙体系で扱い、Supervisor は workflow_kind を基準にしつつ ambiguous_case を intake_category で絞り込む
@@ -114,7 +114,7 @@ shared/progress.md には次を残す。
 - Intake 品質ゲートの判定ロジック自体は共通 validator を参照するが、その workflow 上の実行責務は IntakeAgent 側に置く
 - BackSupportEscalationAgent / BackSupportInquiryWriterAgent は、通常回答ドラフト系とは別の補助分岐として扱う
 - エスカレーション判定語彙と workflow_kind ごとの既定依頼資料は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の agents.BackSupportEscalationAgent.escalation で調整可能とする
-- Intake 出力評価のチェックリストは [src/support_ope_agents/instructions/defaults/SuperVisorAgent.md](/home/user/source/repos/support-ope-agents/src/support_ope_agents/instructions/defaults/SuperVisorAgent.md) の既定指示に置き、必要なら config_paths.instructions_path 配下の SuperVisorAgent.md で丸ごとオーバーライドする
+- Intake 出力評価のチェックリストは [src/support_desk_agent/instructions/defaults/SuperVisorAgent.md](/home/user/source/repos/support-ope-agents/src/support_desk_agent/instructions/defaults/SuperVisorAgent.md) の既定指示に置き、必要なら config_paths.instructions_path 配下の SuperVisorAgent.md で丸ごとオーバーライドする
 
 ## 10. 未決事項
 

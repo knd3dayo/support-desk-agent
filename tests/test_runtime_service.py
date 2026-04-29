@@ -12,14 +12,14 @@ from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 
-from support_ope_agents.agents.agent_definition import AgentDefinition
-from support_ope_agents.agents.objective_evaluator import (
+from support_desk_agent.agents.agent_definition import AgentDefinition
+from support_desk_agent.agents.objective_evaluator import (
     ObjectiveEvaluator,
     ObjectiveEvaluatorStructuredResult,
     StructuredAgentEvaluation,
     StructuredCriterionEvaluation,
 )
-from support_ope_agents.agents.roles import (
+from support_desk_agent.agents.roles import (
     APPROVAL_AGENT,
     BACK_SUPPORT_ESCALATION_AGENT,
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
@@ -32,18 +32,18 @@ from support_ope_agents.agents.roles import (
     SUPERVISOR_AGENT,
     TICKET_UPDATE_AGENT,
 )
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.instructions.loader import InstructionLoader
-from support_ope_agents.memory.file_store import CaseMemoryStore
-from support_ope_agents.runtime.case_id_resolver import CaseIdResolverService
-from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_ope_agents.runtime.production.production_service import ProductionRuntimeContext, ProductionRuntimeService, build_runtime_context
-from support_ope_agents.tools.case_memory_manager import CaseMemoryManager
-from support_ope_agents.tools.default_search_documents import build_default_search_documents_tool
-from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
-from support_ope_agents.tools import ToolConfigurationError
-from support_ope_agents.tools.registry import ToolSpec
-from support_ope_agents.models.state import CaseState
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.instructions.loader import InstructionLoader
+from support_desk_agent.memory.file_store import CaseMemoryStore
+from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
+from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
+from support_desk_agent.runtime.production.production_service import ProductionRuntimeContext, ProductionRuntimeService, build_runtime_context
+from support_desk_agent.tools.case_memory_manager import CaseMemoryManager
+from support_desk_agent.tools.default_search_documents import build_default_search_documents_tool
+from support_desk_agent.tools.default_write_draft import build_default_write_draft_tool
+from support_desk_agent.tools import ToolConfigurationError
+from support_desk_agent.tools.registry import ToolSpec
+from support_desk_agent.models.state import CaseState
 
 
 def _fake_objective_evaluation_result() -> ObjectiveEvaluatorStructuredResult:
@@ -485,7 +485,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             }
         )
         self._classify_model_patcher = patch(
-            "support_ope_agents.tools.default_classify_ticket.build_chat_openai_model",
+            "support_desk_agent.tools.default_classify_ticket.build_chat_openai_model",
             return_value=_FakeClassifierModel(),
         )
         # Removed compliance model patcher as it is not needed
@@ -544,7 +544,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             config_path.write_text(
                 "\n".join(
                     [
-                        "support_ope_agents:",
+                        "support_desk_agent:",
                         "  llm:",
                         "    provider: openai",
                         "    model: gpt-4.1",
@@ -578,7 +578,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             fake_client = _FakeMcpClient()
 
             with patch(
-                "support_ope_agents.runtime.production.production_service.McpToolClient.from_config",
+                "support_desk_agent.runtime.production.production_service.McpToolClient.from_config",
                 return_value=fake_client,
             ):
                 build_runtime_context(str(config_path))
@@ -591,7 +591,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
             config_path.write_text(
                 "\n".join(
                     [
-                        "support_ope_agents:",
+                        "support_desk_agent:",
                         "  llm:",
                         "    provider: openai",
                         "    model: gpt-4.1",
@@ -622,7 +622,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
                     )
 
             with patch(
-                "support_ope_agents.runtime.production.production_service.McpToolClient.from_config",
+                "support_desk_agent.runtime.production.production_service.McpToolClient.from_config",
                 return_value=_FailingMcpClient(),
             ):
                 with self.assertRaisesRegex(ToolConfigurationError, "tools.logical_tools.external_ticket"):
@@ -834,7 +834,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         service = self._build_service(config)
 
         with patch(
-            "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+            "support_desk_agent.tools.default_search_documents._invoke_deepagents_search",
             return_value={
                 "ai-platform-poc": {
                     "source_name": "ai-platform-poc",
@@ -1678,7 +1678,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         )
         service = self._build_service(config)
 
-        with patch("support_ope_agents.runtime.abstract_service.SqliteSaver", _FakeSqliteSaver), patch.object(
+        with patch("support_desk_agent.runtime.abstract_service.SqliteSaver", _FakeSqliteSaver), patch.object(
             ProductionRuntimeService,
             "_build_case_workflow",
             autospec=True,

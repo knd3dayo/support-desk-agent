@@ -7,11 +7,11 @@ from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 
-from support_ope_agents.agents.production.ticket_update_agent import TicketUpdateAgent
-from support_ope_agents.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.prepare_ticket_update import build_default_prepare_ticket_update_tool
-from support_ope_agents.tools.mcp_client import McpToolInfo
+from support_desk_agent.agents.production.ticket_update_agent import TicketUpdateAgent
+from support_desk_agent.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.tools.prepare_ticket_update import build_default_prepare_ticket_update_tool
+from support_desk_agent.tools.mcp_client import McpToolInfo
 
 
 class _FakeResolver:
@@ -101,7 +101,7 @@ class TicketUpdateAgentTests(unittest.TestCase):
             ticket_mcp_client=_FakeResolver(),  # type: ignore[arg-type]
         )
 
-        with patch("support_ope_agents.agents.production.ticket_update_agent.build_chat_openai_model", return_value=_FakeChatModel()):
+        with patch("support_desk_agent.agents.production.ticket_update_agent.build_chat_openai_model", return_value=_FakeChatModel()):
             result = agent.prepare_update(
                 {
                     "draft_response": "回答ドラフトです",
@@ -124,7 +124,7 @@ class TicketUpdateAgentTests(unittest.TestCase):
             prepare_ticket_update_tool=build_default_prepare_ticket_update_tool(config),
         )
 
-        with patch("support_ope_agents.agents.sample.sample_ticket_update_agent.build_chat_openai_model", return_value=_FakeChatModel()):
+        with patch("support_desk_agent.agents.sample.sample_ticket_update_agent.build_chat_openai_model", return_value=_FakeChatModel()):
             result = agent.prepare_update(
                 {
                     "draft_response": "回答ドラフトです",
@@ -149,7 +149,7 @@ class TicketUpdateAgentTests(unittest.TestCase):
         )
 
         with patch(
-            "support_ope_agents.agents.production.ticket_update_agent.build_chat_openai_model",
+            "support_desk_agent.agents.production.ticket_update_agent.build_chat_openai_model",
             return_value=_FakeNotFoundChatModel(),
         ):
             result = agent.prepare_update(

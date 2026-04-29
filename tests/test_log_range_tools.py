@@ -15,13 +15,13 @@ from docx import Document as DocxDocument
 from openpyxl import Workbook
 from pptx import Presentation
 
-from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.builtin_tools import build_builtin_tools
-from support_ope_agents.tools.infer_log_pattern import build_default_infer_log_pattern_tool
-from support_ope_agents.tools.registry import ToolRegistry
-from support_ope_agents.util.ai_chat_util_bridge import build_ai_chat_util_config
-from support_ope_agents.util.log_time_range import derive_log_extract_range_from_timeframe
+from support_desk_agent.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.tools.builtin_tools import build_builtin_tools
+from support_desk_agent.tools.infer_log_pattern import build_default_infer_log_pattern_tool
+from support_desk_agent.tools.registry import ToolRegistry
+from support_desk_agent.util.ai_chat_util_bridge import build_ai_chat_util_config
+from support_desk_agent.util.log_time_range import derive_log_extract_range_from_timeframe
 
 
 class _FakeStructuredModel:
@@ -147,7 +147,7 @@ class LogRangeToolTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("support_ope_agents.tools.infer_log_pattern.build_chat_openai_model", return_value=_FakeModel()):
+            with patch("support_desk_agent.tools.infer_log_pattern.build_chat_openai_model", return_value=_FakeModel()):
                 payload = json.loads(tool(file_path=str(log_path), sample_line_limit=20))
 
         self.assertEqual(payload["status"], "matched")
@@ -210,7 +210,7 @@ class LogRangeToolTests(unittest.TestCase):
             pdf_path.write_bytes(b"%PDF-1.4\n")
 
             with patch(
-                "support_ope_agents.tools.builtin_tools.analyze_pdf_files_with_ai_chat_util",
+                "support_desk_agent.tools.builtin_tools.analyze_pdf_files_with_ai_chat_util",
                 return_value="delegated via ai-chat-util",
             ) as delegated:
                 result = asyncio.run(handler([str(pdf_path)], "check this", "auto"))
@@ -234,7 +234,7 @@ class LogRangeToolTests(unittest.TestCase):
                 archive.writestr("a.txt", "hello")
 
             with patch(
-                "support_ope_agents.tools.builtin_tools.list_zip_contents_with_ai_chat_util",
+                "support_desk_agent.tools.builtin_tools.list_zip_contents_with_ai_chat_util",
                 return_value=["a.txt"],
             ) as delegated:
                 result = asyncio.run(handler(str(archive_path)))
@@ -253,7 +253,7 @@ class LogRangeToolTests(unittest.TestCase):
             output_path = Path(tmpdir) / "nested" / "archive.zip"
 
             with patch(
-                "support_ope_agents.tools.builtin_tools.create_zip_with_ai_chat_util",
+                "support_desk_agent.tools.builtin_tools.create_zip_with_ai_chat_util",
                 return_value=True,
             ) as delegated:
                 result = asyncio.run(handler([str(source_path)], str(output_path), "secret"))
@@ -331,7 +331,7 @@ class LogRangeToolTests(unittest.TestCase):
             source_path.write_text("dummy", encoding="utf-8")
 
             with patch(
-                "support_ope_agents.tools.builtin_tools.convert_office_files_to_pdf_with_ai_chat_util",
+                "support_desk_agent.tools.builtin_tools.convert_office_files_to_pdf_with_ai_chat_util",
                 return_value=[{"source_path": str(source_path.resolve()), "pdf_path": str(source_path.with_suffix('.pdf').resolve())}],
             ) as delegated:
                 result = asyncio.run(handler([str(source_path)], None, True))
@@ -349,7 +349,7 @@ class LogRangeToolTests(unittest.TestCase):
             log_path.write_text("INFO start\n", encoding="utf-8")
 
             with patch(
-                "support_ope_agents.tools.builtin_tools.detect_log_format_and_search_with_ai_chat_util",
+                "support_desk_agent.tools.builtin_tools.detect_log_format_and_search_with_ai_chat_util",
                 return_value=json.dumps({"detected_format": "log4j"}, ensure_ascii=False),
             ) as delegated:
                 result = asyncio.run(handler(str(log_path), ["ERROR"], 10, 5))
@@ -367,7 +367,7 @@ class LogRangeToolTests(unittest.TestCase):
             log_path.write_text("INFO start\n", encoding="utf-8")
 
             with patch(
-                "support_ope_agents.tools.builtin_tools.infer_log_header_pattern_with_ai_chat_util",
+                "support_desk_agent.tools.builtin_tools.infer_log_header_pattern_with_ai_chat_util",
                 return_value=json.dumps({"status": "matched", "header_pattern": "^INFO", "timestamp_start": 0, "timestamp_end": 4}, ensure_ascii=False),
             ) as delegated:
                 result = asyncio.run(handler(str(log_path), 20))
@@ -427,7 +427,7 @@ class LogRangeToolTests(unittest.TestCase):
 
     def test_derive_log_extract_range_uses_llm_for_ambiguous_timeframe(self) -> None:
         config = self._build_config()
-        with patch("support_ope_agents.util.log_time_range.build_chat_openai_model", return_value=_FakeTimeRangeModel()):
+        with patch("support_desk_agent.util.log_time_range.build_chat_openai_model", return_value=_FakeTimeRangeModel()):
             derived = derive_log_extract_range_from_timeframe(
                 "昨日の夕方に発生しました。",
                 config=config,

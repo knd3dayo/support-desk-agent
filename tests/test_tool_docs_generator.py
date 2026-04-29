@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support_ope_agents.tools.doc_generator import export_tool_docs
+from support_desk_agent.tools.doc_generator import export_tool_docs
 
 
 class ToolDocsGeneratorTests(unittest.TestCase):

@@ -138,21 +138,21 @@ action モードのループは、SampleSupervisorAgent の investigation フェ
 - [docs/configuration.md](docs/configuration.md): 設定ガイド
 - [config.yml](config.yml): 非秘匿設定
 - [.env.example](.env.example): 秘匿設定テンプレート
-- [src/support_ope_agents](src/support_ope_agents): アプリ本体
-- [src/support_ope_agents/interfaces](src/support_ope_agents/interfaces): API/MCP インターフェース層
-- [src/support_ope_agents/instructions/defaults](src/support_ope_agents/instructions/defaults): 共通指示と役割別指示の内蔵デフォルト
+- [src/support_desk_agent](src/support_desk_agent): アプリ本体
+- [src/support_desk_agent/interfaces](src/support_desk_agent/interfaces): API/MCP インターフェース層
+- [src/support_desk_agent/instructions/defaults](src/support_desk_agent/instructions/defaults): 共通指示と役割別指示の内蔵デフォルト
 - [.instructions](.instructions): 必要に応じて既定指示を上書きするための任意 override ディレクトリ
 
 ## runtime mode の考え方
 
-このリポジトリには `sample` 系と `production` 系の 2 系統の runtime 実装があります。どちらを使うかは [config.yml](config.yml) の `support_ope_agents.runtime.mode` で切り替えます。
+このリポジトリには `sample` 系と `production` 系の 2 系統の runtime 実装があります。どちらを使うかは [config.yml](config.yml) の `support_desk_agent.runtime.mode` で切り替えます。
 
 現時点では `sample` 系を最新の参照実装として扱い、README のワークフローとエージェント説明も原則として sample runtime を基準に記載しています。
 
 責務の境界としては、Runtime が executor の組み立て、checkpointer やケース状態管理、instruction と runtime 制約の適用方針解決を担い、Workflow は LangGraph 上の状態遷移とノード接続を担います。ランタイム制約そのものの解決は Workflow ではなく Runtime 側で行います。
 
 ```yaml
-support_ope_agents:
+support_desk_agent:
 	runtime:
 		mode: production
 ```

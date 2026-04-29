@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from support_ope_agents.cli import _cmd_evaluate_investigate, _cmd_run_sample_supervisor, build_parser
+from support_desk_agent.cli import _cmd_evaluate_investigate, _cmd_run_sample_supervisor, build_parser
 
 
 class _FakeEvaluation:
@@ -90,10 +90,10 @@ class CliTests(unittest.TestCase):
             )
             stdout = io.StringIO()
 
-            with patch("support_ope_agents.cli.load_config") as load_config_mock:
-                with patch("support_ope_agents.cli.SampleInvestigateAgent") as investigate_mock:
-                    with patch("support_ope_agents.cli.InstructionLoader") as instruction_loader_mock:
-                        with patch("support_ope_agents.cli.ObjectiveEvaluator") as evaluator_mock:
+            with patch("support_desk_agent.cli.load_config") as load_config_mock:
+                with patch("support_desk_agent.cli.SampleInvestigateAgent") as investigate_mock:
+                    with patch("support_desk_agent.cli.InstructionLoader") as instruction_loader_mock:
+                        with patch("support_desk_agent.cli.ObjectiveEvaluator") as evaluator_mock:
                             load_config_mock.return_value = SimpleNamespace(data_paths=SimpleNamespace(evidence_subdir=".evidence"))
                             load_config_mock.return_value = SimpleNamespace(
                                 data_paths=SimpleNamespace(
@@ -142,9 +142,9 @@ class CliTests(unittest.TestCase):
                 "next_action": "ApprovalAgent へドラフトを回付する",
             }
 
-            with patch("support_ope_agents.cli.load_config") as load_config_mock:
-                with patch("support_ope_agents.cli.SampleInvestigateAgent") as investigate_mock:
-                    with patch("support_ope_agents.cli.SampleSupervisorAgent") as supervisor_mock:
+            with patch("support_desk_agent.cli.load_config") as load_config_mock:
+                with patch("support_desk_agent.cli.SampleInvestigateAgent") as investigate_mock:
+                    with patch("support_desk_agent.cli.SampleSupervisorAgent") as supervisor_mock:
                         load_config_mock.return_value = SimpleNamespace(
                             data_paths=SimpleNamespace(
                                 shared_memory_subdir=".memory",

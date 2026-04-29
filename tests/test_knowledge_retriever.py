@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.default_search_documents import build_default_search_documents_tool
-from support_ope_agents.tools.registry import ToolRegistry
+from support_desk_agent.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.tools.default_search_documents import build_default_search_documents_tool
+from support_desk_agent.tools.registry import ToolRegistry
 
 
 REPO_ROOT = Path("/home/user/source/repos")
@@ -198,7 +198,7 @@ class ConsolidatedKnowledgeTests(unittest.TestCase):
             tool = build_default_search_documents_tool(config)
 
             with patch(
-                "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+                "support_desk_agent.tools.default_search_documents._invoke_deepagents_search",
                 side_effect=ConnectionError("LLM connection failed"),
             ):
                 with self.assertRaisesRegex((RuntimeError, ConnectionError), "LLM connection failed|DeepAgents"):
@@ -228,7 +228,7 @@ class ConsolidatedKnowledgeTests(unittest.TestCase):
             tool = build_default_search_documents_tool(config)
 
             with patch(
-                "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+                "support_desk_agent.tools.default_search_documents._invoke_deepagents_search",
                 return_value=None,
             ):
                 with self.assertRaisesRegex(RuntimeError, "structured response"):
@@ -312,7 +312,7 @@ class ConsolidatedKnowledgeTests(unittest.TestCase):
         )
         tool = build_default_search_documents_tool(config)
         with patch(
-            "support_ope_agents.tools.default_search_documents._invoke_deepagents_search",
+            "support_desk_agent.tools.default_search_documents._invoke_deepagents_search",
             return_value={
                 "ai-platform-poc": {
                     "source_name": "ai-platform-poc",

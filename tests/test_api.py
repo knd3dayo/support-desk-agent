@@ -10,14 +10,14 @@ from unittest.mock import patch
 from langchain_core.messages import AIMessage
 from fastapi.testclient import TestClient
 
-from support_ope_agents.agents.objective_evaluator import (
+from support_desk_agent.agents.objective_evaluator import (
     ObjectiveEvaluator,
     ObjectiveEvaluatorStructuredResult,
     StructuredAgentEvaluation,
     StructuredCriterionEvaluation,
 )
-from support_ope_agents.interfaces.api import create_app
-from support_ope_agents.runtime.production.production_service import ProductionRuntimeService
+from support_desk_agent.interfaces.api import create_app
+from support_desk_agent.runtime.production.production_service import ProductionRuntimeService
 
 
 def _fake_objective_evaluation_result() -> ObjectiveEvaluatorStructuredResult:
@@ -53,7 +53,7 @@ class _FakeDraftModel:
 class ApiWorkspaceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._startup_probe_patcher = patch(
-            "support_ope_agents.interfaces.api._probe_llm_backend",
+            "support_desk_agent.interfaces.api._probe_llm_backend",
             return_value=None,
         )
         self._objective_eval_patcher = patch.object(
@@ -62,7 +62,7 @@ class ApiWorkspaceTests(unittest.TestCase):
             return_value=_fake_objective_evaluation_result(),
         )
         self._classify_model_patcher = patch(
-            "support_ope_agents.tools.default_classify_ticket.build_chat_openai_model",
+            "support_desk_agent.tools.default_classify_ticket.build_chat_openai_model",
             return_value=_FakeClassifierModel(),
         )
         self._startup_probe_patcher.start()
@@ -77,7 +77,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         config_path = self.repo_root / "config.yml"
         config_path.write_text(
                         "\n".join([
-                                "support_ope_agents:",
+                                "support_desk_agent:",
                                 "  llm:",
                                 "    provider: openai",
                                 "    model: gpt-4.1",
@@ -94,7 +94,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         secure_config_path = self.repo_root / "secure-config.yml"
         secure_config_path.write_text(
                         "\n".join([
-                                "support_ope_agents:",
+                                "support_desk_agent:",
                                 "  llm:",
                                 "    provider: openai",
                                 "    model: gpt-4.1",
@@ -169,7 +169,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         config_path = self.repo_root / "startup-failure-config.yml"
         config_path.write_text(
                         "\n".join([
-                                "support_ope_agents:",
+                                "support_desk_agent:",
                                 "  llm:",
                                 "    provider: openai",
                                 "    model: gpt-4.1",
@@ -184,7 +184,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         )
 
         with patch(
-            "support_ope_agents.interfaces.api._probe_llm_backend",
+            "support_desk_agent.interfaces.api._probe_llm_backend",
             side_effect=RuntimeError("LLM startup probe failed."),
         ):
             with self.assertRaisesRegex(RuntimeError, "LLM startup probe failed"):
@@ -195,7 +195,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         config_path = self.repo_root / "startup-skip-config.yml"
         config_path.write_text(
                         "\n".join([
-                                "support_ope_agents:",
+                                "support_desk_agent:",
                                 "  llm:",
                                 "    provider: openai",
                                 "    model: gpt-4.1",
@@ -211,7 +211,7 @@ class ApiWorkspaceTests(unittest.TestCase):
 
         os.environ["SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE"] = "1"
         with patch(
-            "support_ope_agents.interfaces.api._probe_llm_backend",
+            "support_desk_agent.interfaces.api._probe_llm_backend",
             side_effect=RuntimeError("LLM startup probe failed."),
         ):
             with TestClient(create_app(str(config_path))) as client:
@@ -418,7 +418,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         first_point = payload["control_points"][0]
         self.assertEqual(first_point["config_key"], "workflow.approval_node")
         self.assertIn("docs/configuration.md", first_point["docs_refs"])
-        self.assertIn("src/support_ope_agents/config/models.py", first_point["code_refs"])
+        self.assertIn("src/support_desk_agent/config/models.py", first_point["code_refs"])
 
     def test_runtime_audit_endpoint_returns_trace_audit(self) -> None:
         trace_id = "TRACE-API-AUDIT"

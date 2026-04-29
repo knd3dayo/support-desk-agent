@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support_ope_agents.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.tools.default_write_draft import build_default_write_draft_tool
+from support_desk_agent.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.tools.default_write_draft import build_default_write_draft_tool
 
 
 class ConsolidatedDraftTests(unittest.TestCase):

@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 
-from support_ope_agents.agents.production.intake_agent import IntakeAgent, IntakeAgentTools
-from support_ope_agents.config.models import AppConfig
-from support_ope_agents.config.models import TicketServerBindingSettings
+from support_desk_agent.agents.production.intake_agent import IntakeAgent, IntakeAgentTools
+from support_desk_agent.config.models import AppConfig
+from support_desk_agent.config.models import TicketServerBindingSettings
 
 
 class _FakeResolver:
@@ -326,7 +326,7 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("support_ope_agents.agents.production.intake_agent.build_chat_openai_model", return_value=model), patch.object(
+            with patch("support_desk_agent.agents.production.intake_agent.build_chat_openai_model", return_value=model), patch.object(
                 agent,
                 "_ticket_binding",
                 return_value=TicketServerBindingSettings(
@@ -390,7 +390,7 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("support_ope_agents.agents.production.intake_agent.build_chat_openai_model", return_value=model):
+            with patch("support_desk_agent.agents.production.intake_agent.build_chat_openai_model", return_value=model):
                 result = agent.hydrate_tickets(
                     {
                         "raw_issue": "ログイン時の 500 エラーを調査してください",

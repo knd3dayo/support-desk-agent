@@ -9,8 +9,8 @@ from langchain_core.messages import AIMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
-from support_ope_agents.agents.sample.sample_intake_agent import SampleIntakeAgent, SampleIntakeAgentTools
-from support_ope_agents.config.models import AppConfig
+from support_desk_agent.agents.sample.sample_intake_agent import SampleIntakeAgent, SampleIntakeAgentTools
+from support_desk_agent.config.models import AppConfig
 
 
 class _IssueNumberArgs(BaseModel):
@@ -251,13 +251,13 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                "support_desk_agent.agents.sample.sample_intake_agent.create_agent",
                 side_effect=self._react_agent_factory(_scenario),
             ), patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
                 return_value=_FakeChatModel([]),
             ), patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.urlopen",
+                "support_desk_agent.agents.sample.sample_intake_agent.urlopen",
                 return_value=_FakeUrlResponse(b"png-binary"),
             ):
                 result = agent.create_node().invoke(
@@ -298,10 +298,10 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                "support_desk_agent.agents.sample.sample_intake_agent.create_agent",
                 side_effect=self._react_agent_factory(lambda _tools: "<result><content>broken</content>"),
             ), patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
                 return_value=_FakeChatModel([]),
             ):
                 result = agent.create_node().invoke(
@@ -338,10 +338,10 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                "support_desk_agent.agents.sample.sample_intake_agent.create_agent",
                 side_effect=self._react_agent_factory(_scenario),
             ), patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
                 return_value=_FakeChatModel([]),
             ):
                 result = agent.create_node().invoke(
@@ -402,10 +402,10 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                "support_desk_agent.agents.sample.sample_intake_agent.create_agent",
                 side_effect=self._react_agent_factory(_scenario),
             ), patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
                 return_value=_FakeChatModel([]),
             ):
                 result = agent.create_node().invoke(
@@ -436,10 +436,10 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                "support_desk_agent.agents.sample.sample_intake_agent.create_agent",
                 side_effect=self._react_agent_factory(_scenario),
             ), patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
                 return_value=_FakeChatModel([]),
             ):
                 result = agent.create_node().invoke(
@@ -475,10 +475,10 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                "support_desk_agent.agents.sample.sample_intake_agent.create_agent",
                 side_effect=self._react_agent_factory(_scenario),
             ), patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
                 return_value=_FakeChatModel([]),
             ):
                 result = agent.create_node().invoke(
@@ -515,10 +515,10 @@ class SampleIntakeMcpTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.create_agent",
+                "support_desk_agent.agents.sample.sample_intake_agent.create_agent",
                 side_effect=self._react_agent_factory(_scenario),
             ), patch(
-                "support_ope_agents.agents.sample.sample_intake_agent.build_chat_openai_model",
+                "support_desk_agent.agents.sample.sample_intake_agent.build_chat_openai_model",
                 return_value=_FakeChatModel([]),
             ):
                 result = agent.create_node().invoke(
