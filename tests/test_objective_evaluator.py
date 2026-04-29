@@ -39,6 +39,10 @@ class ObjectiveEvaluatorTests(unittest.TestCase):
             result = evaluator.evaluate(evidence={"raw_issue": "test"})
 
         self.assertEqual(result.overall_score, 80)
+        model.with_structured_output.assert_called_once_with(
+            ObjectiveEvaluatorStructuredResult,
+            method="function_calling",
+        )
 
     def test_evaluate_includes_plan_target_specific_instruction(self) -> None:
         model = Mock()

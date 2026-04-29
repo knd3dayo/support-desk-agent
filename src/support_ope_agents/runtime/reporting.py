@@ -149,6 +149,7 @@ def build_support_improvement_report(
         control_catalog=control_catalog_payload,
     )
     checklist_section = _render_checklist(evaluation.criterion_evaluations, normalized_checklist)
+    instruction_policy_section = _render_instruction_policy(evaluator_instruction)
     control_summary_section = _render_control_summary(control_catalog_payload, runtime_audit_payload)
     runtime_constraints_section = _render_runtime_constraints(runtime_audit_payload)
     runtime_policy_effects_section = _render_runtime_policy_effects(runtime_audit_payload)
@@ -180,6 +181,10 @@ def build_support_improvement_report(
         "## Evaluator 評価観点一覧",
         "ObjectiveEvaluator が instruction に基づいて出力した評価観点一覧と、その結果です。",
         *_render_criterion_evaluations(evaluation.criterion_evaluations),
+        "",
+        "## Evaluator 指示上の評価方針",
+        "ObjectiveEvaluator instruction の ## 評価方針 セクションを、そのまま参照できるように表示します。",
+        *instruction_policy_section,
         "",
         "## エージェント別評価",
         "各エージェントの役割ごとに、出力の有無、メモリ連携、品質を点数付きで評価した一覧です。",
@@ -1022,15 +1027,16 @@ def _extract_instruction_criteria(instruction_text: str, checklist: list[str]) -
 
 def _extract_markdown_bullets(text: str, heading: str) -> list[str]:
     lines = text.splitlines()
-    in_section = False
     bullets: list[str] = []
+    in_section = False
     for line in lines:
         stripped = line.strip()
         if stripped == heading:
             in_section = True
             continue
         if in_section and stripped.startswith("## "):
-            break
+            in_section = False
+            continue
         if in_section and stripped.startswith("- "):
             bullets.append(stripped[2:].strip())
     return bullets
@@ -1381,6 +1387,13 @@ def _render_criterion_evaluations(criteria: list[CriterionEvaluation]) -> list[s
     if lines and not lines[-1].strip():
         lines.pop()
     return lines
+
+
+def _render_instruction_policy(instruction_text: str) -> list[str]:
+    bullets = _extract_markdown_bullets(instruction_text, "## 評価方針")
+    if not bullets:
+        return ["- なし"]
+    return [f"- {item}" for item in bullets]
 
 
 def _render_subgraph_sequence_section(diagrams: list[SubgraphSequenceDiagram]) -> list[str]:

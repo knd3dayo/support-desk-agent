@@ -75,7 +75,10 @@ class ObjectiveEvaluator:
     ) -> ObjectiveEvaluatorStructuredResult:
         model = build_chat_openai_model(self.config)
         try:
-            structured_model = model.with_structured_output(ObjectiveEvaluatorStructuredResult)
+            structured_model = model.with_structured_output(
+                ObjectiveEvaluatorStructuredResult,
+                method="function_calling",
+            )
             response = structured_model.invoke([
                 SystemMessage(
                     content=(

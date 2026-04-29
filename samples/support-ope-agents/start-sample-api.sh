@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+AI_CHAT_UTIL_ROOT="$(cd "${REPO_ROOT}/../ai-chat-util/app" && pwd)"
 DEFAULT_CONFIG_PATH="${SCRIPT_DIR}/config.yml"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
@@ -89,7 +90,7 @@ fi
 mkdir -p "${RAW_WORKSPACE_ROOT}"
 CASES_ROOT="$(cd "${RAW_WORKSPACE_ROOT}" && pwd -P)"
 
-export PYTHONPATH="${REPO_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
+export PYTHONPATH="${REPO_ROOT}/src:${AI_CHAT_UTIL_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
 export SUPPORT_OPE_SAMPLE_CONFIG="${CONFIG_PATH}"
 export SUPPORT_OPE_SAMPLE_HOST="${HOST}"
 export SUPPORT_OPE_SAMPLE_PORT="${PORT}"
@@ -101,6 +102,7 @@ echo "Starting sample API"
 echo "  config: ${CONFIG_PATH}"
 echo "  workspace root: ${CASES_ROOT}"
 echo "  url:    http://${HOST}:${PORT}"
+echo "  ai-chat-util source: ${AI_CHAT_UTIL_ROOT}/src"
 if [[ "${SUPPORT_OPE_SKIP_LLM_STARTUP_PROBE}" == "1" ]]; then
   echo "Skipping startup LLM probe for sample API. Requests that require the LLM may still fail until the backend becomes reachable."
 fi

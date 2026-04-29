@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import tempfile
 from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
+from support_ope_agents.agents.objective_evaluator import ObjectiveEvaluatorStructuredResult
 from support_ope_agents.config.models import AppConfig
-from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_ticket_fetch_error_section, _render_ticket_info_section, _ticket_lookup_detail, _ticket_lookup_status
+from support_ope_agents.instructions.loader import InstructionLoader
+from support_ope_agents.memory.file_store import CaseMemoryStore
+from support_ope_agents.runtime.reporting import MemoryConsistencyFinding, build_support_improvement_report, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_instruction_policy, _render_ticket_fetch_error_section, _render_ticket_info_section, _ticket_lookup_detail, _ticket_lookup_status
+from support_ope_agents.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_ope_agents.models.state import CaseState
 
 
@@ -34,6 +41,85 @@ class ReportingEvaluationTests(unittest.TestCase):
 
         self.assertIn("Intake-->>User: 追加情報を依頼", diagram)
         self.assertNotIn("Supervisor->>Knowledge", diagram)
+
+    def test_render_instruction_policy_outputs_evaluator_policy_bullets(self) -> None:
+        lines = _render_instruction_policy(
+            "\n".join(
+                [
+                    "## あなたの役割",
+                    "sample",
+                    "## 評価方針",
+                    "- 観点Aを確認する",
+                    "- 観点Bを確認する",
+                    "## 出力上の注意",
+                    "- note",
+                ]
+            )
+        )
+
+        self.assertEqual(lines, ["- 観点Aを確認する", "- 観点Bを確認する"])
+
+    def test_build_support_improvement_report_includes_instruction_policy_section(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir) / "case"
+            instructions_path = Path(tmpdir) / ".instructions"
+            instructions_path.mkdir(parents=True, exist_ok=True)
+            (instructions_path / "ObjectiveEvaluator.md").write_text(
+                "\n".join(
+                    [
+                        "## 評価方針",
+                        "- 独自観点Aを確認する",
+                        "- 独自観点Bを確認する",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            config.config_paths.instructions_path = instructions_path
+
+            memory_store = CaseMemoryStore(config)
+            memory_store.initialize_case("CASE-TEST", str(workspace_path))
+            loader = InstructionLoader(config, memory_store, RuntimeHarnessManager(config))
+
+            with patch(
+                "support_ope_agents.runtime.reporting.ObjectiveEvaluator.evaluate",
+                return_value=ObjectiveEvaluatorStructuredResult(
+                    criterion_evaluations=[],
+                    agent_evaluations=[],
+                    overall_summary="summary",
+                    improvement_points=[],
+                    overall_score=80,
+                ),
+            ):
+                report = build_support_improvement_report(
+                    case_id="CASE-TEST",
+                    trace_id="TRACE-TEST",
+                    workspace_path=str(workspace_path),
+                    state={
+                        "status": "WAITING_APPROVAL",
+                        "workflow_kind": "incident_investigation",
+                        "intake_category": "incident_investigation",
+                        "raw_issue": "ログを調査して",
+                        "draft_response": "回答本文",
+                        "investigation_summary": "調査要約",
+                    },
+                    memory_store=memory_store,
+                    instruction_loader=loader,
+                    config=config,
+                )
+
+        self.assertIn("## Evaluator 指示上の評価方針", report.content)
+        self.assertIn("- 独自観点Aを確認する", report.content)
+        self.assertIn("- 独自観点Bを確認する", report.content)
 
     def test_ticket_lookup_status_reports_success_when_ticket_artifact_exists(self) -> None:
         config = AppConfig.model_validate(
