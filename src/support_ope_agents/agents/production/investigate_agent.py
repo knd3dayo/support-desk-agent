@@ -318,10 +318,19 @@ class InvestigateAgent(AbstractAgent):
         query = str(update.get("raw_issue") or "").strip() or self._default_query()
         update["current_agent"] = INVESTIGATE_AGENT
         workspace_path = str(update.get("workspace_path") or "").strip()
+        attachment_ignore_patterns = self.config.data_paths.attachment_ignore_patterns
 
         log_summary = ""
         log_file = ""
-        log_path = find_evidence_log_file(workspace_path, include_attachment_dirs=True) if workspace_path else None
+        log_path = (
+            find_evidence_log_file(
+                workspace_path,
+                include_attachment_dirs=True,
+                ignore_patterns=attachment_ignore_patterns,
+            )
+            if workspace_path
+            else None
+        )
         if log_path is not None and self.tools.detect_log_format_tool is not None:
             try:
                 parsed = json.loads(self._invoke_tool(self.tools.detect_log_format_tool, str(log_path), []))

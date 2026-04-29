@@ -32,6 +32,11 @@ support_ope_agents:
   #   # ケース用 workspace 配下に作る証跡ディレクトリ名です。
   #   evidence_subdir: .evidence
   #
+  #   # 添付や evidence から除外したい path パターンです。
+  #   # 未指定または空配列なら全ファイルを調査対象候補に含めます。
+  #   # 例: ['*.tmp', '.evidence/private/**']
+  #   attachment_ignore_patterns: []
+  #
   #   # ケース用 workspace 配下に作るレポート出力ディレクトリ名です。
   #   report_subdir: .report
   #

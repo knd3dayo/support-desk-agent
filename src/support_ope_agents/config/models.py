@@ -60,6 +60,7 @@ class DataPathSettings(StrictConfigModel):
     shared_memory_subdir: str = ".memory"
     artifacts_subdir: str = ".artifacts"
     evidence_subdir: str = ".evidence"
+    attachment_ignore_patterns: list[str] = Field(default_factory=list)
     report_subdir: str = ".report"
     trace_subdir: str = ".traces"
     checkpoint_db_filename: str = "checkpoints.sqlite"

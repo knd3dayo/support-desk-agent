@@ -254,7 +254,7 @@ class SampleSupervisorAgent(AbstractAgent):
                 [
                     "調査可能な添付ファイル path:",
                     *[f"- {path}" for path in attachment_paths],
-                    "添付の利用順序: まず path を確認し、PDF は analyze_pdf_files、画像は analyze_image_files を優先してください。",
+                    "添付の利用順序: まず path を確認し、ZIP は list_zip_contents で中身を確認して必要な場合だけ extract_zip を使い、PDF は analyze_pdf_files、画像は analyze_image_files を優先してください。",
                 ]
             )
             if attachment_paths
@@ -528,8 +528,12 @@ class SampleSupervisorAgent(AbstractAgent):
         update = cast("CaseState", StateTransitionHelper.supervisor_investigating(state))
         case_id = str(update.get("case_id") or "").strip()
         workspace_path = str(update.get("workspace_path") or "").strip()
-        evidence_log = find_evidence_log_file(workspace_path)
-        attachment_paths = find_attachment_files(workspace_path)
+        attachment_ignore_patterns = self.config.data_paths.attachment_ignore_patterns
+        evidence_log = find_evidence_log_file(workspace_path, ignore_patterns=attachment_ignore_patterns)
+        attachment_paths = find_attachment_files(
+            workspace_path,
+            ignore_patterns=attachment_ignore_patterns,
+        )
         update["investigation_evidence_log_path"] = str(evidence_log) if evidence_log is not None else ""
         update["investigation_attachment_paths"] = [str(path) for path in attachment_paths]
 

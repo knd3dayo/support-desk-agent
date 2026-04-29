@@ -294,6 +294,106 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("guide.pdf", executor.query)
         self.assertIn("screen.png", executor.query)
         self.assertIn("analyze_pdf_files", executor.query)
+        self.assertIn("list_zip_contents", executor.query)
+        self.assertIn("extract_zip", executor.query)
+
+    def test_supervisor_includes_non_media_attachments_in_query(self) -> None:
+        executor = _CapturingInvestigateExecutor()
+        supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "bundle.zip").write_text("zip payload", encoding="utf-8")
+            with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+                evaluate_mock.side_effect = [
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="plan ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="result ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                ]
+                supervisor.execute_investigation(
+                    {
+                        "case_id": "CASE-TEST-SAMPLE-ATTACH-ZIP-001",
+                        "workspace_path": tmpdir,
+                        "raw_issue": "添付を含めて調べて",
+                    }
+                )
+
+        self.assertIn("bundle.zip", executor.query)
+
+    def test_supervisor_respects_attachment_ignore_patterns(self) -> None:
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {"attachment_ignore_patterns": ["*.tmp", ".evidence/excluded/**"]},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+        executor = _CapturingInvestigateExecutor()
+        supervisor = SampleSupervisorAgent(config, investigate_executor=executor)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "visible.zip").write_text("zip payload", encoding="utf-8")
+            (evidence_dir / "ignored.tmp").write_text("tmp payload", encoding="utf-8")
+            excluded_dir = evidence_dir / "excluded"
+            excluded_dir.mkdir(parents=True, exist_ok=True)
+            (excluded_dir / "secret.log").write_text("secret", encoding="utf-8")
+            with patch("support_ope_agents.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+                evaluate_mock.side_effect = [
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="plan ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="result ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                ]
+                supervisor.execute_investigation(
+                    {
+                        "case_id": "CASE-TEST-SAMPLE-ATTACH-IGNORE-001",
+                        "workspace_path": tmpdir,
+                        "raw_issue": "添付を含めて調べて",
+                    }
+                )
+
+        self.assertIn("visible.zip", executor.query)
+        self.assertNotIn("ignored.tmp", executor.query)
+        self.assertNotIn("secret.log", executor.query)
+
+    def test_find_evidence_log_file_uses_generic_text_log_discovery(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "custom-name.txt").write_text("hello", encoding="utf-8")
+
+            from support_ope_agents.util.workspace_evidence import find_evidence_log_file
+
+            result = find_evidence_log_file(tmpdir)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.name, "custom-name.txt")
 
     def test_execute_returns_sub_agent_result_without_post_processing(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())

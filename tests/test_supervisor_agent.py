@@ -259,6 +259,49 @@ class SupervisorAgentTests(unittest.TestCase):
         self.assertIn("java.net.SocketTimeoutException", summary)
         self.assertIn("代表的な異常行: L12:", summary)
 
+    def test_investigate_agent_ignores_configured_evidence_patterns(self) -> None:
+        captured_paths: list[str] = []
+
+        def _detect_log_format(path: str, *_args: object, **_kwargs: object) -> str:
+            captured_paths.append(path)
+            return json.dumps(
+                {
+                    "detected_format": "unknown",
+                    "has_java_stacktrace": False,
+                    "search_results": {},
+                },
+                ensure_ascii=False,
+            )
+
+        config = AppConfig.model_validate(
+            {
+                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
+                "config_paths": {},
+                "data_paths": {"attachment_ignore_patterns": [".evidence/excluded/**"]},
+                "interfaces": {},
+                "agents": {},
+            }
+        )
+        executor = InvestigateAgent(
+            config=config,
+            tools=InvestigateAgentTools(
+                detect_log_format_tool=_detect_log_format,
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_path = Path(tmpdir)
+            evidence_dir = workspace_path / ".evidence"
+            excluded_dir = evidence_dir / "excluded"
+            excluded_dir.mkdir(parents=True)
+            (excluded_dir / "secret.log").write_text("secret", encoding="utf-8")
+            (evidence_dir / "visible.log").write_text("visible", encoding="utf-8")
+
+            executor.execute({"workspace_path": str(workspace_path), "raw_issue": "ログを見て"})
+
+        self.assertEqual(len(captured_paths), 1)
+        self.assertTrue(captured_paths[0].endswith("visible.log"))
+
     def test_supervisor_builds_customer_facing_investigation_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppConfig.model_validate(

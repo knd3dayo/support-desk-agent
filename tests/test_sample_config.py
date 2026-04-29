@@ -83,6 +83,34 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(loaded.llm.model, "gpt-4.1")
         self.assertIsNone(loaded.llm.base_url)
 
+    def test_load_config_accepts_attachment_ignore_patterns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "support_ope_agents:",
+                        "  llm:",
+                        "    provider: openai",
+                        "    model: gpt-4.1",
+                        "    api_key: sk-test-value",
+                        "  config_paths: {}",
+                        "  data_paths:",
+                        "    attachment_ignore_patterns:",
+                        "      - '*.tmp'",
+                        "      - '.evidence/private/**'",
+                        "  interfaces: {}",
+                        "  agents: {}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            loaded = load_config(config_path)
+
+        self.assertEqual(loaded.data_paths.attachment_ignore_patterns, ["*.tmp", ".evidence/private/**"])
+
     def test_app_config_accepts_server_only_mcp_ticket_logical_tool(self) -> None:
         loaded = AppConfig.model_validate(
             {

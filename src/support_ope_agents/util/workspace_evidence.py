@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 from pathlib import Path
 from typing import Iterable
 
@@ -11,9 +12,7 @@ _ATTACHMENT_DIRS = (
     ".artifacts/intake/external_attachments",
     ".artifacts/intake/internal_attachments",
 )
-_PREFERRED_LOG_FILENAMES = ("application.log", "vdp.log")
 _TEXT_LIKE_LOG_SUFFIXES = (".log", ".out", ".txt")
-_ATTACHMENT_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
 
 def build_workspace_evidence_source(
@@ -47,10 +46,28 @@ def _resolve_candidate_dirs(workspace_root: Path, relative_dirs: Iterable[str]) 
     return resolved
 
 
-def find_evidence_log_file(workspace_path: str | None, *, include_attachment_dirs: bool = False) -> Path | None:
+def _matches_any_pattern(relative_path: str, patterns: Iterable[str]) -> bool:
+    normalized_path = relative_path.replace("\\", "/")
+    normalized_name = Path(normalized_path).name
+    for pattern in patterns:
+        normalized_pattern = str(pattern).strip().replace("\\", "/")
+        if not normalized_pattern:
+            continue
+        if fnmatch.fnmatch(normalized_path, normalized_pattern) or fnmatch.fnmatch(normalized_name, normalized_pattern):
+            return True
+    return False
+
+
+def find_evidence_log_file(
+    workspace_path: str | None,
+    *,
+    include_attachment_dirs: bool = False,
+    ignore_patterns: Iterable[str] | None = None,
+) -> Path | None:
     if not workspace_path:
         return None
     workspace_root = Path(workspace_path).expanduser().resolve()
+    effective_ignore_patterns = tuple(ignore_patterns or ())
     relative_dirs = list(_DEFAULT_EVIDENCE_DIRS)
     if include_attachment_dirs:
         relative_dirs = [*_ATTACHMENT_DIRS, *relative_dirs]
@@ -58,28 +75,32 @@ def find_evidence_log_file(workspace_path: str | None, *, include_attachment_dir
     for directory in candidate_dirs:
         if not directory.exists():
             continue
-        for name in _PREFERRED_LOG_FILENAMES:
-            candidate = directory / name
-            if candidate.exists() and candidate.is_file():
-                return candidate
         discovered_files = [path for path in sorted(directory.rglob("*")) if path.is_file()]
         for suffix in _TEXT_LIKE_LOG_SUFFIXES:
             for path in discovered_files:
+                relative_path = path.relative_to(workspace_root).as_posix()
+                if _matches_any_pattern(relative_path, effective_ignore_patterns):
+                    continue
                 if path.suffix.lower() == suffix:
                     return path
     return None
 
 
-def find_attachment_files(workspace_path: str | None) -> list[Path]:
+def find_attachment_files(workspace_path: str | None, *, ignore_patterns: Iterable[str] | None = None) -> list[Path]:
     if not workspace_path:
         return []
     workspace_root = Path(workspace_path).expanduser().resolve()
     candidate_dirs = _resolve_candidate_dirs(workspace_root, [*_ATTACHMENT_DIRS, *_DEFAULT_EVIDENCE_DIRS])
+    effective_ignore_patterns = tuple(ignore_patterns or ())
     discovered: list[Path] = []
     for directory in candidate_dirs:
         if not directory.exists():
             continue
         for path in sorted(directory.rglob("*")):
-            if path.is_file() and path.suffix.lower() in _ATTACHMENT_SUFFIXES and path not in discovered:
-                discovered.append(path)
+            if not path.is_file() or path in discovered:
+                continue
+            relative_path = path.relative_to(workspace_root).as_posix()
+            if _matches_any_pattern(relative_path, effective_ignore_patterns):
+                continue
+            discovered.append(path)
     return discovered
