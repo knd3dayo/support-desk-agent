@@ -11,7 +11,7 @@
 ## 3. 既定実装 / 接続点
 
 - 論理ツール名: spawn_back_support_inquiry_writer_agent
-- ToolRegistry 定義: [src/support_desk_agent/tools/registry.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/tools/registry.py)
+- ToolRegistry 定義: [src/support_desk_agent/tools/registry.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/tools/registry.py)
 
 ## 4. 実装状況
 

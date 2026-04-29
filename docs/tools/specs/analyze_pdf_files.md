@@ -11,7 +11,7 @@
 ## 3. 既定実装 / 接続点
 
 - 論理ツール名: analyze_pdf_files
-- 既定実装: [src/support_desk_agent/tools/builtin_tools.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/tools/builtin_tools.py)
+- 既定実装: [src/support_desk_agent/tools/builtin_tools.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/tools/builtin_tools.py)
 - PDF 化されたログ、帳票、調査資料の読解に使う
 
 ## 4. 実装状況

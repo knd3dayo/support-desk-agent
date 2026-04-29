@@ -49,8 +49,8 @@ support_desk_agent:
     enable_api: false
     enable_mcp: false
     ui_app_name: Support Desk
-    ui_target_label: support-ope-agents 向けサンプル
-    ui_target_description: support-ope-agents チームの問い合わせ検証とバックサポート連携を試すためのサンプル UI
+    ui_target_label: support-desk-agent 向けサンプル
+    ui_target_description: support-desk-agent チームの問い合わせ検証とバックサポート連携を試すためのサンプル UI
 
   agents:
     default_constraint_mode: default
@@ -81,9 +81,9 @@ support_desk_agent:
       search_strategy: hybrid
       result_mode: relaxed
       document_sources:
-        - name: support-ope-agents-docs
-          description: support-ope-agents の設計資料と運用ドキュメント
-          path: /home/user/source/repos/support-ope-agents/docs
+        - name: support-desk-agent-docs
+          description: support-desk-agent の設計資料と運用ドキュメント
+          path: /home/user/source/repos/support-desk-agent/docs
     BackSupportEscalationAgent:
       enabled: true
       auto_compress: true

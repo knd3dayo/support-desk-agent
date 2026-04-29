@@ -12,7 +12,7 @@
 ## 3. 既定実装 / 接続点
 
 - 論理ツール名: write_draft
-- 既定実装: [src/support_desk_agent/tools/default_write_draft.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/tools/default_write_draft.py)
+- 既定実装: [src/support_desk_agent/tools/default_write_draft.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/tools/default_write_draft.py)
 - 出力先は ToolRegistry 上の role ごとの設定に従う
 
 ## 4. 実装状況

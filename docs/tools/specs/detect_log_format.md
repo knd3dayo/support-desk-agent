@@ -11,7 +11,7 @@
 ## 3. 既定実装 / 接続点
 
 - 論理ツール名: detect_log_format
-- 既定実装: [src/support_desk_agent/tools/builtin_tools.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/tools/builtin_tools.py) の detect_log_format_and_search
+- 既定実装: [src/support_desk_agent/tools/builtin_tools.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/tools/builtin_tools.py) の detect_log_format_and_search
 - ToolRegistry では detect_log_format_and_search を bind する
 
 ## 4. 実装状況

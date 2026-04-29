@@ -37,10 +37,10 @@ CaseState へ反映する主な出力:
 
 TicketUpdateAgent が参照する使用ツール詳細は次を参照する。
 
-- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
-- [docs/tools/specs/prepare_ticket_update.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/prepare_ticket_update.md)
-- [docs/tools/specs/zendesk_reply.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/zendesk_reply.md)
-- [docs/tools/specs/redmine_update.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/redmine_update.md)
+- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-desk-agent/docs/tools/common.md)
+- [docs/tools/specs/prepare_ticket_update.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/prepare_ticket_update.md)
+- [docs/tools/specs/zendesk_reply.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/zendesk_reply.md)
+- [docs/tools/specs/redmine_update.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/redmine_update.md)
 
 ## 6. 処理内容
 
@@ -66,12 +66,12 @@ TicketUpdateAgent が参照する使用ツール詳細は次を参照する。
 ## 9. 実装方針
 
 - TicketUpdateAgent は LangGraph subgraph として実装し、prepare と execute を分離する
-- workflow 側の入口は [src/support_desk_agent/agents/ticket_update_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/ticket_update_agent.py) の TicketUpdateAgent.create_node() とし、workflow は subgraph を呼び出すだけにする
+- workflow 側の入口は [src/support_desk_agent/agents/ticket_update_agent.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/agents/ticket_update_agent.py) の TicketUpdateAgent.create_node() とし、workflow は subgraph を呼び出すだけにする
 - create_node() の内部ノード名は ticket_update_prepare と ticket_update_execute を維持し、runtime audit / reporting / control catalog と整合させる
 - prepare_update() は ticket_update_payload と next_action を整え、execute_update() は CLOSED と ticket_update_result を確定させる
 - 外部チケット更新は当面スタブ化し、後続で MCP または API adapter へ置き換える
 - 更新前 HITL は ApprovalAgent とは別の停止点として扱う
-- prepare_ticket_update、zendesk_reply、redmine_update の有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.logical_tools 配下で管理する
+- prepare_ticket_update、zendesk_reply、redmine_update の有効化と供給元は [config.yml](/home/user/source/repos/support-desk-agent/config.yml) の tools.logical_tools 配下で管理する
 - logical_tools は enabled: false による無効化、provider: builtin による builtin 実装利用、provider: mcp による外部 MCP 利用の 3 パターンで扱う
 - provider: mcp の場合は manifest と server / tool 定義を起動時に検証し、current builtin は未実装プレースホルダーとして扱う
 

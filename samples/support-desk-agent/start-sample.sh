@@ -109,7 +109,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-echo "Starting support-ope-agents sample stack"
+echo "Starting support-desk-agent sample stack"
 echo "  workspace root: ${WORKSPACE_ROOT}"
 if [[ -n "${CONFIG_ARG:-${SUPPORT_OPE_SAMPLE_CONFIG:-}}" ]]; then
   echo "  config: ${CONFIG_ARG:-${SUPPORT_OPE_SAMPLE_CONFIG}}"

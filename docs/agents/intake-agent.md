@@ -76,14 +76,14 @@ CaseState へ反映する主な出力:
 
 IntakeAgent が参照する使用ツール詳細は次を参照する。
 
-- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
-- [docs/tools/specs/pii_mask.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/pii_mask.md)
-- [docs/tools/specs/external_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/external_ticket.md)
-- [docs/tools/specs/internal_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/internal_ticket.md)
-- [docs/tools/specs/classify_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/classify_ticket.md)
-- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_shared_memory.md)
+- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-desk-agent/docs/tools/common.md)
+- [docs/tools/specs/pii_mask.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/pii_mask.md)
+- [docs/tools/specs/external_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/external_ticket.md)
+- [docs/tools/specs/internal_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/internal_ticket.md)
+- [docs/tools/specs/classify_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/classify_ticket.md)
+- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/write_shared_memory.md)
 
-ticket 取得系ツールの有効化と供給元は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の tools.ticket_sources.external / internal で管理する。
+ticket 取得系ツールの有効化と供給元は [config.yml](/home/user/source/repos/support-desk-agent/config.yml) の tools.ticket_sources.external / internal で管理する。
 ticket_sources を有効化した場合は manifest と server 定義を起動時に検証する。logical_tools は classify_ticket など任意差し替え対象だけを扱う。
 
 ## 6. 処理内容
@@ -93,7 +93,7 @@ IntakeAgent の処理は true subgraph 内で次の段階を基本とする。
 1. 入力正規化
    raw_issue の余分なノイズを除去し、問い合わせの主題、事象、期待動作、制約条件を抽出しやすい形へ整える。
 2. PII マスキング
-   [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の agents.IntakeAgent.pii_mask.enabled が true の場合にのみ実行する。既定値は false とし、無効時は raw_issue をそのまま後続へ渡す。
+   [config.yml](/home/user/source/repos/support-desk-agent/config.yml) の agents.IntakeAgent.pii_mask.enabled が true の場合にのみ実行する。既定値は false とし、無効時は raw_issue をそのまま後続へ渡す。
 3. ticket 初期 hydration
    明示指定された external_ticket_id または internal_ticket_id があり、対応する MCP ツールが有効な場合は ticket 情報と添付ファイルを取得し、workspace 配下へ保存する。取得結果は Supervisor と後続 agent が再利用できるよう path と要約を state に載せる。
 4. 分類
@@ -116,7 +116,7 @@ subgraph 内の標準ノード構成は次の通りとする。
 - intake_quality_gate
 - intake_finalize
 
-validation API として、少なくとも次の static / class method を [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/intake_agent.py) に持つ。
+validation API として、少なくとも次の static / class method を [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/agents/intake_agent.py) に持つ。
 
 - resolve_intake_category(state, memory_snapshot)
 - resolve_intake_urgency(state, memory_snapshot)
@@ -159,9 +159,9 @@ shared/progress.md の初期記録例:
 
 ## 9. 実装方針
 
-- agent 定義メタデータは [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/intake_agent.py) の build_intake_agent_definition に残す
+- agent 定義メタデータは [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/agents/intake_agent.py) の build_intake_agent_definition に残す
 - 複雑化する処理は専用の実行クラスへ切り出す
-- intake subgraph の生成責務は [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/intake_agent.py) 側に置き、workflow 側は subgraph を呼び出すだけにする
+- intake subgraph の生成責務は [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/agents/intake_agent.py) 側に置き、workflow 側は subgraph を呼び出すだけにする
 - workflow が呼ぶ入口は IntakeAgent.create_node() と IntakeAgent.create_wait_node() とし、未注入は wiring ミスとして早期に検出する
 - 実行クラスは pii_mask、external_ticket、internal_ticket、classify_ticket、write_shared_memory を必要に応じて呼び出したうえで、state 更新、workspace への ticket hydration、品質ゲート、共有メモリ初期化、plan / action 分岐を担う
 - 品質ゲート判定ロジックは IntakeAgent の validation API として同居させ、Supervisor からはその API を参照する

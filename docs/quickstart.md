@@ -1,8 +1,8 @@
 # Quickstart
 
-support-ope-agents を最初に動かすための実行手順です。ここでは production runtime を前提に、CLI、API、frontend、MCP 連携までの起動導線をまとめます。
+support-desk-agent を最初に動かすための実行手順です。ここでは production runtime を前提に、CLI、API、frontend、MCP 連携までの起動導線をまとめます。
 
-sample runtime を使って PoC の流れを素早く確認したい場合は [../samples/support-ope-agents/README.md](../samples/support-ope-agents/README.md) と [../samples/support-ope-agents/config-sample.yml](../samples/support-ope-agents/config-sample.yml) を参照してください。
+sample runtime を使って PoC の流れを素早く確認したい場合は [../samples/support-desk-agent/README.md](../samples/support-desk-agent/README.md) と [../samples/support-desk-agent/config-sample.yml](../samples/support-desk-agent/config-sample.yml) を参照してください。
 
 ## 前提
 

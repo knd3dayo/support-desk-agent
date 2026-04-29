@@ -1,4 +1,4 @@
-# support-ope-agents
+# support-desk-agent
 
 Deep Agents と LangGraph を組み合わせて、カスタマーサポート業務をオーケストレーションする PoC 実装です。
 
@@ -157,7 +157,7 @@ support_desk_agent:
 		mode: production
 ```
 
-`sample` 系は、汎用的な作り込みを主目的にせず、コンセプト確認と UI / フローのテストを素早く回すための簡素な実装です。PoC の流れを短く確認したい場合、画面やケース進行のたたき台を試したい場合、個別の制約や例外処理をまだ詰め切っていない段階で全体像を確認したい場合に向いています。サンプル環境の起動例や前提条件は [samples/support-ope-agents/README.md](samples/support-ope-agents/README.md) を参照してください。
+`sample` 系は、汎用的な作り込みを主目的にせず、コンセプト確認と UI / フローのテストを素早く回すための簡素な実装です。PoC の流れを短く確認したい場合、画面やケース進行のたたき台を試したい場合、個別の制約や例外処理をまだ詰め切っていない段階で全体像を確認したい場合に向いています。サンプル環境の起動例や前提条件は [samples/support-desk-agent/README.md](samples/support-desk-agent/README.md) を参照してください。
 
 `production` 系は、通常運用を見据えて、より多くの状況を想定した例外処理、制約、状態遷移、外部連携を含めるための実装です。`sample` で確認したコンセプトをそのまま終わらせず、実際の業務ワークフローに近い条件へ具体化していくことを目的にしています。既定の [config.yml](config.yml) はこちらを前提にしており、CLI / API / MCP の説明も原則として production runtime を基準にしています。
 
@@ -167,13 +167,13 @@ support_desk_agent:
 - 例外処理、承認、再開、チェックポイント、レポート生成まで含めて挙動を詰めたい場合は `production`
 - 実運用に近い設定やテストを増やしていく場合は `production` を基準にし、`sample` は概念実証や比較対象として扱う
 
-README 中の通常の起動例は `production` 前提です。`sample` を使う場合は [samples/support-ope-agents/config-sample.yml](samples/support-ope-agents/config-sample.yml) のように `runtime.mode: sample` を持つ設定ファイルを指定して起動します。
+README 中の通常の起動例は `production` 前提です。`sample` を使う場合は [samples/support-desk-agent/config-sample.yml](samples/support-desk-agent/config-sample.yml) のように `runtime.mode: sample` を持つ設定ファイルを指定して起動します。
 
 ## 起動
 
 通常の起動手順、CLI の実行例、API と frontend の立ち上げ、MCP 連携、document_sources や tools.logical_tools の設定例は [docs/quickstart.md](docs/quickstart.md) に分離しました。README では概要だけを扱い、実際に動かす手順はクイックスタートを参照してください。
 
-production runtime を前提に最初に動かす場合は [docs/quickstart.md](docs/quickstart.md) を参照してください。sample runtime を使う場合は [samples/support-ope-agents/README.md](samples/support-ope-agents/README.md) と [samples/support-ope-agents/config-sample.yml](samples/support-ope-agents/config-sample.yml) を参照してください。
+production runtime を前提に最初に動かす場合は [docs/quickstart.md](docs/quickstart.md) を参照してください。sample runtime を使う場合は [samples/support-desk-agent/README.md](samples/support-desk-agent/README.md) と [samples/support-desk-agent/config-sample.yml](samples/support-desk-agent/config-sample.yml) を参照してください。
 
 ## workflow ルーティング対象
 

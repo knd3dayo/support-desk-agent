@@ -50,16 +50,16 @@ CaseState へ反映する主な出力:
 
 SuperVisorAgent が参照する使用ツール詳細は次を参照する。
 
-- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
-- [docs/tools/specs/read_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/read_shared_memory.md)
-- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_shared_memory.md)
-- [docs/tools/specs/inspect_workflow_state.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/inspect_workflow_state.md)
-- [docs/tools/specs/evaluate_agent_result.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/evaluate_agent_result.md)
-- [docs/tools/specs/route_phase_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/route_phase_agent.md)
-- [docs/tools/specs/scan_workspace_artifacts.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/scan_workspace_artifacts.md)
-- [docs/agents/investigate-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/investigate-agent.md)
-- [docs/tools/specs/spawn_back_support_escalation_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_back_support_escalation_agent.md)
-- [docs/tools/specs/spawn_back_support_inquiry_writer_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_back_support_inquiry_writer_agent.md)
+- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-desk-agent/docs/tools/common.md)
+- [docs/tools/specs/read_shared_memory.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/read_shared_memory.md)
+- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/write_shared_memory.md)
+- [docs/tools/specs/inspect_workflow_state.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/inspect_workflow_state.md)
+- [docs/tools/specs/evaluate_agent_result.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/evaluate_agent_result.md)
+- [docs/tools/specs/route_phase_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/route_phase_agent.md)
+- [docs/tools/specs/scan_workspace_artifacts.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/scan_workspace_artifacts.md)
+- [docs/agents/investigate-agent.md](/home/user/source/repos/support-desk-agent/docs/agents/investigate-agent.md)
+- [docs/tools/specs/spawn_back_support_escalation_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/spawn_back_support_escalation_agent.md)
+- [docs/tools/specs/spawn_back_support_inquiry_writer_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/spawn_back_support_inquiry_writer_agent.md)
 
 ## 6. 処理内容
 
@@ -103,8 +103,8 @@ shared/progress.md には次を残す。
 
 ## 9. 実装方針
 
-- agent 定義メタデータは [src/support_desk_agent/agents/supervisor_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/supervisor_agent.py) の build_supervisor_agent_definition に残す
-- workflow 側の入口は [src/support_desk_agent/agents/supervisor_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/supervisor_agent.py) の create_node() とし、親 graph は `supervisor_subgraph` を呼び出すだけにする
+- agent 定義メタデータは [src/support_desk_agent/agents/supervisor_agent.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/agents/supervisor_agent.py) の build_supervisor_agent_definition に残す
+- workflow 側の入口は [src/support_desk_agent/agents/supervisor_agent.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/agents/supervisor_agent.py) の create_node() とし、親 graph は `supervisor_subgraph` を呼び出すだけにする
 - subgraph 内部ノードは investigation、draft_review、escalation_review を維持し、runtime audit / reporting / control catalog との互換を保つ
 - reject 時は draft_review から、initial / reinvestigate 時は investigation から再入場できる entry routing を持たせる
 - workflow_kind と intake_category は同じ語彙体系で扱い、Supervisor は workflow_kind を基準にしつつ ambiguous_case を intake_category で絞り込む
@@ -113,8 +113,8 @@ shared/progress.md には次を残す。
 - 実行クラスは read_shared_memory と write_shared_memory を用いて、investigation / draft_review フェーズの共有メモリ更新経路を統一し、共有メモリ内容を子エージェント起動計画やレビュー重点の判断材料として使う
 - Intake 品質ゲートの判定ロジック自体は共通 validator を参照するが、その workflow 上の実行責務は IntakeAgent 側に置く
 - BackSupportEscalationAgent / BackSupportInquiryWriterAgent は、通常回答ドラフト系とは別の補助分岐として扱う
-- エスカレーション判定語彙と workflow_kind ごとの既定依頼資料は [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の agents.BackSupportEscalationAgent.escalation で調整可能とする
-- Intake 出力評価のチェックリストは [src/support_desk_agent/instructions/defaults/SuperVisorAgent.md](/home/user/source/repos/support-ope-agents/src/support_desk_agent/instructions/defaults/SuperVisorAgent.md) の既定指示に置き、必要なら config_paths.instructions_path 配下の SuperVisorAgent.md で丸ごとオーバーライドする
+- エスカレーション判定語彙と workflow_kind ごとの既定依頼資料は [config.yml](/home/user/source/repos/support-desk-agent/config.yml) の agents.BackSupportEscalationAgent.escalation で調整可能とする
+- Intake 出力評価のチェックリストは [src/support_desk_agent/instructions/defaults/SuperVisorAgent.md](/home/user/source/repos/support-desk-agent/src/support_desk_agent/instructions/defaults/SuperVisorAgent.md) の既定指示に置き、必要なら config_paths.instructions_path 配下の SuperVisorAgent.md で丸ごとオーバーライドする
 
 ## 10. 未決事項
 

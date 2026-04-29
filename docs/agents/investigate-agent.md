@@ -28,12 +28,12 @@ CaseState へ反映する主な項目は次のとおり。
 
 ## 4. 参照設定
 
-- 文書ソースは [config.yml](/home/user/source/repos/support-ope-agents/config.yml) の agents.InvestigateAgent.document_sources で定義する
+- 文書ソースは [config.yml](/home/user/source/repos/support-desk-agent/config.yml) の agents.InvestigateAgent.document_sources で定義する
 - 検索結果の保持粒度は agents.InvestigateAgent.result_mode で調整する
 - constraint_mode は instruction と runtime 制約の適用方針を決める
 
 ## 5. 実装メモ
 
-- 実行本体は [src/support_desk_agent/agents/investigate_agent.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/agents/investigate_agent.py) にある
+- 実行本体は [src/support_desk_agent/agents/investigate_agent.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/agents/investigate_agent.py) にある
 - 内部では log_analyzer_executor、knowledge_retriever_executor、draft_writer_executor を組み合わせる
 - user-facing な出力では旧 split role 名を出さず、調査結果と根拠資料として表現する

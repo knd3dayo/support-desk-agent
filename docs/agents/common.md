@@ -2,15 +2,15 @@
 
 ## 1. 目的
 
-本書は [docs/customer-support-deepagents-design.md](/home/user/source/repos/support-ope-agents/docs/customer-support-deepagents-design.md) を補完し、各エージェント詳細設計で共通に参照する前提と記述ルールを定義する。
+本書は [docs/customer-support-deepagents-design.md](/home/user/source/repos/support-desk-agent/docs/customer-support-deepagents-design.md) を補完し、各エージェント詳細設計で共通に参照する前提と記述ルールを定義する。
 全体アーキテクチャ、責務分離、ワークフロー上の位置付けは親設計書に従い、本書では agent 個別仕様の共通観点と shared memory 設計を定義する。
 
 ## 2. 文書の使い方
 
 - 親設計書: 全体構成、フェーズ分割、共通方針を定義する
 - 本書: agent 個別設計で共通に使う観点と shared memory 設計を定義する
-- agent 個別仕様: [docs/agents/supervisor-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/supervisor-agent.md)、[docs/agents/intake-agent.md](/home/user/source/repos/support-ope-agents/docs/agents/intake-agent.md) を参照する
-- tool 個別仕様: [docs/tools/README.md](/home/user/source/repos/support-ope-agents/docs/tools/README.md) を参照する
+- agent 個別仕様: [docs/agents/supervisor-agent.md](/home/user/source/repos/support-desk-agent/docs/agents/supervisor-agent.md)、[docs/agents/intake-agent.md](/home/user/source/repos/support-desk-agent/docs/agents/intake-agent.md) を参照する
+- tool 個別仕様: [docs/tools/README.md](/home/user/source/repos/support-desk-agent/docs/tools/README.md) を参照する
 
 各 agent 文書では次の観点をそろえる。
 
@@ -67,4 +67,4 @@ write_shared_memory の既定実装は、文字列だけでなく構造化 paylo
 ```
 
 既定実装ではこの payload を Markdown へ整形し、shared/context.md、shared/progress.md、shared/summary.md のいずれかへ replace または append で反映する。
-実装上は [src/support_desk_agent/util/shared_memory_payload.py](/home/user/source/repos/support-ope-agents/src/support_desk_agent/util/shared_memory_payload.py) に型を定義し、dict の自由記述を減らす。
+実装上は [src/support_desk_agent/util/shared_memory_payload.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/util/shared_memory_payload.py) に型を定義し、dict の自由記述を減らす。

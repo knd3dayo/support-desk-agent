@@ -5,57 +5,57 @@ agent 設計書では role 別の中間ページを介さず、必要な tool �
 
 ## 1. 参照順
 
-- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-ope-agents/docs/tools/common.md)
-- planned 一覧: [docs/tools/planned-logical-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/planned-logical-tools.md)
-- tool 個別仕様: [docs/tools/specs](/home/user/source/repos/support-ope-agents/docs/tools/specs)
+- 共通方針: [docs/tools/common.md](/home/user/source/repos/support-desk-agent/docs/tools/common.md)
+- planned 一覧: [docs/tools/planned-logical-tools.md](/home/user/source/repos/support-desk-agent/docs/tools/planned-logical-tools.md)
+- tool 個別仕様: [docs/tools/specs](/home/user/source/repos/support-desk-agent/docs/tools/specs)
 
 ## 2. ツール一覧
 
 ### 2.1 共有メモリ / ドラフト
 
-- [docs/tools/specs/read_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/read_shared_memory.md)
-- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_shared_memory.md)
-- [docs/tools/specs/write_working_memory.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_working_memory.md)
-- [docs/tools/specs/write_draft.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/write_draft.md)
+- [docs/tools/specs/read_shared_memory.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/read_shared_memory.md)
+- [docs/tools/specs/write_shared_memory.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/write_shared_memory.md)
+- [docs/tools/specs/write_working_memory.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/write_working_memory.md)
+- [docs/tools/specs/write_draft.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/write_draft.md)
 
 ### 2.2 証跡解析 / 前処理
 
-- [docs/tools/specs/analyze_pdf_files.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/analyze_pdf_files.md)
-- [docs/tools/specs/analyze_office_files.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/analyze_office_files.md)
-- [docs/tools/specs/analyze_image_files.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/analyze_image_files.md)
-- [docs/tools/specs/extract_text_from_file.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/extract_text_from_file.md)
-- [docs/tools/specs/list_zip_contents.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/list_zip_contents.md)
-- [docs/tools/specs/extract_zip.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/extract_zip.md)
-- [docs/tools/specs/convert_pdf_files_to_images.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/convert_pdf_files_to_images.md)
-- [docs/tools/specs/detect_log_format.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/detect_log_format.md)
-- [docs/tools/specs/read_log_file.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/read_log_file.md)
-- [docs/tools/specs/run_python_analysis.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/run_python_analysis.md)
+- [docs/tools/specs/analyze_pdf_files.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/analyze_pdf_files.md)
+- [docs/tools/specs/analyze_office_files.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/analyze_office_files.md)
+- [docs/tools/specs/analyze_image_files.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/analyze_image_files.md)
+- [docs/tools/specs/extract_text_from_file.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/extract_text_from_file.md)
+- [docs/tools/specs/list_zip_contents.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/list_zip_contents.md)
+- [docs/tools/specs/extract_zip.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/extract_zip.md)
+- [docs/tools/specs/convert_pdf_files_to_images.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/convert_pdf_files_to_images.md)
+- [docs/tools/specs/detect_log_format.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/detect_log_format.md)
+- [docs/tools/specs/read_log_file.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/read_log_file.md)
+- [docs/tools/specs/run_python_analysis.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/run_python_analysis.md)
 
 ### 2.3 Supervisor / orchestration
 
-- [docs/tools/specs/inspect_workflow_state.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/inspect_workflow_state.md)
-- [docs/tools/specs/evaluate_agent_result.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/evaluate_agent_result.md)
-- [docs/tools/specs/route_phase_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/route_phase_agent.md)
-- [docs/tools/specs/scan_workspace_artifacts.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/scan_workspace_artifacts.md)
-- [docs/tools/specs/spawn_log_analyzer_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_log_analyzer_agent.md)
-- [docs/tools/specs/spawn_knowledge_retriever_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_knowledge_retriever_agent.md)
-- [docs/tools/specs/spawn_draft_writer_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_draft_writer_agent.md)
-- [docs/tools/specs/spawn_investigate_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_investigate_agent.md)
-- [docs/tools/specs/spawn_back_support_escalation_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_back_support_escalation_agent.md)
-- [docs/tools/specs/spawn_back_support_inquiry_writer_agent.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/spawn_back_support_inquiry_writer_agent.md)
+- [docs/tools/specs/inspect_workflow_state.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/inspect_workflow_state.md)
+- [docs/tools/specs/evaluate_agent_result.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/evaluate_agent_result.md)
+- [docs/tools/specs/route_phase_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/route_phase_agent.md)
+- [docs/tools/specs/scan_workspace_artifacts.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/scan_workspace_artifacts.md)
+- [docs/tools/specs/spawn_log_analyzer_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/spawn_log_analyzer_agent.md)
+- [docs/tools/specs/spawn_knowledge_retriever_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/spawn_knowledge_retriever_agent.md)
+- [docs/tools/specs/spawn_draft_writer_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/spawn_draft_writer_agent.md)
+- [docs/tools/specs/spawn_investigate_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/spawn_investigate_agent.md)
+- [docs/tools/specs/spawn_back_support_escalation_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/spawn_back_support_escalation_agent.md)
+- [docs/tools/specs/spawn_back_support_inquiry_writer_agent.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/spawn_back_support_inquiry_writer_agent.md)
 
 ### 2.4 Intake / knowledge / review / external update
 
-- [docs/tools/specs/pii_mask.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/pii_mask.md)
-- [docs/tools/specs/classify_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/classify_ticket.md)
-- [docs/tools/specs/search_documents.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/search_documents.md)
-- [docs/tools/specs/external_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/external_ticket.md)
-- [docs/tools/specs/internal_ticket.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/internal_ticket.md)
-- [docs/tools/specs/check_policy.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/check_policy.md)
-- [docs/tools/specs/record_approval_decision.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/record_approval_decision.md)
-- [docs/tools/specs/prepare_ticket_update.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/prepare_ticket_update.md)
-- [docs/tools/specs/zendesk_reply.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/zendesk_reply.md)
-- [docs/tools/specs/redmine_update.md](/home/user/source/repos/support-ope-agents/docs/tools/specs/redmine_update.md)
+- [docs/tools/specs/pii_mask.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/pii_mask.md)
+- [docs/tools/specs/classify_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/classify_ticket.md)
+- [docs/tools/specs/search_documents.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/search_documents.md)
+- [docs/tools/specs/external_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/external_ticket.md)
+- [docs/tools/specs/internal_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/internal_ticket.md)
+- [docs/tools/specs/check_policy.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/check_policy.md)
+- [docs/tools/specs/record_approval_decision.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/record_approval_decision.md)
+- [docs/tools/specs/prepare_ticket_update.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/prepare_ticket_update.md)
+- [docs/tools/specs/zendesk_reply.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/zendesk_reply.md)
+- [docs/tools/specs/redmine_update.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/redmine_update.md)
 
 ## 3. 方針
 
@@ -88,11 +88,11 @@ agent 設計書では role 別の中間ページを介さず、必要な tool �
 
 ## 5. 半自動更新
 
-- ToolRegistry から tool ごとの下書きを生成する場合は support-ope-agents export-tool-docs --config config.yml --output-dir docs/tools/generated を使う
-- 生成結果は [docs/tools/generated](/home/user/source/repos/support-ope-agents/docs/tools/generated) 配下へ tool 名ベースの .generated.md として出力し、docs/tools/specs 配下を更新する際のレビュー補助に使う
+- ToolRegistry から tool ごとの下書きを生成する場合は support-desk-agent export-tool-docs --config config.yml --output-dir docs/tools/generated を使う
+- 生成結果は [docs/tools/generated](/home/user/source/repos/support-desk-agent/docs/tools/generated) 配下へ tool 名ベースの .generated.md として出力し、docs/tools/specs 配下を更新する際のレビュー補助に使う
 - export-tool-docs 実行時は、出力先ディレクトリ内の既存 .generated.md を掃除して最新の per-tool 下書きへ置き換える
 - generated には docs/tools/specs で手管理している tool だけでなく、ToolRegistry から見える補助 builtin も含まれる
 
 ## 6. バックログ化
 
-- 未実装の論理ツールを issue 化するときは [docs/tools/planned-logical-tools.md](/home/user/source/repos/support-ope-agents/docs/tools/planned-logical-tools.md) を起点にする
+- 未実装の論理ツールを issue 化するときは [docs/tools/planned-logical-tools.md](/home/user/source/repos/support-desk-agent/docs/tools/planned-logical-tools.md) を起点にする
