@@ -252,8 +252,9 @@ class SampleSupervisorAgent(AbstractAgent):
         attachment_section = (
             "\n".join(
                 [
-                    "調査可能な添付ファイル path:",
+                    "Supervisor が存在確認済みの添付ファイル path:",
                     *[f"- {path}" for path in attachment_paths],
+                    "上記の添付 path は Supervisor が実在を確認済みです。これらが見つからない、存在しない、未提供だと断定してはいけません。",
                     "添付の利用順序: まず path を確認し、ZIP は list_zip_contents で中身を確認して必要な場合だけ extract_zip を使い、PDF は analyze_pdf_files、画像は analyze_image_files を優先してください。",
                 ]
             )

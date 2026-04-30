@@ -293,6 +293,8 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("CASE-TEST-SAMPLE-ATTACH-001", executor.query)
         self.assertIn("guide.pdf", executor.query)
         self.assertIn("screen.png", executor.query)
+        self.assertIn("Supervisor が存在確認済みの添付ファイル path:", executor.query)
+        self.assertIn("見つからない、存在しない、未提供だと断定してはいけません", executor.query)
         self.assertIn("analyze_pdf_files", executor.query)
         self.assertIn("list_zip_contents", executor.query)
         self.assertIn("extract_zip", executor.query)
@@ -331,6 +333,8 @@ class SampleInvestigateAgentTests(unittest.TestCase):
                 )
 
         self.assertIn("bundle.zip", executor.query)
+        self.assertIn("Supervisor が存在確認済みの添付ファイル path:", executor.query)
+        self.assertIn("見つからない、存在しない、未提供だと断定してはいけません", executor.query)
 
     def test_supervisor_respects_attachment_ignore_patterns(self) -> None:
         config = AppConfig.model_validate(
