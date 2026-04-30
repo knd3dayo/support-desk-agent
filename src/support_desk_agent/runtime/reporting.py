@@ -148,8 +148,12 @@ def build_support_improvement_report(
         runtime_audit=runtime_audit_payload,
         control_catalog=control_catalog_payload,
     )
+    instruction_checklist = _extract_instruction_checklist(evaluator_instruction)
+    instruction_checklist_section = _render_instruction_checklist(
+        evaluation.criterion_evaluations,
+        instruction_checklist,
+    )
     checklist_section = _render_checklist(evaluation.criterion_evaluations, normalized_checklist)
-    instruction_policy_section = _render_instruction_policy(evaluator_instruction)
     control_summary_section = _render_control_summary(control_catalog_payload, runtime_audit_payload)
     runtime_constraints_section = _render_runtime_constraints(runtime_audit_payload)
     runtime_policy_effects_section = _render_runtime_policy_effects(runtime_audit_payload)
@@ -182,9 +186,14 @@ def build_support_improvement_report(
         "ObjectiveEvaluator が instruction に基づいて出力した評価観点一覧と、その結果です。",
         *_render_criterion_evaluations(evaluation.criterion_evaluations),
         "",
-        "## Evaluator 指示上の評価方針",
-        "ObjectiveEvaluator instruction の ## 評価方針 セクションを、そのまま参照できるように表示します。",
-        *instruction_policy_section,
+        "## Evaluator チェックリスト評価",
+        "ObjectiveEvaluator instruction の ## チェックリスト に基づく評価結果です。標準チェックリストと、追加で指定した観点を分けて表示します。",
+        "### 標準チェックリスト",
+        *instruction_checklist_section,
+        "",
+        "### ユーザー指定チェックリスト",
+        "インタラクションで追加指定された観点に対する評価結果です。",
+        *checklist_section,
         "",
         "## エージェント別評価",
         "各エージェントの役割ごとに、出力の有無、メモリ連携、品質を点数付きで評価した一覧です。",
@@ -1042,6 +1051,10 @@ def _extract_markdown_bullets(text: str, heading: str) -> list[str]:
     return bullets
 
 
+def _extract_instruction_checklist(instruction_text: str) -> list[str]:
+    return _extract_markdown_bullets(instruction_text, "## チェックリスト")
+
+
 def _dedupe_instruction_criteria(criteria: list[InstructionCriterion]) -> list[InstructionCriterion]:
     deduped: list[InstructionCriterion] = []
     seen: set[str] = set()
@@ -1093,6 +1106,23 @@ def _render_checklist(criteria: list[CriterionEvaluation], checklist: list[str])
     return lines or ["- なし"]
 
 
+def _render_instruction_checklist(criteria: list[CriterionEvaluation], checklist: list[str]) -> list[str]:
+    if not checklist:
+        return ["- なし"]
+    lines: list[str] = []
+    for item in checklist:
+        criterion = _find_instruction_checklist_criterion(criteria, item)
+        if criterion is None:
+            lines.append(
+                f"- [warning] {item}: Evaluator 出力からこのチェック項目に対応する評価結果を特定できませんでした。"
+            )
+            continue
+        lines.append(
+            f"- [{_checklist_badge(criterion.score)}] {item}: {criterion.result} ({criterion.score} / 100)"
+        )
+    return lines or ["- なし"]
+
+
 def _index_checklist_criteria(criteria: list[CriterionEvaluation]) -> dict[str, CriterionEvaluation]:
     index: dict[str, CriterionEvaluation] = {}
     for criterion in criteria:
@@ -1101,6 +1131,93 @@ def _index_checklist_criteria(criteria: list[CriterionEvaluation]) -> dict[str, 
             if key and key not in index:
                 index[key] = criterion
     return index
+
+
+def _find_instruction_checklist_criterion(
+    criteria: list[CriterionEvaluation],
+    checklist_item: str,
+) -> CriterionEvaluation | None:
+    normalized_item = _normalize_text(checklist_item)
+    if not normalized_item:
+        return None
+    direct_matches = [
+        criterion
+        for criterion in criteria
+        if _instruction_checklist_direct_match(criterion, normalized_item)
+    ]
+    if direct_matches:
+        return max(direct_matches, key=lambda item: item.score)
+
+    marker_groups = _instruction_checklist_marker_groups(normalized_item)
+    if not marker_groups:
+        return None
+
+    best_match: CriterionEvaluation | None = None
+    best_score = -1
+    minimum_groups = 1 if len(marker_groups) == 1 else 2
+    for criterion in criteria:
+        criterion_corpus = _instruction_checklist_corpus(criterion)
+        matched_groups = sum(
+            1
+            for group in marker_groups
+            if any(marker and marker in criterion_corpus for marker in group)
+        )
+        if matched_groups < minimum_groups:
+            continue
+        ranking = matched_groups * 1000 + criterion.score
+        if ranking > best_score:
+            best_score = ranking
+            best_match = criterion
+    return best_match
+
+
+def _instruction_checklist_direct_match(criterion: CriterionEvaluation, normalized_item: str) -> bool:
+    if any(_normalize_text(item) == normalized_item for item in criterion.related_checklist_items):
+        return True
+    criterion_corpus = _instruction_checklist_corpus(criterion)
+    return normalized_item in criterion_corpus or criterion_corpus in normalized_item
+
+
+def _instruction_checklist_corpus(criterion: CriterionEvaluation) -> str:
+    return _normalize_text(
+        "\n".join(
+            [
+                criterion.name,
+                criterion.viewpoint,
+                criterion.result,
+                *criterion.related_checklist_items,
+            ]
+        )
+    )
+
+
+def _instruction_checklist_marker_groups(normalized_item: str) -> list[tuple[str, ...]]:
+    groups: list[tuple[str, ...]] = []
+    if "office" in normalized_item:
+        groups.append(("office", "word", "excel", "powerpoint", "docx", "xlsx", "pptx"))
+    if "pdf化" in normalized_item:
+        groups.append(("pdf化", "pdf"))
+    if "画像" in normalized_item:
+        groups.append(("画像", "image", "analyze_image_files"))
+    if "analyze_image_files" in normalized_item:
+        groups.append(("analyze_image_files", "画像", "image"))
+    if "analyze_pdf_files" in normalized_item:
+        groups.append(("analyze_pdf_files", "pdf"))
+    if "pdf" in normalized_item:
+        groups.append(("pdf", "analyze_pdf_files", "pdf化"))
+    if "zip" in normalized_item or "解凍" in normalized_item or "展開" in normalized_item:
+        groups.append(("zip", "解凍", "展開"))
+    if "artifact_paths" in normalized_item or "成果物" in normalized_item:
+        groups.append(("artifact_paths", "成果物", "ファイル一覧"))
+
+    deduped: list[tuple[str, ...]] = []
+    seen: set[tuple[str, ...]] = set()
+    for group in groups:
+        if group in seen:
+            continue
+        seen.add(group)
+        deduped.append(group)
+    return deduped
 
 
 def _checklist_badge(score: int) -> str:
@@ -1375,7 +1492,7 @@ def _render_criterion_evaluations(criteria: list[CriterionEvaluation]) -> list[s
     for item in criteria:
         checklist_line = ""
         if item.related_checklist_items:
-            checklist_line = f"- 対応するユーザー指定観点: {', '.join(item.related_checklist_items)}"
+            checklist_line = f"- 対応するチェックリスト項目: {', '.join(item.related_checklist_items)}"
         lines.extend([
             f"### {item.name}",
             f"- 評価観点: {item.viewpoint}",
@@ -1387,13 +1504,6 @@ def _render_criterion_evaluations(criteria: list[CriterionEvaluation]) -> list[s
     if lines and not lines[-1].strip():
         lines.pop()
     return lines
-
-
-def _render_instruction_policy(instruction_text: str) -> list[str]:
-    bullets = _extract_markdown_bullets(instruction_text, "## 評価方針")
-    if not bullets:
-        return ["- なし"]
-    return [f"- {item}" for item in bullets]
 
 
 def _render_subgraph_sequence_section(diagrams: list[SubgraphSequenceDiagram]) -> list[str]:

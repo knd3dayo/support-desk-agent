@@ -57,7 +57,7 @@ class McpAdapterTests(unittest.TestCase):
             return_value=_fake_objective_evaluation_result(),
         )
         self._classify_model_patcher = patch(
-            "support_desk_agent.tools.default_classify_ticket.build_chat_openai_model",
+            "support_desk_agent.tools.classify_ticket.build_chat_openai_model",
             return_value=_FakeClassifierModel(),
         )
         self._objective_eval_patcher.start()

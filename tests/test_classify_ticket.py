@@ -42,7 +42,7 @@ class ClassifyTicketTests(unittest.TestCase):
             }
         )
 
-        with patch("support_desk_agent.tools.default_classify_ticket.build_chat_openai_model", return_value=_FakeModel()):
+        with patch("support_desk_agent.tools.classify_ticket.build_chat_openai_model", return_value=_FakeModel()):
             result = json.loads(asyncio.run(build_default_classify_ticket_tool(config)("ai-chat-utilの機能一覧を出して")))
 
         self.assertEqual(result["category"], "specification_inquiry")
@@ -60,7 +60,7 @@ class ClassifyTicketTests(unittest.TestCase):
         )
         model = _FakeModel()
 
-        with patch("support_desk_agent.tools.default_classify_ticket.build_chat_openai_model", return_value=model):
+        with patch("support_desk_agent.tools.classify_ticket.build_chat_openai_model", return_value=model):
             asyncio.run(
                 build_default_classify_ticket_tool(config)(
                     "詳細を教えてください",

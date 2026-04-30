@@ -12,7 +12,7 @@ from support_desk_agent.agents.objective_evaluator import ObjectiveEvaluatorStru
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.instructions.loader import InstructionLoader
 from support_desk_agent.memory.file_store import CaseMemoryStore
-from support_desk_agent.runtime.reporting import MemoryConsistencyFinding, build_support_improvement_report, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_criteria, _render_instruction_policy, _render_ticket_fetch_error_section, _render_ticket_info_section, _ticket_lookup_detail, _ticket_lookup_status
+from support_desk_agent.runtime.reporting import CriterionEvaluation, MemoryConsistencyFinding, build_support_improvement_report, _build_objective_evaluation, _build_sequence_diagram, _build_subgraph_sequence_diagrams, _extract_instruction_checklist, _extract_instruction_criteria, _render_instruction_checklist, _render_ticket_fetch_error_section, _render_ticket_info_section, _ticket_lookup_detail, _ticket_lookup_status
 from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_desk_agent.models.state import CaseState
 
@@ -42,13 +42,13 @@ class ReportingEvaluationTests(unittest.TestCase):
         self.assertIn("Intake-->>User: 追加情報を依頼", diagram)
         self.assertNotIn("Supervisor->>Knowledge", diagram)
 
-    def test_render_instruction_policy_outputs_evaluator_policy_bullets(self) -> None:
-        lines = _render_instruction_policy(
+    def test_extract_instruction_checklist_returns_checklist_bullets(self) -> None:
+        lines = _extract_instruction_checklist(
             "\n".join(
                 [
                     "## あなたの役割",
                     "sample",
-                    "## 評価方針",
+                    "## チェックリスト",
                     "- 観点Aを確認する",
                     "- 観点Bを確認する",
                     "## 出力上の注意",
@@ -57,9 +57,31 @@ class ReportingEvaluationTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(lines, ["- 観点Aを確認する", "- 観点Bを確認する"])
+        self.assertEqual(lines, ["観点Aを確認する", "観点Bを確認する"])
 
-    def test_build_support_improvement_report_includes_instruction_policy_section(self) -> None:
+    def test_render_instruction_checklist_outputs_checklist_based_evaluations(self) -> None:
+        lines = _render_instruction_checklist(
+            [
+                CriterionEvaluation(
+                    name="Office 添付の PDF 化と PDF 分析",
+                    viewpoint="Office 添付の PDF 化と、その後の PDF 分析の有無を確認する。",
+                    result="PDF 化と PDF 分析の両方を確認できました。",
+                    score=92,
+                )
+            ],
+            [
+                "添付ファイルに Office ドキュメントが含まれている場合、PDF 化の実施痕跡と、その後に PDF を分析した痕跡の両方を確認し、適切に PDF 化および分析できたかを評価してください。"
+            ],
+        )
+
+        self.assertEqual(
+            lines,
+            [
+                "- [good] 添付ファイルに Office ドキュメントが含まれている場合、PDF 化の実施痕跡と、その後に PDF を分析した痕跡の両方を確認し、適切に PDF 化および分析できたかを評価してください。: PDF 化と PDF 分析の両方を確認できました。 (92 / 100)"
+            ],
+        )
+
+    def test_build_support_improvement_report_includes_instruction_checklist_section(self) -> None:
         config = AppConfig.model_validate(
             {
                 "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
@@ -77,9 +99,8 @@ class ReportingEvaluationTests(unittest.TestCase):
             (instructions_path / "ObjectiveEvaluator.md").write_text(
                 "\n".join(
                     [
-                        "## 評価方針",
-                        "- 独自観点Aを確認する",
-                        "- 独自観点Bを確認する",
+                        "## チェックリスト",
+                        "- 添付ファイルに Office ドキュメントが含まれている場合、PDF 化の実施痕跡と、その後に PDF を分析した痕跡の両方を確認し、適切に PDF 化および分析できたかを評価してください。",
                     ]
                 ),
                 encoding="utf-8",
@@ -93,7 +114,14 @@ class ReportingEvaluationTests(unittest.TestCase):
             with patch(
                 "support_desk_agent.runtime.reporting.ObjectiveEvaluator.evaluate",
                 return_value=ObjectiveEvaluatorStructuredResult(
-                    criterion_evaluations=[],
+                    criterion_evaluations=[
+                        {
+                            "title": "Office 添付の PDF 化と PDF 分析",
+                            "viewpoint": "Office 添付の PDF 化と、その後の PDF 分析の有無を確認する。",
+                            "result": "PDF 化と PDF 分析の両方を確認できました。",
+                            "score": 88,
+                        }
+                    ],
                     agent_evaluations=[],
                     overall_summary="summary",
                     improvement_points=[],
@@ -117,9 +145,10 @@ class ReportingEvaluationTests(unittest.TestCase):
                     config=config,
                 )
 
-        self.assertIn("## Evaluator 指示上の評価方針", report.content)
-        self.assertIn("- 独自観点Aを確認する", report.content)
-        self.assertIn("- 独自観点Bを確認する", report.content)
+        self.assertIn("## Evaluator チェックリスト評価", report.content)
+        self.assertIn("### 標準チェックリスト", report.content)
+        self.assertIn("### ユーザー指定チェックリスト", report.content)
+        self.assertIn("PDF 化と PDF 分析の両方を確認できました。 (88 / 100)", report.content)
 
     def test_ticket_lookup_status_reports_success_when_ticket_artifact_exists(self) -> None:
         config = AppConfig.model_validate(
