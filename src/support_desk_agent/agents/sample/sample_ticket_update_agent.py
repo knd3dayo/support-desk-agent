@@ -284,7 +284,7 @@ class SampleTicketUpdateAgent(AbstractAgent):
         binding = self._ticket_binding(ticket_kind)
         if binding is None or not binding.enabled or not ticket_id:
             return None, None
-        model = build_chat_openai_model(self.config, temperature=0)
+        model = build_chat_openai_model(self.config)
         tools_xml = self.ticket_mcp_client.render_tools_xml(binding.server)
         response = model.invoke(
             [

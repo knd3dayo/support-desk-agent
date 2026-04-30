@@ -626,7 +626,7 @@ class IntakeAgent(AbstractAgent):
         ticket_artifacts = cast(dict[str, list[str]], update.get("intake_ticket_artifacts") or {})
         followup_questions = cast(dict[str, str], update.get("intake_followup_questions") or {})
         agent_errors = cast(list[dict[str, str]], update.get("agent_errors") or [])
-        model = build_chat_openai_model(self.config, temperature=0)
+        model = build_chat_openai_model(self.config)
         for ticket_kind, tool in (("external", self.tools.external_ticket_tool), ("internal", self.tools.internal_ticket_tool)):
             ticket_id = str(update.get(f"{ticket_kind}_ticket_id") or "").strip()
             if not ticket_id or not self._ticket_lookup_requested(update, ticket_kind):

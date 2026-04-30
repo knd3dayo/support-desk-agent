@@ -8,6 +8,7 @@ export default defineConfig(function (_a) {
         plugins: [react()],
         server: {
             port: 5173,
+            allowedHosts: true,
             proxy: {
                 '/health': apiProxyTarget,
                 '/ui-config': apiProxyTarget,

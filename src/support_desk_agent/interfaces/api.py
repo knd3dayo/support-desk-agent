@@ -69,7 +69,6 @@ def _build_startup_probe_model(config: AppConfig) -> ChatOpenAI:
         model=config.llm.model,
         api_key=cast(Any, config.llm.api_key),
         base_url=config.llm.base_url,
-        temperature=0,
     )
 
 

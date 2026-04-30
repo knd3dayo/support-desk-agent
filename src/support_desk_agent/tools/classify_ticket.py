@@ -23,7 +23,7 @@ def build_default_classify_ticket_tool(config: AppConfig):
         if not normalized_text:
             raise ValueError("classify_ticket requires non-empty text")
 
-        model = build_chat_openai_model(config, temperature=0)
+        model = build_chat_openai_model(config)
 
         # instructionsの外部化: InstructionLoader経由で取得（instructionsが空なら例外）
         loader = InstructionLoader(config, memory_store=None, runtime_harness_manager=None)

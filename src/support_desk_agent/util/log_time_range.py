@@ -64,7 +64,7 @@ def _infer_log_extract_range_with_llm(
     reference_datetime: datetime | None = None,
 ) -> tuple[str, str] | None:
     now = reference_datetime or datetime.now()
-    model = build_chat_openai_model(config, temperature=0)
+    model = build_chat_openai_model(config)
     structured_model = model.with_structured_output(_InferredLogTimeRange)
     response = structured_model.invoke(
         [

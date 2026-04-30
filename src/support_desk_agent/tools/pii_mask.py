@@ -16,7 +16,7 @@ def build_default_pii_mask_tool(config: AppConfig):
         if not normalized_text.strip():
             return normalized_text
 
-        model = build_chat_openai_model(config, temperature=0)
+        model = build_chat_openai_model(config)
         instructions = [
             "You redact sensitive secrets from customer support text.",
             "Mask API keys, access tokens, bearer tokens, secrets, passwords, private keys, and similar credentials.",

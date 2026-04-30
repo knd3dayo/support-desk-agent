@@ -60,7 +60,7 @@ def build_default_infer_log_pattern_tool(config: AppConfig):
             return json.dumps(payload, ensure_ascii=False)
 
         # LLMモデルを初期化し、構造化出力を有効化
-        model = build_chat_openai_model(config, temperature=0)
+        model = build_chat_openai_model(config)
         structured_model = model.with_structured_output(_LogHeaderPatternInference)
 
         # InstructionLoaderでプロンプトを外部化（instructionsが空なら例外）

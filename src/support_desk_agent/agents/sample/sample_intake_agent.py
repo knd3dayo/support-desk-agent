@@ -174,7 +174,7 @@ class SampleIntakeAgent(AbstractAgent):
         mcp_client = self.tools.ticket_mcp_client
         if mcp_client is None:
             raise ValueError("ticket MCP provider is not configured")
-        model = build_chat_openai_model(self.config, temperature=0)
+        model = build_chat_openai_model(self.config)
         tools_xml = mcp_client.render_tools_xml(binding.server)
         run_state: dict[str, Any] = {"tool_calls": []}
         tools = mcp_client.get_agent_tools(

@@ -70,7 +70,7 @@ def _invoke_deepagents_search(
     conversation_messages: list[dict[str, object]] | None = None,
 ) -> dict[str, dict[str, Any]] | None:
     agent = create_deep_agent_compatible_agent(
-        model=build_chat_openai_model(config, temperature=0),
+        model=build_chat_openai_model(config),
         backend=backend,
         system_prompt=(
             "Search the mounted documentation and return only structured data. "
