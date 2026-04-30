@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
@@ -12,7 +11,6 @@ from support_desk_agent.agents.abstract_agent import AbstractAgent
 from support_desk_agent.agents.agent_definition import AgentDefinition
 from support_desk_agent.agents.objective_evaluator import ObjectiveEvaluator
 from support_desk_agent.agents.roles import OBJECTIVE_EVALUATOR
-from support_desk_agent.agents.roles import INVESTIGATE_AGENT
 from support_desk_agent.agents.roles import SUPERVISOR_AGENT
 from support_desk_agent.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_desk_agent.util.asyncio_utils import run_awaitable_sync
@@ -25,41 +23,7 @@ from support_desk_agent.agents.sample.sample_ticket_update_agent import SampleTi
 from support_desk_agent.models.state import CaseState
 from support_desk_agent.instructions import InstructionLoader
 
-
-class SampleSupervisorAgent(AbstractAgent):
-    PLAN_PASS_SCORE = 80
-    RESULT_PASS_SCORE = 80
-    MAX_INVESTIGATION_FOLLOWUP_LOOPS = 1
-
-    def __init__(
-        self,
-        config: Any,
-        investigate_executor: "SampleInvestigateAgent | None" = None,
-        ticket_update_executor: "SampleTicketUpdateAgent | None" = None,
-    ):
-        from support_desk_agent.tools.registry import ToolRegistry
-        self.config = config
-        self.tool_registry = ToolRegistry(config)
-        self.investigate_executor = investigate_executor
-        self.ticket_update_executor = ticket_update_executor
-
-
-
-    @staticmethod
-    def _extract_investigation_summary(result: Any) -> str:
-        return extract_result_output_text(result) or format_result(result)
-
-    @staticmethod
-    def _extract_plan_steps(plan_text: str) -> list[str]:
-        bullet_prefixes = ("- ", "* ", "1. ", "2. ", "3. ", "4. ", "5. ")
-        lines = [line.strip() for line in plan_text.splitlines() if line.strip()]
-        bullet_lines = [line for line in lines if line.startswith(bullet_prefixes)]
-        if bullet_lines:
-            return [line.split(" ", 1)[1].strip() if " " in line else line for line in bullet_lines]
-        if len(lines) <= 1:
-            return lines
-        return lines[1:]
-
+class SampleSupervisorAgentUtil:
     @staticmethod
     def _format_plan_steps(plan_steps: list[str]) -> str:
         if not plan_steps:
@@ -134,7 +98,8 @@ class SampleSupervisorAgent(AbstractAgent):
             return f"サンプル調査結果: 問い合わせ内容を確認しました。要点は「{raw_issue}」です。"
         return "サンプル調査結果: 問い合わせ内容を確認しました。"
 
-    def _build_draft_response(self, investigation_summary: str) -> str:
+    @staticmethod
+    def _build_draft_response(investigation_summary: str) -> str:
         summary = investigation_summary.strip() or "サンプル調査を実行しました。"
         return f"お問い合わせありがとうございます。\n\n{summary}\n\n必要であれば追加の確認事項もご案内できます。"
 
@@ -177,16 +142,78 @@ class SampleSupervisorAgent(AbstractAgent):
             sections.append(f"{label}:\n{value}")
         return "\n\n".join(sections)
 
+    @staticmethod
+    def _extract_investigation_summary(result: Any) -> str:
+        return extract_result_output_text(result) or format_result(result)
+
+    @staticmethod
+    def _extract_plan_steps(plan_text: str) -> list[str]:
+        bullet_prefixes = ("- ", "* ", "1. ", "2. ", "3. ", "4. ", "5. ")
+        lines = [line.strip() for line in plan_text.splitlines() if line.strip()]
+        bullet_lines = [line for line in lines if line.startswith(bullet_prefixes)]
+        if bullet_lines:
+            return [line.split(" ", 1)[1].strip() if " " in line else line for line in bullet_lines]
+        if len(lines) <= 1:
+            return lines
+        return lines[1:]
+
+
+    @staticmethod
+    def _collect_adopted_sources(state: "CaseState") -> list[str]:
+        adopted_sources: list[str] = []
+
+        for value in cast(list[str], state.get("knowledge_retrieval_adopted_sources") or []):
+            normalized = str(value).strip()
+            if normalized and normalized not in adopted_sources:
+                adopted_sources.append(normalized)
+
+        workspace_path = str(state.get("workspace_path") or "").strip()
+        if workspace_path:
+            evidence_dir = Path(workspace_path).expanduser().resolve() / ".evidence"
+            if evidence_dir.exists():
+                for path in sorted(p for p in evidence_dir.rglob("*") if p.is_file()):
+                    relative_path = path.relative_to(Path(workspace_path).expanduser().resolve()).as_posix()
+                    if relative_path not in adopted_sources:
+                        adopted_sources.append(relative_path)
+
+        ticket_context = cast(dict[str, Any], state.get("intake_ticket_context_summary") or {})
+        for key, value in ticket_context.items():
+            if str(value).strip():
+                source_label = f"ticket:{key}"
+                if source_label not in adopted_sources:
+                    adopted_sources.append(source_label)
+
+        if not adopted_sources:
+            adopted_sources.append("customer issue")
+        return adopted_sources
+
+class SampleSupervisorAgent(AbstractAgent):
+    PLAN_PASS_SCORE = 80
+    RESULT_PASS_SCORE = 80
+    MAX_INVESTIGATION_FOLLOWUP_LOOPS = 1
+
+    def __init__(
+        self,
+        config: Any,
+        investigate_executor: "SampleInvestigateAgent | None" = None,
+        ticket_update_executor: "SampleTicketUpdateAgent | None" = None,
+    ):
+        from support_desk_agent.tools.registry import ToolRegistry
+        self.config = config
+        self.tool_registry = ToolRegistry(config)
+        self.investigate_executor = investigate_executor
+        self.ticket_update_executor = ticket_update_executor
+
     def _build_investigation_query(self, state: "CaseState", *, mode: str) -> str:
         raw_issue = str(state.get("raw_issue") or "").strip()
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
-        followup_section = self._format_followup_answers(state)
+        followup_section = SampleSupervisorAgentUtil._format_followup_answers(state)
         ticket_context_section = format_ticket_context(cast(dict, state))
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         shared_memory = self.tool_registry.read_shared_memory_for_case(case_id, workspace_path, role=SUPERVISOR_AGENT)
-        shared_memory_section = self._format_shared_memory_snapshot(shared_memory)
+        shared_memory_section = SampleSupervisorAgentUtil._format_shared_memory_snapshot(shared_memory)
         case_id = str(state.get("case_id") or "").strip()
         workspace_path = str(state.get("workspace_path") or "").strip()
         investigate_working_memory = self.tool_registry.read_investigate_working_memory_for_case(case_id, workspace_path, role=SUPERVISOR_AGENT)
@@ -234,7 +261,7 @@ class SampleSupervisorAgent(AbstractAgent):
             if evidence_path
             else ""
         )
-        evidence_preview = self._build_evidence_log_preview(evidence_path)
+        evidence_preview = SampleSupervisorAgentUtil._build_evidence_log_preview(evidence_path)
         evidence_preview_section = (
             "\n".join(
                 [
@@ -268,7 +295,7 @@ class SampleSupervisorAgent(AbstractAgent):
                 part
                 for part in (
                     f"確定した調査計画:\n{plan_summary}" if plan_summary else "",
-                    f"計画ステップ:\n{self._format_plan_steps(plan_steps)}" if plan_steps else "",
+                    f"計画ステップ:\n{SampleSupervisorAgentUtil._format_plan_steps(plan_steps)}" if plan_steps else "",
                 )
                 if part
             )
@@ -276,7 +303,7 @@ class SampleSupervisorAgent(AbstractAgent):
             else ""
         )
         followup_notes_section = (
-            self._format_supervisor_followup_notes(list(state.get("supervisor_followup_notes") or []))
+            SampleSupervisorAgentUtil._format_supervisor_followup_notes(list(state.get("supervisor_followup_notes") or []))
             if mode == SampleInvestigateAgent.ACTION_MODE
             else ""
         )
@@ -302,7 +329,7 @@ class SampleSupervisorAgent(AbstractAgent):
             return raw_issue
 
         preface = ""
-        if self._has_ticket_followup_answer(state) and ticket_context_section:
+        if SampleSupervisorAgentUtil._has_ticket_followup_answer(state) and ticket_context_section:
             preface = (
                 "追加確認でチケット候補への回答が返っています。"
                 "取得済みチケット情報を優先して確認し、現在状況と次アクションをユーザー向けに整理してください。"
@@ -357,36 +384,7 @@ class SampleSupervisorAgent(AbstractAgent):
             pass
 
         result = self.investigate_executor.execute(**execute_kwargs)
-        return self._extract_investigation_summary(result).strip()
-
-    @staticmethod
-    def _collect_adopted_sources(state: "CaseState") -> list[str]:
-        adopted_sources: list[str] = []
-
-        for value in cast(list[str], state.get("knowledge_retrieval_adopted_sources") or []):
-            normalized = str(value).strip()
-            if normalized and normalized not in adopted_sources:
-                adopted_sources.append(normalized)
-
-        workspace_path = str(state.get("workspace_path") or "").strip()
-        if workspace_path:
-            evidence_dir = Path(workspace_path).expanduser().resolve() / ".evidence"
-            if evidence_dir.exists():
-                for path in sorted(p for p in evidence_dir.rglob("*") if p.is_file()):
-                    relative_path = path.relative_to(Path(workspace_path).expanduser().resolve()).as_posix()
-                    if relative_path not in adopted_sources:
-                        adopted_sources.append(relative_path)
-
-        ticket_context = cast(dict[str, Any], state.get("intake_ticket_context_summary") or {})
-        for key, value in ticket_context.items():
-            if str(value).strip():
-                source_label = f"ticket:{key}"
-                if source_label not in adopted_sources:
-                    adopted_sources.append(source_label)
-
-        if not adopted_sources:
-            adopted_sources.append("customer issue")
-        return adopted_sources
+        return SampleSupervisorAgentUtil._extract_investigation_summary(result).strip()
 
     def _write_shared_memory(self, state: "CaseState", investigation_summary: str) -> None:
         case_id = str(state.get("case_id") or "").strip()
@@ -394,13 +392,14 @@ class SampleSupervisorAgent(AbstractAgent):
         if not case_id or not workspace_path:
             return
         raw_issue = str(state.get("raw_issue") or "").strip()
+        # チケット文脈の整形は共通ユーティリティに移動
         ticket_context = format_ticket_context(cast(dict, state))
-        followup_answers = self._format_followup_answers(state)
+        followup_answers = SampleSupervisorAgentUtil._format_followup_answers(state)
         intake_category = str(state.get("intake_category") or "ambiguous_case").strip() or "ambiguous_case"
         intake_urgency = str(state.get("intake_urgency") or "medium").strip() or "medium"
         investigation_focus = str(state.get("intake_investigation_focus") or "問い合わせ内容の事実関係を確認する").strip()
         classification_reason = str(state.get("intake_classification_reason") or "").strip()
-        escalation_required = self._should_escalate(cast(dict[str, Any], state))
+        escalation_required = SampleSupervisorAgentUtil._should_escalate(cast(dict[str, Any], state))
         next_action = (
             NextActionTexts.SAMPLE_PREPARE_ESCALATION
             if escalation_required
@@ -433,7 +432,7 @@ class SampleSupervisorAgent(AbstractAgent):
         range_start = str(state.get("log_extract_range_start") or "").strip()
         range_end = str(state.get("log_extract_range_end") or "").strip()
         incident_timeframe = str(state.get("intake_incident_timeframe") or "").strip()
-        adopted_sources = self._collect_adopted_sources(state)
+        adopted_sources = SampleSupervisorAgentUtil._collect_adopted_sources(state)
         if range_start and range_end:
             requested_range = f"ログ抽出対象: {range_start} -> {range_end}"
             confirmed_results.append(requested_range)
@@ -541,12 +540,12 @@ class SampleSupervisorAgent(AbstractAgent):
         instruction_text = InstructionLoader(self.config).load(case_id, SUPERVISOR_AGENT)
         plan_summary = self._execute_mode(update, mode=SampleInvestigateAgent.PLAN_MODE, instruction_text=instruction_text)
         update["plan_summary"] = plan_summary
-        update["plan_steps"] = self._extract_plan_steps(plan_summary)
+        update["plan_steps"] = SampleSupervisorAgentUtil._extract_plan_steps(plan_summary)
 
         plan_evaluation = self._evaluate_objective(update, case_id=case_id, evaluation_target="plan")
         update["plan_evaluation_summary"] = str(plan_evaluation.overall_summary)
         update["plan_evaluation_score"] = int(plan_evaluation.overall_score)
-        update["supervisor_followup_notes"] = self._build_review_notes(
+        update["supervisor_followup_notes"] = SampleSupervisorAgentUtil._build_review_notes(
             label="Plan review",
             summary=str(plan_evaluation.overall_summary),
             score=int(plan_evaluation.overall_score),
@@ -564,7 +563,7 @@ class SampleSupervisorAgent(AbstractAgent):
             if int(result_evaluation.overall_score) >= self.RESULT_PASS_SCORE or followup_loops >= self.MAX_INVESTIGATION_FOLLOWUP_LOOPS:
                 break
             followup_loops += 1
-            update["supervisor_followup_notes"] = self._build_review_notes(
+            update["supervisor_followup_notes"] = SampleSupervisorAgentUtil._build_review_notes(
                 label="Result review",
                 summary=str(result_evaluation.overall_summary),
                 score=int(result_evaluation.overall_score),
@@ -572,7 +571,7 @@ class SampleSupervisorAgent(AbstractAgent):
             )
 
         self._write_shared_memory(update, investigation_summary)
-        update["escalation_required"] = self._should_escalate(cast(dict[str, Any], update))
+        update["escalation_required"] = SampleSupervisorAgentUtil._should_escalate(cast(dict[str, Any], update))
         if update["escalation_required"]:
             update["escalation_reason"] = str(update.get("escalation_reason") or "追加確認のためバックサポートへ問い合わせます。")
             update["next_action"] = NextActionTexts.SAMPLE_PREPARE_ESCALATION
@@ -603,7 +602,7 @@ class SampleSupervisorAgent(AbstractAgent):
         update["draft_review_iterations"] = 1
         update["draft_review_max_loops"] = 1
         if not str(update.get("draft_response") or "").strip():
-            update["draft_response"] = self._build_draft_response(str(update.get("investigation_summary") or ""))
+            update["draft_response"] = SampleSupervisorAgentUtil._build_draft_response(str(update.get("investigation_summary") or ""))
         update["next_action"] = NextActionTexts.APPROVAL_REVIEW_DRAFT
         return update
 
@@ -629,7 +628,7 @@ class SampleSupervisorAgent(AbstractAgent):
         graph.add_edge(START, "supervisor_entry")
         graph.add_conditional_edges(
             "supervisor_entry",
-            lambda state: self.route_entry(cast(dict[str, object], state)),
+            lambda state: SampleSupervisorAgentUtil.route_entry(cast(dict[str, object], state)),
             {
                 "investigation": "investigation",
                 "draft_review": "draft_review",
@@ -637,7 +636,7 @@ class SampleSupervisorAgent(AbstractAgent):
         )
         graph.add_conditional_edges(
             "investigation",
-            lambda state: self.route_after_investigation(cast(dict[str, object], state)),
+            lambda state: SampleSupervisorAgentUtil.route_after_investigation(cast(dict[str, object], state)),
             {
                 "escalation_review": "escalation_review",
                 "draft_review": "draft_review",
@@ -647,7 +646,7 @@ class SampleSupervisorAgent(AbstractAgent):
         graph.add_edge("escalation_review", "wait_for_approval")
         graph.add_conditional_edges(
             "wait_for_approval",
-            lambda state: self.route_after_approval(cast(dict[str, object], state)),
+            lambda state: SampleSupervisorAgentUtil.route_after_approval(cast(dict[str, object], state)),
             {
                 "ticket_update_subgraph": "ticket_update_subgraph",
                 "draft_review": "draft_review",
