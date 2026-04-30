@@ -7,7 +7,7 @@ from uuid import uuid4
 from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
 from support_desk_agent.runtime.case_titles import derive_case_title
 from support_desk_agent.runtime.conversation_messages import append_serialized_message
-from support_desk_agent.models.state import CaseState
+from support_desk_agent.models.state import CaseState, CaseStateModel
 from support_desk_agent.workspace import WorkspaceService
 
 
@@ -136,12 +136,9 @@ def normalize_state_ids(state: dict[str, object] | CaseState, *, trace_id: str |
     normalized_trace_id = normalize_trace_id(
         str(trace_id or state.get("trace_id") or state.get("session_id") or new_trace_id())
     )
-    normalized_state = cast(CaseState, dict(state))
-    normalized_state.pop("session_id", None)
+    normalized_state = dict(state)
     normalized_state["trace_id"] = normalized_trace_id
-    normalized_state["thread_id"] = normalized_trace_id
-    normalized_state["workflow_run_id"] = normalized_trace_id
-    return normalized_state
+    return CaseStateModel.model_validate(normalized_state).to_state_dict()
 
 
 def normalize_trace_id(value: str) -> str:

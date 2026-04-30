@@ -25,6 +25,14 @@ from support_desk_agent.instructions import InstructionLoader
 
 class SampleSupervisorAgentUtil:
     @staticmethod
+    def _extract_case_context(state: "CaseState") -> tuple[str, str, str]:
+        return (
+            str(state.get("case_id") or "").strip(),
+            str(state.get("workspace_path") or "").strip(),
+            str(state.get("raw_issue") or "").strip(),
+        )
+
+    @staticmethod
     def _format_plan_steps(plan_steps: list[str]) -> str:
         if not plan_steps:
             return ""
@@ -204,18 +212,12 @@ class SampleSupervisorAgent(AbstractAgent):
         self.investigate_executor = investigate_executor
         self.ticket_update_executor = ticket_update_executor
 
-    def _build_investigation_query(self, state: "CaseState", *, mode: str) -> str:
-        raw_issue = str(state.get("raw_issue") or "").strip()
-        case_id = str(state.get("case_id") or "").strip()
-        workspace_path = str(state.get("workspace_path") or "").strip()
+    def _build_investigation_query(self, state: CaseState, *, mode: str) -> str:
+        case_id, workspace_path, raw_issue = SampleSupervisorAgentUtil._extract_case_context(state)
         followup_section = SampleSupervisorAgentUtil._format_followup_answers(state)
         ticket_context_section = format_ticket_context(cast(dict, state))
-        case_id = str(state.get("case_id") or "").strip()
-        workspace_path = str(state.get("workspace_path") or "").strip()
         shared_memory = self.tool_registry.read_shared_memory_for_case(case_id, workspace_path, role=SUPERVISOR_AGENT)
         shared_memory_section = SampleSupervisorAgentUtil._format_shared_memory_snapshot(shared_memory)
-        case_id = str(state.get("case_id") or "").strip()
-        workspace_path = str(state.get("workspace_path") or "").strip()
         investigate_working_memory = self.tool_registry.read_investigate_working_memory_for_case(case_id, workspace_path, role=SUPERVISOR_AGENT)
         working_memory_params_section = (
             "\n".join(
@@ -387,11 +389,9 @@ class SampleSupervisorAgent(AbstractAgent):
         return SampleSupervisorAgentUtil._extract_investigation_summary(result).strip()
 
     def _write_shared_memory(self, state: "CaseState", investigation_summary: str) -> None:
-        case_id = str(state.get("case_id") or "").strip()
-        workspace_path = str(state.get("workspace_path") or "").strip()
+        case_id, workspace_path, raw_issue = SampleSupervisorAgentUtil._extract_case_context(state)
         if not case_id or not workspace_path:
             return
-        raw_issue = str(state.get("raw_issue") or "").strip()
         # チケット文脈の整形は共通ユーティリティに移動
         ticket_context = format_ticket_context(cast(dict, state))
         followup_answers = SampleSupervisorAgentUtil._format_followup_answers(state)
