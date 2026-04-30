@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FRONTEND_DIR="${REPO_ROOT}/frontend"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-5173}"
-API_PORT="${API_PORT:-8000}"
+API_PORT="${API_PORT:-8010}"
 API_PROXY_HOST="${API_PROXY_HOST:-${HOST}}"
 NPM_BIN="${NPM_BIN:-$(command -v npm || true)}"
 
