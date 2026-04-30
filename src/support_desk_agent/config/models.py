@@ -394,7 +394,7 @@ class InterfaceSettings(StrictConfigModel):
     enable_api: bool = False
     enable_mcp: bool = False
     api_host: str = "127.0.0.1"
-    api_port: int = 8000
+    api_port: int = 8010
     ui_app_name: str = "Support Desk"
     ui_target_label: str | None = None
     ui_target_description: str | None = None
