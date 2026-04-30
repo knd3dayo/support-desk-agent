@@ -50,11 +50,14 @@ class SampleIntakeAgent(AbstractAgent):
         def __init__(self, ticket_mcp_client=None):
             self.ticket_mcp_client = ticket_mcp_client
 
-    def __init__(self, config: Any):
-        from support_desk_agent.tools.registry import ToolRegistry
+    def __init__(self, config: Any, tools: "SampleIntakeAgentTools | None" = None):
         self.config = config
-        self.tool_registry = ToolRegistry(config)
-        self.tools = self.Tools()
+        self.tool_registry = None
+        if tools is None:
+            from support_desk_agent.tools.registry import ToolRegistry
+
+            self.tool_registry = ToolRegistry(config)
+        self.tools = tools or self.Tools()
 
     @classmethod
     def from_ticket_mcp_client(cls, config: AppConfig, ticket_mcp_client: McpToolClient | None = None) -> "SampleIntakeAgent":
@@ -530,3 +533,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+SampleIntakeAgentTools = SampleIntakeAgent.Tools

@@ -4,11 +4,11 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import uuid4
 
-from support_desk_agent.memory import CaseMemoryStore
 from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
 from support_desk_agent.runtime.case_titles import derive_case_title
 from support_desk_agent.runtime.conversation_messages import append_serialized_message
 from support_desk_agent.models.state import CaseState
+from support_desk_agent.workspace import WorkspaceService
 
 
 def has_explicit_ticket_id(value: str | None) -> bool:
@@ -33,30 +33,30 @@ def resolve_ticket_lookup_enabled(
 
 def persist_case_title(
     *,
-    memory_store: CaseMemoryStore,
+    workspace_service: WorkspaceService,
     case_id: str,
     workspace_path: str,
     case_title: str | None,
 ) -> str:
     normalized = str(case_title or "").strip() or case_id
-    memory_store.update_case_metadata(workspace_path, case_id=case_id, case_title=normalized)
+    workspace_service.update_case_metadata(workspace_path, case_id=case_id, case_title=normalized)
     return normalized
 
 
 def sync_case_title_from_state(
     *,
-    memory_store: CaseMemoryStore,
+    workspace_service: WorkspaceService,
     case_id: str,
     workspace_path: str,
     state: CaseState,
     prompt: str,
 ) -> str:
-    existing_title = str(memory_store.read_case_metadata(workspace_path).get("case_title") or "").strip()
+    existing_title = str(workspace_service.read_case_metadata(workspace_path).get("case_title") or "").strip()
     if existing_title:
         return existing_title
     case_title = str(state.get("case_title") or "").strip() or derive_case_title(prompt, fallback=case_id)
     return persist_case_title(
-        memory_store=memory_store,
+        workspace_service=workspace_service,
         case_id=case_id,
         workspace_path=workspace_path,
         case_title=case_title,
@@ -65,7 +65,7 @@ def sync_case_title_from_state(
 
 def backfill_case_title(
     *,
-    memory_store: CaseMemoryStore,
+    workspace_service: WorkspaceService,
     case_id: str,
     workspace_path: str,
     history: list[dict[str, object]],
@@ -77,13 +77,13 @@ def backfill_case_title(
         if not content:
             continue
         return persist_case_title(
-            memory_store=memory_store,
+            workspace_service=workspace_service,
             case_id=case_id,
             workspace_path=workspace_path,
             case_title=derive_case_title(content, fallback=case_id),
         )
     return persist_case_title(
-        memory_store=memory_store,
+        workspace_service=workspace_service,
         case_id=case_id,
         workspace_path=workspace_path,
         case_title=case_id,
@@ -92,7 +92,7 @@ def backfill_case_title(
 
 def append_chat_message(
     *,
-    memory_store: CaseMemoryStore,
+    workspace_service: WorkspaceService,
     case_id: str,
     workspace_path: str,
     role: str,
@@ -103,7 +103,7 @@ def append_chat_message(
     normalized = content.strip()
     if not normalized:
         return
-    memory_store.append_chat_history(
+    workspace_service.append_chat_history(
         case_id,
         workspace_path,
         {

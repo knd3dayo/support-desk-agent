@@ -1,36 +1,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from datetime import UTC
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.runtime.case_id_resolver import CASE_ID_FILENAME
+from support_desk_agent.workspace.models import CasePaths, CaseWorkspace
 
 
 CASE_METADATA_FILENAME = ".support-ope-case.json"
-
-
-@dataclass(slots=True)
-class CaseWorkspace:
-    root: Path
-    case_metadata: Path
-    memory_dir: Path
-    shared_context: Path
-    shared_progress: Path
-    shared_summary: Path
-    shared_history: Path
-    agents_dir: Path
-    artifacts_dir: Path
-    evidence_dir: Path
-    report_dir: Path
-    traces_dir: Path
-
-
-CasePaths = CaseWorkspace
 
 
 class CaseMemoryStore:
@@ -51,12 +31,12 @@ class CaseMemoryStore:
         return marker
 
     @staticmethod
-    def _resolve_root_path(workspace_path: str | Path) -> Path:
+    def resolve_root_path(workspace_path: str | Path) -> Path:
         return Path(workspace_path).expanduser().resolve()
 
     def resolve_case_paths(self, case_id: str, workspace_path: str) -> CasePaths:
         del case_id
-        root = self._resolve_root_path(workspace_path)
+        root = self.resolve_root_path(workspace_path)
         memory_dir = root / self._config.data_paths.shared_memory_subdir
         shared_dir = memory_dir / "shared"
         agents_dir = memory_dir / "agents"
@@ -99,7 +79,7 @@ class CaseMemoryStore:
         return paths
 
     def read_case_metadata(self, workspace_path: str | Path) -> dict[str, Any]:
-        metadata_path = self._resolve_root_path(workspace_path) / CASE_METADATA_FILENAME
+        metadata_path = self.resolve_root_path(workspace_path) / CASE_METADATA_FILENAME
         if not metadata_path.exists():
             return {}
         try:
@@ -109,7 +89,7 @@ class CaseMemoryStore:
         return parsed if isinstance(parsed, dict) else {}
 
     def update_case_metadata(self, workspace_path: str | Path, **updates: object) -> Path:
-        metadata_path = self._resolve_root_path(workspace_path) / CASE_METADATA_FILENAME
+        metadata_path = self.resolve_root_path(workspace_path) / CASE_METADATA_FILENAME
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
         current = self.read_case_metadata(workspace_path)
         for key, value in updates.items():
@@ -163,7 +143,7 @@ class CaseMemoryStore:
 
         entries: list[dict[str, Any]] = []
         for child in sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())):
-            relative_child = child.relative_to(self._resolve_root_path(workspace_path)).as_posix()
+            relative_child = child.relative_to(self.resolve_root_path(workspace_path)).as_posix()
             entries.append(
                 {
                     "name": child.name,

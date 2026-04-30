@@ -20,7 +20,6 @@ from support_desk_agent.agents.sample.sample_supervisor_agent import SampleSuper
 from support_desk_agent.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
 from support_desk_agent.config import AppConfig, load_config
 from support_desk_agent.instructions import InstructionLoader
-from support_desk_agent.memory import CaseMemoryStore
 from support_desk_agent.models.state_transitions import CaseStatuses, NextActionTexts, ReportStatusTriggers
 from support_desk_agent.runtime.abstract_service import AbstractRuntimeContext, AbstractRuntimeService
 from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
@@ -42,6 +41,7 @@ from support_desk_agent.tools import ToolRegistry
 from support_desk_agent.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_desk_agent.tools.mcp_client import McpToolClient
 from support_desk_agent.util.log_time_range import apply_derived_log_extract_range
+from support_desk_agent.workspace import WorkspaceService
 from support_desk_agent.workflow import (
     WORKFLOW_LABELS,
     build_plan_steps,
@@ -62,15 +62,15 @@ def build_runtime_context(config_path: str) -> SampleRuntimeContext:
     """設定ファイルから runtime 全体の依存関係を組み立てる。"""
 
     config = load_config(config_path)
-    memory_store = CaseMemoryStore(config)
+    workspace_service = WorkspaceService(config)
     runtime_harness_manager = RuntimeHarnessManager(config)
-    instruction_loader = InstructionLoader(config, memory_store, runtime_harness_manager)
+    instruction_loader = InstructionLoader(config, workspace_service, runtime_harness_manager)
     mcp_tool_client = McpToolClient.from_config(config) if config.tools.mcp_manifest_path is not None else None
     validate_ticket_sources_startup(config, mcp_tool_client)
     tool_registry = ToolRegistry(config, mcp_tool_client=mcp_tool_client)
     context = SampleRuntimeContext(
         config,
-        memory_store,
+        workspace_service,
         runtime_harness_manager,
         instruction_loader,
         tool_registry,
@@ -203,7 +203,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
 
     def _persist_case_title(self, *, case_id: str, workspace_path: str, case_title: str | None) -> str:
         return persist_case_title(
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             case_id=case_id,
             workspace_path=workspace_path,
             case_title=case_title,
@@ -211,7 +211,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
 
     def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: CaseState, prompt: str) -> str:
         return sync_case_title_from_state(
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             case_id=case_id,
             workspace_path=workspace_path,
             state=state,
@@ -220,7 +220,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
 
     def _backfill_case_title(self, *, case_id: str, workspace_path: str, history: list[dict[str, object]]) -> str:
         return backfill_case_title(
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             case_id=case_id,
             workspace_path=workspace_path,
             history=history,
@@ -345,7 +345,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         """チャット履歴ストアへ 1 メッセージ追記する。"""
 
         append_chat_message(
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             case_id=case_id,
             workspace_path=workspace_path,
             role=role,
@@ -860,7 +860,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             trace_id=trace_id,
             workspace_path=workspace_path,
             state=state,
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             instruction_loader=self._context.instruction_loader,
             config=self._context.config,
             control_catalog=self.describe_control_catalog(),
@@ -899,7 +899,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             trace_id=trace_id,
             workspace_path=workspace_path,
             state=state,
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             instruction_loader=self._context.instruction_loader,
             config=self._context.config,
             control_catalog=self.describe_control_catalog(),

@@ -12,9 +12,9 @@ from support_desk_agent.agents.sample.sample_investigate_agent import SampleInve
 from support_desk_agent.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.instructions.loader import InstructionLoader
-from support_desk_agent.memory.file_store import CaseMemoryStore
 from support_desk_agent.models.state import CaseState
 from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
+from support_desk_agent.workspace import CaseMemoryStore
 
 
 class _FakeSubAgent:
@@ -388,7 +388,7 @@ class SampleInvestigateAgentTests(unittest.TestCase):
             evidence_dir.mkdir(parents=True, exist_ok=True)
             (evidence_dir / "custom-name.txt").write_text("hello", encoding="utf-8")
 
-            from support_desk_agent.util.workspace_evidence import find_evidence_log_file
+            from support_desk_agent.workspace import find_evidence_log_file
 
             result = find_evidence_log_file(tmpdir)
 

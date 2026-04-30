@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Protocol
 
 from support_desk_agent.config.models import AppConfig
-from support_desk_agent.memory import CaseMemoryStore
 from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
+from support_desk_agent.workspace import WorkspaceService
 
 
 class _ReadablePath(Protocol):
@@ -23,16 +23,17 @@ class InstructionLoader:
     def __init__(
         self,
         config: AppConfig,
-        memory_store: CaseMemoryStore | None = None,
+        workspace_service: WorkspaceService | None = None,
+        memory_store: WorkspaceService | None = None,
         runtime_harness_manager: RuntimeHarnessManager | None = None,
     ):
         """
         :param config: アプリ全体の設定
-        :param memory_store: ケースメモリ管理（未使用でも型として必須）
+        :param workspace_service: workspace 管理サービス（未使用でも型として必須）
         :param runtime_harness_manager: 実行時制約管理（省略可）
         """
         self._config = config
-        self._memory_store = memory_store
+        self._workspace_service = workspace_service or memory_store
         # デフォルトのinstructionsリソース(root)
         self._default_instruction_root = files("support_desk_agent.instructions.defaults")
         self._runtime_harness_manager = runtime_harness_manager

@@ -18,7 +18,7 @@ from support_desk_agent.models.state_transitions import NextActionTexts, StateTr
 from support_desk_agent.util.asyncio_utils import run_awaitable_sync
 from support_desk_agent.runtime.conversation_messages import extract_result_output_text
 from support_desk_agent.util.formatting import format_result, format_ticket_context
-from support_desk_agent.util.workspace_evidence import find_attachment_files, find_evidence_log_file
+from support_desk_agent.workspace import find_attachment_files, find_evidence_log_file
 
 from support_desk_agent.agents.sample.sample_investigate_agent import SampleInvestigateAgent
 from support_desk_agent.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent

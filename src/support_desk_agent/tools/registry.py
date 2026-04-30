@@ -28,8 +28,8 @@ from .prepare_ticket_update import build_default_prepare_ticket_update_tool
 from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
 from .mcp_client import McpToolClient, ToolConfigurationError
-from .case_memory_manager import CaseMemoryManager
 from support_desk_agent.util.asyncio_utils import run_awaitable_sync
+from support_desk_agent.workspace import CaseMemoryManager
 
 ToolCallable = Callable[..., Any]
 

@@ -11,12 +11,12 @@ from support_desk_agent.agents.sample.sample_intake_agent import SampleIntakeAge
 from support_desk_agent.agents.sample.sample_intake_agent import SampleIntakeClassification
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.instructions.loader import InstructionLoader
-from support_desk_agent.memory.file_store import CaseMemoryStore
 from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
 from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_desk_agent.runtime.sample.sample_service import SampleRuntimeContext
 from support_desk_agent.runtime.sample.sample_service import SampleRuntimeService
 from support_desk_agent.tools import ToolRegistry
+from support_desk_agent.workspace import CaseMemoryStore
 
 
 def _llm_api_key() -> str:

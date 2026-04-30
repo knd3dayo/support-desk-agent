@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Iterable
 
 from support_desk_agent.config.models import KnowledgeDocumentSource
+from support_desk_agent.workspace.store import CaseMemoryStore
 
 
 _DEFAULT_EVIDENCE_DIRS = (".evidence", "evidence")
@@ -24,7 +25,7 @@ def build_workspace_evidence_source(
 ) -> KnowledgeDocumentSource | None:
     if not workspace_path:
         return None
-    evidence_dir = Path(workspace_path).expanduser().resolve() / evidence_subdir
+    evidence_dir = CaseMemoryStore.resolve_root_path(workspace_path) / evidence_subdir
     if not evidence_dir.exists() or not evidence_dir.is_dir():
         return None
     return KnowledgeDocumentSource(
@@ -66,7 +67,7 @@ def find_evidence_log_file(
 ) -> Path | None:
     if not workspace_path:
         return None
-    workspace_root = Path(workspace_path).expanduser().resolve()
+    workspace_root = CaseMemoryStore.resolve_root_path(workspace_path)
     effective_ignore_patterns = tuple(ignore_patterns or ())
     relative_dirs = list(_DEFAULT_EVIDENCE_DIRS)
     if include_attachment_dirs:
@@ -89,7 +90,7 @@ def find_evidence_log_file(
 def find_attachment_files(workspace_path: str | None, *, ignore_patterns: Iterable[str] | None = None) -> list[Path]:
     if not workspace_path:
         return []
-    workspace_root = Path(workspace_path).expanduser().resolve()
+    workspace_root = CaseMemoryStore.resolve_root_path(workspace_path)
     candidate_dirs = _resolve_candidate_dirs(workspace_root, [*_ATTACHMENT_DIRS, *_DEFAULT_EVIDENCE_DIRS])
     effective_ignore_patterns = tuple(ignore_patterns or ())
     discovered: list[Path] = []

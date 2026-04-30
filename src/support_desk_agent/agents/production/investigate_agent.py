@@ -16,7 +16,7 @@ from support_desk_agent.util.asyncio_utils import run_awaitable_sync
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.util.formatting import format_result
 from support_desk_agent.util.log_time_range import apply_derived_log_extract_range
-from support_desk_agent.util.workspace_evidence import find_evidence_log_file
+from support_desk_agent.workspace import find_evidence_log_file
 
 if TYPE_CHECKING:
     from support_desk_agent.models.state import CaseState

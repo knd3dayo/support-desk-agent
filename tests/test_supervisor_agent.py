@@ -9,7 +9,7 @@ from pathlib import Path
 from support_desk_agent.agents.production.investigate_agent import InvestigateAgent, InvestigateAgentTools
 from support_desk_agent.agents.production.supervisor_agent import SupervisorPhaseExecutor
 from support_desk_agent.config.models import AppConfig
-from support_desk_agent.tools.case_memory_manager import CaseMemoryManager
+from support_desk_agent.workspace import CaseMemoryManager
 
 
 class SupervisorPhaseExecutorHelpersTests(unittest.TestCase):

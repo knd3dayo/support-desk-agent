@@ -37,15 +37,25 @@ class SampleTicketUpdateState(TypedDict, total=False):
 
 
 class SampleTicketUpdateAgent(AbstractAgent):
-    def __init__(self, config: Any):
-        from support_desk_agent.tools.registry import ToolRegistry
+    def __init__(
+        self,
+        config: Any,
+        *,
+        ticket_mcp_client: McpToolClient | None = None,
+        prepare_ticket_update_tool: Any = None,
+    ):
         self.config = config
-        self.tool_registry = ToolRegistry(config)
+        self.tool_registry = None
+        if prepare_ticket_update_tool is None:
+            from support_desk_agent.tools.registry import ToolRegistry
+
+            self.tool_registry = ToolRegistry(config)
         # Explicitly annotate the attribute to allow assigning a McpToolClient or None.
         # Without this annotation some type checkers infer the attribute as having the
         # literal type "None", which prevents later assignment of a McpToolClient
         # instance. Use the imported McpToolClient type.
-        self.ticket_mcp_client: McpToolClient | None = None
+        self.ticket_mcp_client: McpToolClient | None = ticket_mcp_client
+        self.prepare_ticket_update_tool = prepare_ticket_update_tool
 
     def _invoke_tool(self, tool: Any, *args: object, **kwargs: object) -> str:
         try:
@@ -358,8 +368,10 @@ class SampleTicketUpdateAgent(AbstractAgent):
                 field_name, question = candidate_question
                 ticket_followup_questions[field_name] = question
 
-        tools = {t.name: t.handler for t in self.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
-        prepare_ticket_update_tool = tools.get("prepare_ticket_update")
+        prepare_ticket_update_tool = self.prepare_ticket_update_tool
+        if prepare_ticket_update_tool is None:
+            tools = {t.name: t.handler for t in self.tool_registry.get_tools(TICKET_UPDATE_AGENT)}
+            prepare_ticket_update_tool = tools.get("prepare_ticket_update")
         if prepare_ticket_update_tool is None:
             return ""
         prepared = self._invoke_tool(

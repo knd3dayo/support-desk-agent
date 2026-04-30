@@ -34,16 +34,15 @@ from support_desk_agent.agents.roles import (
 )
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.instructions.loader import InstructionLoader
-from support_desk_agent.memory.file_store import CaseMemoryStore
 from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
 from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
 from support_desk_agent.runtime.production.production_service import ProductionRuntimeContext, ProductionRuntimeService, build_runtime_context
-from support_desk_agent.tools.case_memory_manager import CaseMemoryManager
 from support_desk_agent.tools.default_search_documents import build_default_search_documents_tool
 from support_desk_agent.tools.default_write_draft import build_default_write_draft_tool
 from support_desk_agent.tools import ToolConfigurationError
 from support_desk_agent.tools.registry import ToolSpec
 from support_desk_agent.models.state import CaseState
+from support_desk_agent.workspace import CaseMemoryManager, CaseMemoryStore
 
 
 def _fake_objective_evaluation_result() -> ObjectiveEvaluatorStructuredResult:

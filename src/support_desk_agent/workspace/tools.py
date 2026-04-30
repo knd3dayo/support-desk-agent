@@ -4,35 +4,29 @@ import json
 from typing import Any
 
 from support_desk_agent.config.models import AppConfig
-from support_desk_agent.memory import CaseMemoryStore
-
 from support_desk_agent.tools.document_renderer import render_document_payload
-from support_desk_agent.util.shared_memory_payload import MemoryWriteMode, SharedMemoryDocumentPayload, SharedMemorySectionPayload
+from support_desk_agent.util.shared_memory_payload import MemoryWriteMode, SharedMemoryDocumentPayload
+from support_desk_agent.workspace.store import CaseMemoryStore
 
 
 class CaseMemoryManager:
-    """
-    ケースメモリの読み書きを管理するクラス。
-    read_shared_memoryはケースIDとワークスペースパスから共有メモリを読み込んでJSONで返す。
-    write_shared_memoryはケースIDとワークスペースパスと内容から共有メモリに書き込む。
-    """
     def __init__(self, config: AppConfig):
-        self._memory_store = CaseMemoryStore(config)
+        self._workspace_store = CaseMemoryStore(config)
 
     @staticmethod
     def _render_error_payload(**payload: Any) -> str:
         return json.dumps(payload, ensure_ascii=False)
 
     def build_default_read_shared_memory_tool(self):
-        memory_store = self._memory_store
+        workspace_store = self._workspace_store
 
         async def read_shared_memory(case_id: str, workspace_path: str) -> str:
             try:
-                case_paths = memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
+                case_paths = workspace_store.resolve_case_paths(case_id, workspace_path=workspace_path)
                 result = {
-                    "context": memory_store.read_text(case_paths.shared_context),
-                    "progress": memory_store.read_text(case_paths.shared_progress),
-                    "summary": memory_store.read_text(case_paths.shared_summary),
+                    "context": workspace_store.read_text(case_paths.shared_context),
+                    "progress": workspace_store.read_text(case_paths.shared_progress),
+                    "summary": workspace_store.read_text(case_paths.shared_summary),
                     "context_path": str(case_paths.shared_context),
                     "progress_path": str(case_paths.shared_progress),
                     "summary_path": str(case_paths.shared_summary),
@@ -49,15 +43,13 @@ class CaseMemoryManager:
                 )
 
         return read_shared_memory
-    
-    
 
     def build_default_read_working_memory_tool(self, agent_name: str):
-        memory_store = self._memory_store
+        workspace_store = self._workspace_store
 
         async def read_working_memory(case_id: str, workspace_path: str) -> str:
             try:
-                working_file = memory_store.resolve_existing_working_memory(
+                working_file = workspace_store.resolve_existing_working_memory(
                     case_id,
                     agent_name,
                     workspace_path=workspace_path,
@@ -66,7 +58,7 @@ class CaseMemoryManager:
                     {
                         "agent_name": agent_name,
                         "working_memory_path": str(working_file),
-                        "content": memory_store.read_text(working_file),
+                        "content": workspace_store.read_text(working_file),
                     },
                     ensure_ascii=False,
                 )
@@ -82,9 +74,8 @@ class CaseMemoryManager:
 
         return read_working_memory
 
-
     def build_default_write_shared_memory_tool(self):
-        memory_store = self._memory_store
+        workspace_store = self._workspace_store
 
         async def write_shared_memory(
             case_id: str,
@@ -95,7 +86,7 @@ class CaseMemoryManager:
             mode: MemoryWriteMode = "replace",
         ) -> str:
             try:
-                case_paths = memory_store.initialize_case(case_id, workspace_path=workspace_path)
+                case_paths = workspace_store.initialize_case(case_id, workspace_path=workspace_path)
 
                 def _write(path, content: Any) -> str | None:
                     if content is None:
@@ -105,7 +96,7 @@ class CaseMemoryManager:
                         return None
                     normalized = rendered if rendered.endswith("\n") else rendered + "\n"
                     if mode == "append":
-                        memory_store.append_text(path, normalized)
+                        workspace_store.append_text(path, normalized)
                     else:
                         path.write_text(normalized, encoding="utf-8")
                     return str(path)
@@ -130,9 +121,8 @@ class CaseMemoryManager:
 
         return write_shared_memory
 
-
     def build_default_write_working_memory_tool(self, agent_name: str):
-        memory_store = self._memory_store
+        workspace_store = self._workspace_store
 
         async def write_working_memory(
             case_id: str,
@@ -141,12 +131,12 @@ class CaseMemoryManager:
             mode: MemoryWriteMode = "append",
         ) -> str:
             try:
-                working_file = memory_store.ensure_agent_working_memory(case_id, agent_name, workspace_path=workspace_path)
+                working_file = workspace_store.ensure_agent_working_memory(case_id, agent_name, workspace_path=workspace_path)
                 rendered = render_document_payload(content, default_heading_level=2)
                 if rendered.strip():
                     normalized = rendered if rendered.endswith("\n") else rendered + "\n"
                     if mode == "append":
-                        memory_store.append_text(working_file, normalized)
+                        workspace_store.append_text(working_file, normalized)
                     else:
                         working_file.write_text(normalized, encoding="utf-8")
                 return json.dumps(

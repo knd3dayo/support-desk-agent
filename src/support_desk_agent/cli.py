@@ -12,12 +12,11 @@ from support_desk_agent.agents.sample.sample_investigate_agent import SampleInve
 from support_desk_agent.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
 from support_desk_agent.config.loader import load_config
 from support_desk_agent.instructions.loader import InstructionLoader
-from support_desk_agent.memory.file_store import CaseMemoryStore
 from support_desk_agent.runtime.conversation_messages import extract_result_output_text
 from support_desk_agent.runtime import build_runtime_service
 from support_desk_agent.util.formatting import format_result
-from support_desk_agent.util.workspace_evidence import find_evidence_log_file
 from support_desk_agent.tools.doc_generator import export_tool_docs
+from support_desk_agent.workspace import CaseMemoryStore, find_evidence_log_file
 
 
 INVESTIGATE_STANDALONE_EVALUATION_APPENDIX = """
@@ -52,17 +51,17 @@ def _extract_result_output(result: Any) -> str:
     return extract_result_output_text(result) or format_result(result)
 
 
-def _resolve_case_id(memory_store: CaseMemoryStore, workspace_path: str, explicit_case_id: str | None = None) -> str:
+def _resolve_case_id(workspace_store: CaseMemoryStore, workspace_path: str, explicit_case_id: str | None = None) -> str:
     if explicit_case_id:
         return explicit_case_id
-    marker = memory_store.read_case_id_marker(workspace_path)
+    marker = workspace_store.read_case_id_marker(workspace_path)
     if marker:
         return marker
     return Path(workspace_path).expanduser().resolve().name
 
 
-def _collect_evaluation_artifact_paths(memory_store: CaseMemoryStore, case_id: str, workspace_path: str) -> list[str]:
-    paths = memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
+def _collect_evaluation_artifact_paths(workspace_store: CaseMemoryStore, case_id: str, workspace_path: str) -> list[str]:
+    paths = workspace_store.resolve_case_paths(case_id, workspace_path=workspace_path)
     collected: list[str] = []
     for directory in (paths.evidence_dir, paths.artifacts_dir):
         if not directory.exists():
@@ -223,8 +222,8 @@ def _cmd_checkpoint_status(args: argparse.Namespace) -> int:
 
 def _cmd_evaluate_investigate(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    memory_store = CaseMemoryStore(config)
-    case_id = _resolve_case_id(memory_store, args.workspace_path, explicit_case_id=args.case_id)
+    workspace_store = CaseMemoryStore(config)
+    case_id = _resolve_case_id(workspace_store, args.workspace_path, explicit_case_id=args.case_id)
     investigate_agent = SampleInvestigateAgent(config)
     investigate_result = investigate_agent.execute(
         query=args.prompt,
@@ -232,8 +231,8 @@ def _cmd_evaluate_investigate(args: argparse.Namespace) -> int:
     )
     investigate_result_text = _extract_result_output(investigate_result)
     working_memory = investigate_agent.read_investigate_working_memory(case_id, args.workspace_path)
-    artifact_paths = _collect_evaluation_artifact_paths(memory_store, case_id, args.workspace_path)
-    instruction_loader = InstructionLoader(config, memory_store)
+    artifact_paths = _collect_evaluation_artifact_paths(workspace_store, case_id, args.workspace_path)
+    instruction_loader = InstructionLoader(config, workspace_store)
     base_instruction = instruction_loader.load(case_id, OBJECTIVE_EVALUATOR)
     instruction_text = "\n\n".join(part for part in (base_instruction, INVESTIGATE_STANDALONE_EVALUATION_APPENDIX) if part)
     checklist = _resolve_checklist(args)
@@ -270,8 +269,8 @@ def _cmd_evaluate_investigate(args: argparse.Namespace) -> int:
 
 def _cmd_run_sample_supervisor(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    memory_store = CaseMemoryStore(config)
-    case_id = _resolve_case_id(memory_store, args.workspace_path, explicit_case_id=args.case_id)
+    workspace_store = CaseMemoryStore(config)
+    case_id = _resolve_case_id(workspace_store, args.workspace_path, explicit_case_id=args.case_id)
     investigate_agent = SampleInvestigateAgent(config)
     supervisor = SampleSupervisorAgent(config=config, investigate_executor=investigate_agent)
 

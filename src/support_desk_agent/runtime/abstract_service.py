@@ -13,7 +13,6 @@ from support_desk_agent.agents.catalog import build_default_agent_definitions
 from support_desk_agent.agents.roles import DEFAULT_AGENT_ROLES
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.instructions.loader import InstructionLoader
-from support_desk_agent.memory.file_store import CaseMemoryStore
 from support_desk_agent.runtime.case_id_resolver import CASE_ID_FILENAME
 from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
 from support_desk_agent.runtime.case_titles import derive_case_title
@@ -36,25 +35,25 @@ from support_desk_agent.runtime.service_support import persist_case_title
 from support_desk_agent.runtime.service_support import resolve_ticket_lookup_enabled
 from support_desk_agent.runtime.service_support import sync_case_title_from_state
 from support_desk_agent.tools import ToolRegistry
-from support_desk_agent.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_desk_agent.util.log_time_range import apply_derived_log_extract_range
 from support_desk_agent.workflow import WORKFLOW_LABELS, build_plan_steps, route_workflow, summarize_plan
 from support_desk_agent.models.state import CaseState
 from support_desk_agent.models.state import WorkflowKind
+from support_desk_agent.workspace import WorkspaceService
 
 
 class AbstractRuntimeContext(ABC):
 	def __init__(
 		self,
 		config: AppConfig,
-		memory_store: CaseMemoryStore,
+		workspace_service: WorkspaceService,
 		runtime_harness_manager: RuntimeHarnessManager,
 		instruction_loader: InstructionLoader,
 		tool_registry: ToolRegistry,
 		case_id_resolver_service: CaseIdResolverService,
 	) -> None:
 		self.config = config
-		self.memory_store = memory_store
+		self.memory_store = workspace_service
 		self.runtime_harness_manager = runtime_harness_manager
 		self.instruction_loader = instruction_loader
 		self.tool_registry = tool_registry
@@ -93,10 +92,12 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 		return "ambiguous_case"
 
 	def initialize_case(self, case_id: str, workspace_path: str) -> Path:
-		case_paths = self._context.memory_store.initialize_case(case_id, workspace_path=workspace_path)
+		initialized = self._context.memory_store.initialize_case(case_id, workspace_path=workspace_path)
 		for role in DEFAULT_AGENT_ROLES:
 			self._context.memory_store.ensure_agent_working_memory(case_id, role, workspace_path=workspace_path)
-		return case_paths.root
+		if isinstance(initialized, Path):
+			return initialized
+		return initialized.root
 
 	def _resolve_ticket_lookup_enabled(
 		self,
@@ -202,7 +203,7 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 
 	def _persist_case_title(self, *, case_id: str, workspace_path: str, case_title: str | None) -> str:
 		return persist_case_title(
-			memory_store=self._context.memory_store,
+			workspace_service=self._context.memory_store,
 			case_id=case_id,
 			workspace_path=workspace_path,
 			case_title=case_title,
@@ -210,7 +211,7 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 
 	def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: CaseState, prompt: str) -> str:
 		return sync_case_title_from_state(
-			memory_store=self._context.memory_store,
+			workspace_service=self._context.memory_store,
 			case_id=case_id,
 			workspace_path=workspace_path,
 			state=state,
@@ -219,7 +220,7 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 
 	def _backfill_case_title(self, *, case_id: str, workspace_path: str, history: list[dict[str, object]]) -> str:
 		return backfill_case_title(
-			memory_store=self._context.memory_store,
+			workspace_service=self._context.memory_store,
 			case_id=case_id,
 			workspace_path=workspace_path,
 			history=history,
@@ -229,59 +230,26 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 		return self._context.memory_store.read_chat_history(case_id, workspace_path)
 
 	def list_workspace_entries(self, *, case_id: str, workspace_path: str, relative_path: str = ".") -> dict[str, object]:
-		entries = self._context.memory_store.list_workspace_entries(case_id, workspace_path, relative_path)
-		return {
-			"case_id": case_id,
-			"workspace_path": workspace_path,
-			"current_path": "." if relative_path in {"", "."} else relative_path,
-			"entries": entries,
-		}
+		return self._context.memory_store.list_workspace(
+			case_id=case_id,
+			workspace_path=workspace_path,
+			relative_path=relative_path,
+		)
 
 	def get_workspace_file(self, *, case_id: str, workspace_path: str, relative_path: str, max_chars: int | None = None) -> dict[str, object]:
-		target = self._context.memory_store.resolve_workspace_path(case_id, workspace_path, relative_path)
 		effective_max_chars = max_chars
 		if effective_max_chars is None:
 			effective_max_chars = self._context.runtime_harness_manager.get_int_policy_value(
 				"runtime.workspace_preview_max_chars",
 				default=16000,
 			)
-		guessed_mime, _ = mimetypes.guess_type(target.name)
-		mime_type = guessed_mime or "application/octet-stream"
-		is_text = target.suffix.lower() in TEXT_FILE_SUFFIXES or mime_type.startswith("text/") or mime_type in {
-			"application/json",
-			"application/xml",
-			"application/yaml",
-		}
-
-		if not is_text:
-			return {
-				"case_id": case_id,
-				"workspace_path": workspace_path,
-				"path": relative_path,
-				"name": target.name,
-				"mime_type": mime_type,
-				"preview_available": False,
-				"truncated": False,
-				"content": None,
-			}
-
-		content = self._context.memory_store.read_workspace_text(
-			case_id,
-			workspace_path,
-			relative_path,
+		return self._context.memory_store.read_workspace_file(
+			case_id=case_id,
+			workspace_path=workspace_path,
+			relative_path=relative_path,
 			max_chars=effective_max_chars,
+			default_max_chars=effective_max_chars,
 		)
-		full_length = len(self._context.memory_store.read_workspace_text(case_id, workspace_path, relative_path, max_chars=None))
-		return {
-			"case_id": case_id,
-			"workspace_path": workspace_path,
-			"path": relative_path,
-			"name": target.name,
-			"mime_type": mime_type,
-			"preview_available": True,
-			"truncated": full_length > effective_max_chars,
-			"content": content,
-		}
 
 	def save_workspace_file(
 		self,
@@ -292,15 +260,13 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 		filename: str,
 		content: bytes,
 	) -> dict[str, object]:
-		safe_filename = Path(filename).name
-		relative_path = str(Path(relative_dir or ".") / safe_filename)
-		written = self._context.memory_store.write_workspace_file(case_id, workspace_path, relative_path, content)
-		return {
-			"case_id": case_id,
-			"workspace_path": workspace_path,
-			"path": written.relative_to(Path(workspace_path).expanduser().resolve()).as_posix(),
-			"size": written.stat().st_size,
-		}
+		return self._context.memory_store.save_workspace_file(
+			case_id=case_id,
+			workspace_path=workspace_path,
+			relative_dir=relative_dir,
+			filename=filename,
+			content=content,
+		)
 
 	def create_workspace_archive(self, *, case_id: str, workspace_path: str) -> Path:
 		case_paths = self._context.memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
@@ -329,7 +295,7 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 		event: str,
 	) -> None:
 		append_chat_message(
-			memory_store=self._context.memory_store,
+			workspace_service=self._context.memory_store,
 			case_id=case_id,
 			workspace_path=workspace_path,
 			role=role,
@@ -809,7 +775,7 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 			trace_id=trace_id,
 			workspace_path=workspace_path,
 			state=state,
-			memory_store=self._context.memory_store,
+			workspace_service=self._context.memory_store,
 			instruction_loader=self._context.instruction_loader,
 			config=self._context.config,
 			control_catalog=self.describe_control_catalog(),
@@ -845,7 +811,7 @@ class AbstractRuntimeService(ABC, Generic[ContextT]):
 			trace_id=trace_id,
 			workspace_path=workspace_path,
 			state=state,
-			memory_store=self._context.memory_store,
+			workspace_service=self._context.memory_store,
 			instruction_loader=self._context.instruction_loader,
 			config=self._context.config,
 			control_catalog=self.describe_control_catalog(),

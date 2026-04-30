@@ -15,7 +15,7 @@ from support_desk_agent.util.document import build_filtered_document_source_back
 from support_desk_agent.util.formatting import format_result
 from support_desk_agent.util.langchain import build_chat_openai_model, create_deep_agent_compatible_agent, wrap_tool_handler_sync
 from support_desk_agent.util.langchain.chat_model import close_chat_openai_model
-from support_desk_agent.util.workspace_evidence import build_workspace_evidence_source
+from support_desk_agent.workspace import build_workspace_evidence_source
 from ...tools.registry import ToolRegistry
 from ...instructions.investigate_system_prompt import INVESTIGATE_SYSTEM_PROMPT_TEMPLATE
 from langchain_core.messages import HumanMessage
@@ -30,10 +30,13 @@ class SampleInvestigateAgent(AbstractAgent):
 
     @staticmethod
     def _agent_memory_sources() -> list[str]:
-        agents_memory_path = Path(__file__).resolve().parents[2] / "AGENTS.md"
-        if not agents_memory_path.exists():
-            return []
-        return [str(agents_memory_path)]
+        package_agents_memory_path = Path(__file__).resolve().parents[2] / "AGENTS.md"
+        if package_agents_memory_path.exists():
+            return [str(package_agents_memory_path)]
+        repository_agents_memory_path = Path(__file__).resolve().parents[4] / "AGENTS.md"
+        if repository_agents_memory_path.exists():
+            return [str(repository_agents_memory_path)]
+        return []
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -138,6 +141,10 @@ class SampleInvestigateAgent(AbstractAgent):
     @staticmethod
     def _invoke_sub_agent(sub_agent: CompiledStateGraph, payload: dict[str, Any], *, context: CaseState) -> Any:
         runnable = cast(Any, sub_agent)
+        if hasattr(runnable, "ainvoke") and not hasattr(runnable, "invoke"):
+            import asyncio
+
+            return asyncio.run(runnable.ainvoke(payload, context=context))
         return runnable.invoke(payload, context=context)
 
     def execute(

@@ -9,12 +9,12 @@ from support_desk_agent.agents.objective_evaluator import ObjectiveEvaluator
 from support_desk_agent.agents.roles import OBJECTIVE_EVALUATOR
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.instructions.loader import InstructionLoader
-from support_desk_agent.memory.file_store import CaseMemoryStore
 from support_desk_agent.runtime.case_id_resolver import CaseIdResolverService
 from support_desk_agent.workflow.sample.sample_case_workflow import CaseWorkflow as SampleCaseWorkflow
 from support_desk_agent.workflow.production.case_workflow import CaseWorkflow as ProductionCaseWorkflow
 from support_desk_agent.models.state import CaseState
 from support_desk_agent.models.state_transitions import CaseStatuses
+from support_desk_agent.workspace import WorkspaceService
 
 
 @dataclass(slots=True)
@@ -86,21 +86,25 @@ def build_support_improvement_report(
     trace_id: str,
     workspace_path: str,
     state: CaseState,
-    memory_store: CaseMemoryStore,
+    workspace_service: WorkspaceService | None = None,
+    memory_store: WorkspaceService | None = None,
     instruction_loader: InstructionLoader,
     config: AppConfig,
     control_catalog: dict[str, object] | None = None,
     runtime_audit: dict[str, object] | None = None,
     checklist: list[str] | None = None,
 ) -> EvaluationReportResult:
-    case_paths = memory_store.resolve_case_paths(case_id, workspace_path=workspace_path)
-    context_text = memory_store.read_text(case_paths.shared_context)
-    progress_text = memory_store.read_text(case_paths.shared_progress)
-    summary_text = memory_store.read_text(case_paths.shared_summary)
+    effective_workspace_service = workspace_service or memory_store
+    if effective_workspace_service is None:
+        raise ValueError("workspace_service is required")
+    case_paths = effective_workspace_service.resolve_case_paths(case_id, workspace_path=workspace_path)
+    context_text = effective_workspace_service.read_text(case_paths.shared_context)
+    progress_text = effective_workspace_service.read_text(case_paths.shared_progress)
+    summary_text = effective_workspace_service.read_text(case_paths.shared_summary)
     artifact_paths = _collect_report_artifact_paths(
         case_id=case_id,
         workspace_path=workspace_path,
-        memory_store=memory_store,
+        workspace_service=effective_workspace_service,
         case_paths=case_paths,
     )
 
@@ -112,7 +116,7 @@ def build_support_improvement_report(
     }
     runtime_audit_payload = runtime_audit or {}
     control_catalog_payload = control_catalog or {}
-    agent_memories = _load_agent_memories(case_paths, memory_store)
+    agent_memories = _load_agent_memories(case_paths, effective_workspace_service)
     memory_findings = _audit_memory_consistency(state, shared_memory, agent_memories)
     normalized_checklist = _normalize_checklist(checklist or [])
     instruction_criteria = _extract_instruction_criteria(evaluator_instruction, normalized_checklist)
@@ -276,10 +280,10 @@ def _collect_report_artifact_paths(
     *,
     case_id: str,
     workspace_path: str,
-    memory_store: CaseMemoryStore,
+    workspace_service: WorkspaceService,
     case_paths: Any,
 ) -> list[str]:
-    collected_paths = set(memory_store.list_artifacts(case_id, workspace_path))
+    collected_paths = set(workspace_service.list_artifacts(case_id, workspace_path))
     if case_paths.evidence_dir.exists():
         collected_paths.update(path for path in case_paths.evidence_dir.rglob("*") if path.is_file())
     return [path.relative_to(case_paths.root).as_posix() for path in sorted(collected_paths)]
@@ -1523,12 +1527,12 @@ def _render_subgraph_sequence_section(diagrams: list[SubgraphSequenceDiagram]) -
     return lines
 
 
-def _load_agent_memories(case_paths: Any, memory_store: CaseMemoryStore) -> dict[str, str]:
+def _load_agent_memories(case_paths: Any, workspace_service: WorkspaceService) -> dict[str, str]:
     memories: dict[str, str] = {}
     if not case_paths.agents_dir.exists():
         return memories
     for working_file in sorted(case_paths.agents_dir.glob("*/working.md")):
-        memories[working_file.parent.name] = memory_store.read_text(working_file)
+        memories[working_file.parent.name] = workspace_service.read_text(working_file)
     return memories
 
 

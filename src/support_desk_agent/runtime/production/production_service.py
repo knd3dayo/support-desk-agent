@@ -25,7 +25,6 @@ from support_desk_agent.agents.roles import SUPERVISOR_AGENT
 from support_desk_agent.agents.roles import TICKET_UPDATE_AGENT
 from support_desk_agent.config import AppConfig, load_config
 from support_desk_agent.instructions import InstructionLoader
-from support_desk_agent.memory import CaseMemoryStore
 from support_desk_agent.models.state_transitions import CaseStatuses, NextActionTexts, ReportStatusTriggers
 from support_desk_agent.runtime.abstract_service import AbstractRuntimeContext
 from support_desk_agent.runtime.abstract_service import AbstractRuntimeService
@@ -54,6 +53,7 @@ from support_desk_agent.tools import ToolRegistry
 from support_desk_agent.tools.builtin_tools import TEXT_FILE_SUFFIXES
 from support_desk_agent.tools.mcp_client import McpToolClient
 from support_desk_agent.util.log_time_range import apply_derived_log_extract_range
+from support_desk_agent.workspace import WorkspaceService
 from support_desk_agent.workflow import (
     ProductionCaseWorkflow,
     WORKFLOW_LABELS,
@@ -70,9 +70,9 @@ class ProductionRuntimeContext(AbstractRuntimeContext):
 
 def build_runtime_context(config_path: str) -> ProductionRuntimeContext:
     config = load_config(config_path)
-    memory_store = CaseMemoryStore(config)
+    workspace_service = WorkspaceService(config)
     runtime_harness_manager = RuntimeHarnessManager(config)
-    instruction_loader = InstructionLoader(config, memory_store, runtime_harness_manager)
+    instruction_loader = InstructionLoader(config, workspace_service, runtime_harness_manager)
     mcp_tool_client = (
         McpToolClient.from_config(config)
         if config.tools.has_enabled_mcp_tools() or config.tools.mcp_manifest_path is not None
@@ -82,7 +82,7 @@ def build_runtime_context(config_path: str) -> ProductionRuntimeContext:
     tool_registry = ToolRegistry(config, mcp_tool_client=mcp_tool_client)
     return ProductionRuntimeContext(
         config,
-        memory_store,
+        workspace_service,
         runtime_harness_manager,
         instruction_loader,
         tool_registry,
@@ -237,7 +237,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
 
     def _persist_case_title(self, *, case_id: str, workspace_path: str, case_title: str | None) -> str:
         return persist_case_title(
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             case_id=case_id,
             workspace_path=workspace_path,
             case_title=case_title,
@@ -245,7 +245,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
 
     def _sync_case_title_from_state(self, *, case_id: str, workspace_path: str, state: CaseState, prompt: str) -> str:
         return sync_case_title_from_state(
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             case_id=case_id,
             workspace_path=workspace_path,
             state=state,
@@ -254,7 +254,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
 
     def _backfill_case_title(self, *, case_id: str, workspace_path: str, history: list[dict[str, object]]) -> str:
         return backfill_case_title(
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             case_id=case_id,
             workspace_path=workspace_path,
             history=history,
@@ -364,7 +364,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
         event: str,
     ) -> None:
         append_chat_message(
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             case_id=case_id,
             workspace_path=workspace_path,
             role=role,
@@ -851,7 +851,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             trace_id=trace_id,
             workspace_path=workspace_path,
             state=state,
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             instruction_loader=self._context.instruction_loader,
             config=self._context.config,
             control_catalog=self.describe_control_catalog(),
@@ -887,7 +887,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             trace_id=trace_id,
             workspace_path=workspace_path,
             state=state,
-            memory_store=self._context.memory_store,
+            workspace_service=self._context.memory_store,
             instruction_loader=self._context.instruction_loader,
             config=self._context.config,
             control_catalog=self.describe_control_catalog(),
