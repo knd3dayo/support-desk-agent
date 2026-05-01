@@ -8,7 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from support_desk_agent.agents.roles import SUPERVISOR_AGENT
 from support_desk_agent.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_desk_agent.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
-from support_desk_agent.models.state import CaseState
+from support_desk_agent.models.state import CaseState, CaseStateModel
 from support_desk_agent.models.state_transitions import CaseStatuses
 
 class CaseWorkflow:
@@ -20,7 +20,7 @@ class CaseWorkflow:
             intake_executor: SampleIntakeAgent,
             supervisor_executor: SampleSupervisorAgent,
     ):
-        graph = StateGraph(CaseState)
+        graph = StateGraph(CaseStateModel)
         graph.add_node("receive_case", self._receive_case)
         graph.add_node("intake_subgraph", intake_executor.create_node())
         graph.add_node("supervisor_subgraph", supervisor_executor.create_node())

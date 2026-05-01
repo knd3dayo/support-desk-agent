@@ -6,10 +6,11 @@ import json
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, StateGraph
+from pydantic import BaseModel, ConfigDict
 from support_desk_agent.config.loader import load_config
 
 from support_desk_agent.agents.abstract_agent import AbstractAgent
@@ -25,14 +26,16 @@ from support_desk_agent.util.formatting import format_result
 from support_desk_agent.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml
 
 
-class SampleTicketUpdateState(TypedDict, total=False):
-    status: str
-    current_agent: str
-    ticket_update_payload: str
-    ticket_update_result: str
-    next_action: str
-    draft_response: str
-    escalation_draft: str
+class SampleTicketUpdateState(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    status: str | None = None
+    current_agent: str | None = None
+    ticket_update_payload: str | None = None
+    ticket_update_result: str | None = None
+    next_action: str | None = None
+    draft_response: str | None = None
+    escalation_draft: str | None = None
 
 
 

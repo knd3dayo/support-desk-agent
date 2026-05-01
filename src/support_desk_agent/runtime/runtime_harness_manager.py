@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal, Mapping, TypedDict
+from typing import Literal, Mapping
+
+from pydantic import BaseModel, ConfigDict
 
 from support_desk_agent.agents.roles import (
     DEFAULT_AGENT_ROLES,
@@ -16,7 +18,9 @@ from support_desk_agent.config.models import AppConfig
 ConstraintCapability = Literal["instruction", "runtime", "summary"]
 
 
-class RuntimeConstraintResolution(TypedDict):
+class RuntimeConstraintResolution(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     role: str
     constraint_mode: str
     instruction_enabled: bool
@@ -25,7 +29,9 @@ class RuntimeConstraintResolution(TypedDict):
     policies: list["RuntimePolicyValue"]
 
 
-class RuntimePolicyValue(TypedDict):
+class RuntimePolicyValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     policy_id: str
     value: object
     source: str
@@ -33,12 +39,16 @@ class RuntimePolicyValue(TypedDict):
     effect_summary: str
 
 
-class RuntimePolicySnapshot(TypedDict):
+class RuntimePolicySnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     global_policies: list[RuntimePolicyValue]
     role_policies: list[RuntimeConstraintResolution]
 
 
-class RuntimePolicyImpact(TypedDict):
+class RuntimePolicyImpact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     owner: str
     policy_id: str
     value: object

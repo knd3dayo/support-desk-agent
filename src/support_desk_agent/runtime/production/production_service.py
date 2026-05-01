@@ -586,7 +586,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             "workflow_run_id": current_trace_id,
             "trace_id": current_trace_id,
             "thread_id": current_trace_id,
-            "workflow_kind": workflow_kind,  # type: ignore[typeddict-item]
+            "workflow_kind": workflow_kind,
             "execution_mode": "action",
             "workspace_path": workspace_path,
             "raw_issue": resolved_prompt,
@@ -720,7 +720,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             if record_key == "intake_incident_timeframe":
                 resumed_state["intake_incident_timeframe"] = normalized_additional_input
                 # apply_derived_log_extract_range expects a MutableMapping[str, Any].
-                # resumed_state is a CaseState TypedDict; cast to dict[str, Any] to satisfy type checkers.
+                # resumed_state is a state mapping; cast to dict[str, Any] to satisfy type checkers.
                 apply_derived_log_extract_range(cast(dict[str, Any], resumed_state), normalized_additional_input, config=self._context.config)
         resumed_state["customer_followup_answers"] = answer_records
         resumed_state["next_action"] = NextActionTexts.RESUME_INTAKE

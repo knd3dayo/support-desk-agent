@@ -26,7 +26,7 @@ from support_desk_agent.tools.mcp_client import McpToolClient
 from support_desk_agent.util.formatting import format_result
 from support_desk_agent.util.langchain import build_chat_openai_model
 from support_desk_agent.util.log_time_range import apply_derived_log_extract_range
-from support_desk_agent.models.state import CaseState
+from support_desk_agent.models.state import CaseState, CaseStateModel
 
 
 class SampleIntakeClassification(BaseModel):
@@ -470,7 +470,7 @@ class SampleIntakeAgent(AbstractAgent):
         return update
 
     def create_node(self) -> Any:
-        graph = StateGraph(CaseState)
+        graph = StateGraph(CaseStateModel)
         graph.add_node("intake_prepare", lambda state: cast(CaseState, self.prepare_state(cast(dict[str, Any], state))))
         graph.add_node("intake_classify", lambda state: cast(CaseState, self.classify_issue(cast(dict[str, Any], state))))
         graph.add_node("intake_mcp_tickets", lambda state: cast(CaseState, self.hydrate_ticket_contexts(cast(dict[str, Any], state))))

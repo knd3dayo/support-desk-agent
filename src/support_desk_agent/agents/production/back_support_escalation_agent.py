@@ -104,9 +104,9 @@ class BackSupportEscalationPhaseExecutor(AbstractAgent):
         }
 
     def create_node(self):
-        from support_desk_agent.models.state import CaseState
+        from support_desk_agent.models.state import CaseStateModel
 
-        graph = StateGraph(CaseState)
+        graph = StateGraph(CaseStateModel)
         graph.add_node(
             "back_support_escalation",
             lambda state: cast("CaseState", self.execute(cast(dict[str, Any], state))),

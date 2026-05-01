@@ -22,9 +22,9 @@ class ApprovalAgent(AbstractAgent):
         return cast("CaseState", StateTransitionHelper.waiting_for_approval(state))
 
     def create_node(self):
-        from support_desk_agent.models.state import CaseState
+        from support_desk_agent.models.state import CaseStateModel
 
-        graph = StateGraph(CaseState)
+        graph = StateGraph(CaseStateModel)
         graph.add_node("wait_for_approval", self.wait_for_approval)
         graph.add_edge(START, "wait_for_approval")
         graph.add_edge("wait_for_approval", END)

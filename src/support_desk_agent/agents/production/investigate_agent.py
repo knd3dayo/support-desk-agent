@@ -307,7 +307,9 @@ class InvestigateAgent(AbstractAgent):
         )
 
     def create_node(self) -> Any:
-        graph = StateGraph(CaseState)
+        from support_desk_agent.models.state import CaseStateModel
+
+        graph = StateGraph(CaseStateModel)
         graph.add_node("investigate_execute", lambda state: cast(CaseState, self.execute(cast(Mapping[str, Any], state))))
         graph.add_edge(START, "investigate_execute")
         graph.add_edge("investigate_execute", END)

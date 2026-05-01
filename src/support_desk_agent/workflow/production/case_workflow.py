@@ -13,7 +13,7 @@ from support_desk_agent.agents.roles import (
     BACK_SUPPORT_INQUIRY_WRITER_AGENT,
     SUPERVISOR_AGENT,
 )
-from support_desk_agent.models.state import CaseState
+from support_desk_agent.models.state import CaseState, CaseStateModel
 from support_desk_agent.models.state_transitions import CaseStatuses
 
 class CaseWorkflow:
@@ -27,7 +27,7 @@ class CaseWorkflow:
             ticket_update_executor: TicketUpdateAgent,
             supervisor_executor: SupervisorPhaseExecutor,
     ):
-        graph = StateGraph(CaseState)
+        graph = StateGraph(CaseStateModel)
         graph.add_node("receive_case", self._receive_case)
         graph.add_node("intake_subgraph", intake_executor.create_node())
         graph.add_node("supervisor_subgraph", supervisor_executor.create_node())

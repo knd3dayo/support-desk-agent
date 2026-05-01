@@ -58,9 +58,9 @@ class SupervisorPhaseExecutor(AbstractAgent):
 
     def create_node(self):
         from langgraph.graph import END, START, StateGraph
-        from support_desk_agent.models.state import CaseState
+        from support_desk_agent.models.state import CaseStateModel
 
-        graph = StateGraph(CaseState)
+        graph = StateGraph(CaseStateModel)
         graph.add_node(
             "supervisor_entry",
             lambda state: cast(CaseState, self.passthrough_state(cast(dict[str, object], state))),

@@ -1,20 +1,26 @@
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
 
 
 MemoryWriteMode = Literal["replace", "append"]
 
 
-class SharedMemorySectionPayload(TypedDict, total=False):
-    title: str
-    summary: str
-    bullets: list[str]
+class SharedMemorySectionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    summary: str | None = None
+    bullets: list[str] | None = None
 
 
-class SharedMemoryDocumentPayload(TypedDict, total=False):
-    title: str
-    heading_level: int
-    summary: str
-    bullets: list[str]
-    sections: list[SharedMemorySectionPayload]
+class SharedMemoryDocumentPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    heading_level: int | None = None
+    summary: str | None = None
+    bullets: list[str] | None = None
+    sections: list[SharedMemorySectionPayload] | None = None

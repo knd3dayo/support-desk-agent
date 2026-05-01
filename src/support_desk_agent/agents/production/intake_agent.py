@@ -1001,9 +1001,9 @@ class IntakeAgent(AbstractAgent):
         return cast("CaseState", StateTransitionHelper.waiting_for_customer_input(state))
 
     def create_node(self):
-        from support_desk_agent.models.state import CaseState
+        from support_desk_agent.models.state import CaseStateModel
 
-        graph = StateGraph(CaseState)
+        graph = StateGraph(CaseStateModel)
         graph.add_node("intake_prepare", lambda state: cast(CaseState, self.prepare_state(cast(CaseState, state))))
         graph.add_node("intake_mask", lambda state: cast(CaseState, self.apply_pii_mask(cast(CaseState, state))))
         graph.add_node("intake_hydrate_tickets", lambda state: cast(CaseState, self.hydrate_tickets(cast(CaseState, state))))
@@ -1020,9 +1020,9 @@ class IntakeAgent(AbstractAgent):
         return graph.compile()
 
     def create_wait_node(self):
-        from support_desk_agent.models.state import CaseState
+        from support_desk_agent.models.state import CaseStateModel
 
-        graph = StateGraph(CaseState)
+        graph = StateGraph(CaseStateModel)
         graph.add_node("wait_for_customer_input", self.wait_for_customer_input)
         graph.add_edge(START, "wait_for_customer_input")
         graph.add_edge("wait_for_customer_input", END)
