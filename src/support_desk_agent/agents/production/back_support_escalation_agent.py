@@ -67,24 +67,24 @@ class BackSupportEscalationPhaseExecutor(AbstractAgent):
                 escalation_summary += f" 追加で必要な資料: {', '.join(missing_artifacts)}"
 
         if case_id and workspace_path:
-            context_payload: SharedMemoryDocumentPayload = {
-                "title": "Back Support Escalation",
-                "heading_level": 2,
-                "bullets": [
+            context_payload = SharedMemoryDocumentPayload(
+                title="Back Support Escalation",
+                heading_level=2,
+                bullets=[
                     f"Escalation reason: {escalation_reason}",
                     f"Escalation summary: {escalation_summary}",
                     f"Missing artifacts: {', '.join(missing_artifacts) if missing_artifacts else 'n/a'}",
                 ],
-            }
-            progress_payload: SharedMemoryDocumentPayload = {
-                "title": "Back Support Escalation",
-                "heading_level": 2,
-                "bullets": [
+            )
+            progress_payload = SharedMemoryDocumentPayload(
+                title="Back Support Escalation",
+                heading_level=2,
+                bullets=[
                     "Current phase: escalation_preparation",
                     "Owner: BackSupportEscalationAgent",
                     "Next phase: inquiry_draft",
                 ],
-            }
+            )
             self._invoke_tool(
                 self.write_shared_memory_tool,
                 case_id,

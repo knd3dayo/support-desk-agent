@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from support_desk_agent.models.state import as_state_dict
+
+if TYPE_CHECKING:
+    from support_desk_agent.models.state import CaseState
 
 from support_desk_agent.agents.roles import APPROVAL_AGENT
 from support_desk_agent.agents.roles import INTAKE_AGENT
@@ -52,7 +55,7 @@ class NextActionTexts:
 class StateTransitionHelper:
     @staticmethod
     def supervisor_investigating(
-        state: Mapping[str, Any],
+        state: "CaseState" | Mapping[str, Any],
         *,
         current_agent: str = SUPERVISOR_AGENT,
     ) -> dict[str, Any]:
@@ -63,7 +66,7 @@ class StateTransitionHelper:
 
     @staticmethod
     def draft_ready(
-        state: Mapping[str, Any],
+        state: "CaseState" | Mapping[str, Any],
         *,
         current_agent: str | None = None,
     ) -> dict[str, Any]:
@@ -75,7 +78,7 @@ class StateTransitionHelper:
 
     @staticmethod
     def intake_triaged(
-        state: Mapping[str, Any],
+        state: "CaseState" | Mapping[str, Any],
         *,
         masked_issue: str | None = None,
     ) -> dict[str, Any]:
@@ -88,7 +91,7 @@ class StateTransitionHelper:
 
     @staticmethod
     def waiting_for_customer_input(
-        state: Mapping[str, Any],
+        state: "CaseState" | Mapping[str, Any],
         *,
         next_action: str = NextActionTexts.PROVIDE_INTAKE_INPUT,
     ) -> dict[str, Any]:
@@ -101,7 +104,7 @@ class StateTransitionHelper:
 
     @staticmethod
     def waiting_for_approval(
-        state: Mapping[str, Any],
+        state: "CaseState" | Mapping[str, Any],
         *,
         current_agent: str = APPROVAL_AGENT,
     ) -> dict[str, Any]:
@@ -119,7 +122,7 @@ class StateTransitionHelper:
 
     @staticmethod
     def ticket_update_prepared(
-        state: Mapping[str, Any],
+        state: "CaseState" | Mapping[str, Any],
         *,
         payload: str,
         next_action: str,
@@ -132,7 +135,7 @@ class StateTransitionHelper:
 
     @staticmethod
     def ticket_update_completed(
-        state: Mapping[str, Any],
+        state: "CaseState" | Mapping[str, Any],
         *,
         result_message: str = "Zendesk と Redmine の更新処理を完了しました。",
         next_action: str = NextActionTexts.COMPLETE_TICKET_UPDATE,

@@ -25,7 +25,7 @@ from support_desk_agent.tools.mcp_client import McpToolClient
 from support_desk_agent.util.langchain import build_chat_openai_model
 from support_desk_agent.util.log_time_range import apply_derived_log_extract_range
 from support_desk_agent.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml
-from support_desk_agent.util.shared_memory_payload import SharedMemoryDocumentPayload
+from support_desk_agent.util.shared_memory_payload import SharedMemoryDocumentPayload, SharedMemorySectionPayload
 
 # IntakeAgentはケースの初期受け入れと分類を担当するエージェントで、
 # 問い合わせ内容のPIIマスキング、チケット情報の取得、分類と緊急度判定、品質ゲートによる検証、
@@ -106,7 +106,9 @@ class IntakeAgent(AbstractAgent):
             ),
         )
 
-    def _invoke_tool(self, tool: Callable[..., Any], *args: object, **kwargs: object) -> str:
+    def _invoke_tool(self, tool: Callable[..., Any] | None, *args: object, **kwargs: object) -> str:
+        if tool is None:
+            return ""
         try:
             result = tool(*args, **kwargs)
         except TypeError:
@@ -586,9 +588,11 @@ class IntakeAgent(AbstractAgent):
         *,
         ticket_kind: str,
         ticket_id: str,
-        tool: Callable[..., Any],
+        tool: Callable[..., Any] | None,
         workspace_path: str,
     ) -> tuple[str, list[str]]:
+        if tool is None:
+            raise RuntimeError(f"{ticket_kind} ticket tool is not configured")
         raw_result = self._invoke_tool(tool, ticket_id=ticket_id)
         return self._hydrate_ticket_context_from_raw_result(ticket_kind=ticket_kind, workspace_path=workspace_path, raw_result=raw_result)
 
@@ -858,10 +862,10 @@ class IntakeAgent(AbstractAgent):
         case_id = str(update.get("case_id") or "").strip()
         if workspace_path and case_id:
             if self.tools.write_working_memory_tool is not None and raw_issue:
-                working_payload: SharedMemoryDocumentPayload = {
-                    "title": "Intake Result",
-                    "heading_level": 2,
-                    "bullets": [
+                working_payload = SharedMemoryDocumentPayload(
+                    title="Intake Result",
+                    heading_level=2,
+                    bullets=[
                         f"Raw issue: {raw_issue}",
                         f"Masked issue: {masked_issue}",
                         f"Category: {classification['category']}",
@@ -872,57 +876,57 @@ class IntakeAgent(AbstractAgent):
                         f"Evidence files: {', '.join(cast(list[str], update.get('intake_evidence_files') or [])) or 'n/a'}",
                         f"Follow-up required: {'yes' if bool(followup_questions) else 'no'}",
                     ],
-                }
-                if missing_fields:
-                    working_payload["bullets"].append(f"Missing fields: {', '.join(missing_fields)}")
+                )
+                if missing_fields and working_payload.bullets is not None:
+                    working_payload.bullets.append(f"Missing fields: {', '.join(missing_fields)}")
                 if followup_questions:
-                    working_payload["sections"] = [
-                        {
-                            "title": "Follow-up Questions",
-                            "bullets": [f"{field_name}: {question}" for field_name, question in followup_questions.items()],
-                        }
+                    working_payload.sections = [
+                        SharedMemorySectionPayload(
+                            title="Follow-up Questions",
+                            bullets=[f"{field_name}: {question}" for field_name, question in followup_questions.items()],
+                        )
                     ]
                 self._invoke_tool(
                     self.tools.write_working_memory_tool, case_id, workspace_path, working_payload, 
                     "append")
 
-            context_payload: SharedMemoryDocumentPayload = {
-                "title": "Shared Context",
-                "heading_level": 1,
-                "bullets": [f"Case ID: {case_id}"],
-            }
+            context_payload = SharedMemoryDocumentPayload(
+                title="Shared Context",
+                heading_level=1,
+                bullets=[f"Case ID: {case_id}"],
+            )
             trace_id = str(update.get("trace_id") or "").strip()
-            if trace_id:
-                context_payload["bullets"].append(f"Trace ID: {trace_id}")
+            if trace_id and context_payload.bullets is not None:
+                context_payload.bullets.append(f"Trace ID: {trace_id}")
             if raw_issue:
-                context_payload["sections"] = [
-                    {
-                        "title": "Intake Summary",
-                        "bullets": [
+                context_payload.sections = [
+                    SharedMemorySectionPayload(
+                        title="Intake Summary",
+                        bullets=[
                             f"Raw issue: {raw_issue}",
                             f"Masked issue: {masked_issue}",
                             f"Category: {classification['category']}",
                             f"Urgency: {classification['urgency']}",
                             f"Investigation focus: {classification['investigation_focus']}",
                         ],
-                    }
+                    )
                 ]
                 evidence_files = cast(list[str], update.get("intake_evidence_files") or [])
-                if evidence_files:
-                    context_payload["sections"][0]["bullets"].append(f"Evidence files: {', '.join(evidence_files)}")
-                if incident_timeframe:
-                    context_payload["sections"][0]["bullets"].append(f"Incident timeframe: {incident_timeframe}")
-                if classification.get("reason"):
-                    context_payload["sections"][0]["bullets"].append(f"Reason: {classification['reason']}")
+                if evidence_files and context_payload.sections and context_payload.sections[0].bullets is not None:
+                    context_payload.sections[0].bullets.append(f"Evidence files: {', '.join(evidence_files)}")
+                if incident_timeframe and context_payload.sections and context_payload.sections[0].bullets is not None:
+                    context_payload.sections[0].bullets.append(f"Incident timeframe: {incident_timeframe}")
+                if classification.get("reason") and context_payload.sections and context_payload.sections[0].bullets is not None:
+                    context_payload.sections[0].bullets.append(f"Reason: {classification['reason']}")
                 ticket_summaries = cast(dict[str, str], update.get("intake_ticket_context_summary") or {})
                 ticket_artifacts = cast(dict[str, list[str]], update.get("intake_ticket_artifacts") or {})
                 if ticket_summaries:
-                    context_payload["sections"].append(
-                        {
-                            "title": "Ticket Context",
-                            "bullets": [f"{name}: {summary}" for name, summary in ticket_summaries.items()]
+                    context_payload.sections.append(
+                        SharedMemorySectionPayload(
+                            title="Ticket Context",
+                            bullets=[f"{name}: {summary}" for name, summary in ticket_summaries.items()]
                             + [f"{name} artifacts: {', '.join(paths)}" for name, paths in ticket_artifacts.items() if paths],
-                        }
+                        )
                     )
                 structured_answers = cast(dict[str, dict[str, str]], update.get("customer_followup_answers") or {})
                 if structured_answers:
@@ -934,41 +938,41 @@ class IntakeAgent(AbstractAgent):
                             answer_bullets.append(f"{field_name}: Q: {question} / A: {answer}")
                         elif answer:
                             answer_bullets.append(f"{field_name}: A: {answer}")
-                    if answer_bullets:
-                        context_payload["sections"].append({"title": "Customer Follow-up Answers", "bullets": answer_bullets})
+                    if answer_bullets and context_payload.sections is not None:
+                        context_payload.sections.append(SharedMemorySectionPayload(title="Customer Follow-up Answers", bullets=answer_bullets))
                 if followup_questions:
-                    context_payload["sections"].append(
-                        {
-                            "title": "Intake Follow-up Required",
-                            "bullets": [f"{field_name}: {question}" for field_name, question in followup_questions.items()],
-                        }
+                    context_payload.sections.append(
+                        SharedMemorySectionPayload(
+                            title="Intake Follow-up Required",
+                            bullets=[f"{field_name}: {question}" for field_name, question in followup_questions.items()],
+                        )
                     )
 
-            progress_payload: SharedMemoryDocumentPayload = {
-                "title": "Shared Progress",
-                "heading_level": 1,
-                "bullets": [
+            progress_payload = SharedMemoryDocumentPayload(
+                title="Shared Progress",
+                heading_level=1,
+                bullets=[
                     f"Current status: {update['status']}",
                     f"Next phase: {'WAITING_CUSTOMER_INPUT' if followup_questions else 'INVESTIGATING'}",
                     f"Intake category: {classification['category']}",
                     f"Intake urgency: {classification['urgency']}",
                 ],
-            }
-            if incident_timeframe:
-                progress_payload["bullets"].append(f"Incident timeframe: {incident_timeframe}")
-            if missing_fields:
-                progress_payload["bullets"].append(f"Missing fields: {', '.join(missing_fields)}")
-            if update.get("customer_followup_answers"):
-                progress_payload["bullets"].append(
+            )
+            if incident_timeframe and progress_payload.bullets is not None:
+                progress_payload.bullets.append(f"Incident timeframe: {incident_timeframe}")
+            if missing_fields and progress_payload.bullets is not None:
+                progress_payload.bullets.append(f"Missing fields: {', '.join(missing_fields)}")
+            if update.get("customer_followup_answers") and progress_payload.bullets is not None:
+                progress_payload.bullets.append(
                     f"Follow-up answers received: {len(cast(dict[str, dict[str, str]], update.get('customer_followup_answers') or {}))}"
                 )
-            if update.get("intake_ticket_artifacts"):
-                progress_payload["bullets"].append("Ticket hydration: completed")
-            if update.get("execution_mode") == "plan":
+            if update.get("intake_ticket_artifacts") and progress_payload.bullets is not None:
+                progress_payload.bullets.append("Ticket hydration: completed")
+            if update.get("execution_mode") == "plan" and progress_payload.bullets is not None:
                 if followup_questions:
-                    progress_payload["bullets"].append("Planning note: plan モードだが、不足情報の確認が先に必要")
+                    progress_payload.bullets.append("Planning note: plan モードだが、不足情報の確認が先に必要")
                 else:
-                    progress_payload["bullets"].append("Planning note: plan モードのため、次はユーザー承認待ちの案内を行う")
+                    progress_payload.bullets.append("Planning note: plan モードのため、次はユーザー承認待ちの案内を行う")
             self._invoke_tool(
                 self.tools.write_shared_memory_tool, case_id, workspace_path, 
                 context_payload, progress_payload)

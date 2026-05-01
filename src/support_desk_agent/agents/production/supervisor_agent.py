@@ -14,7 +14,7 @@ from support_desk_agent.config.models import EscalationSettings
 from support_desk_agent.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_desk_agent.util.asyncio_utils import run_awaitable_sync
 from support_desk_agent.runtime.runtime_harness_manager import RuntimeHarnessManager
-from support_desk_agent.util.shared_memory_payload import SharedMemoryDocumentPayload
+from support_desk_agent.util.shared_memory_payload import SharedMemoryDocumentPayload, SharedMemorySectionPayload
 
 if TYPE_CHECKING:
     from support_desk_agent.models.state import CaseState, WorkflowKind
@@ -689,10 +689,10 @@ class SupervisorPhaseExecutor(AbstractAgent):
             update["next_action"] = NextActionTexts.PRODUCTION_START_DRAFT_PHASE
 
         if case_id and workspace_path:
-            context_payload: SharedMemoryDocumentPayload = {
-                "title": "Supervisor Investigation",
-                "heading_level": 2,
-                "bullets": [
+            context_payload = SharedMemoryDocumentPayload(
+                title="Supervisor Investigation",
+                heading_level=2,
+                bullets=[
                     f"Intake category: {intake_category}",
                     f"Intake urgency: {intake_urgency}",
                     f"Effective workflow kind: {effective_workflow_kind}",
@@ -709,11 +709,11 @@ class SupervisorPhaseExecutor(AbstractAgent):
                     f"Escalation required: {'yes' if escalation_required else 'no'}",
                     f"Escalation reason: {escalation_reason or 'n/a'}",
                 ],
-            }
-            progress_payload: SharedMemoryDocumentPayload = {
-                "title": "Supervisor Investigation",
-                "heading_level": 2,
-                "bullets": [
+            )
+            progress_payload = SharedMemoryDocumentPayload(
+                title="Supervisor Investigation",
+                heading_level=2,
+                bullets=[
                     "Current phase: INVESTIGATING",
                     f"Shared context loaded: {'yes' if memory_snapshot['context'].strip() else 'no'}",
                     f"Planned child agents: {', '.join(planned_child_agents)}",
@@ -725,7 +725,7 @@ class SupervisorPhaseExecutor(AbstractAgent):
                     f"Follow-up instructions issued: {'yes' if followup_notes else 'no'}",
                     f"Escalation path selected: {'yes' if escalation_required else 'no'}",
                 ],
-            }
+            )
             summary_payload = self._build_summary_payload(
                 investigation_summary=str(update.get("investigation_summary") or ""),
                 escalation_required=escalation_required,
@@ -817,10 +817,10 @@ class SupervisorPhaseExecutor(AbstractAgent):
         update["review_focus"] = review_focus
 
         if case_id and workspace_path:
-            context_payload: SharedMemoryDocumentPayload = {
-                "title": "Supervisor Draft Review",
-                "heading_level": 2,
-                "bullets": [
+            context_payload = SharedMemoryDocumentPayload(
+                title="Supervisor Draft Review",
+                heading_level=2,
+                bullets=[
                     f"Intake category: {intake_category}",
                     f"Intake urgency: {intake_urgency}",
                     f"Effective workflow kind: {effective_workflow_kind}",
@@ -830,18 +830,18 @@ class SupervisorPhaseExecutor(AbstractAgent):
                     "Review status: InvestigateAgent generated the draft and Supervisor prepared it for approval.",
                     "Managed child agents: InvestigateAgent",
                 ],
-            }
-            progress_payload: SharedMemoryDocumentPayload = {
-                "title": "Supervisor Draft Review",
-                "heading_level": 2,
-                "bullets": [
+            )
+            progress_payload = SharedMemoryDocumentPayload(
+                title="Supervisor Draft Review",
+                heading_level=2,
+                bullets=[
                     "Current phase: DRAFT_READY",
                     "Review loop owner: SuperVisorAgent",
                     f"Review loop count: {str(update.get('draft_review_iterations') or 0)}/{str(update.get('draft_review_max_loops') or 1)}",
                     "Review readiness: yes",
                     f"Next transition: {str(update.get('next_action') or 'wait_for_approval')}",
                 ],
-            }
+            )
             self._invoke_tool(
                 self.write_shared_memory_tool,
                 case_id,
