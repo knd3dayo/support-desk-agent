@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ai_chat_util.ai_chat_util_base.chat import create_llm_client
-from ai_chat_util.ai_chat_util_base.chat.analysis_service import AnalysisService
-from ai_chat_util.ai_chat_util_base.chat.llm_client_util import LLMClientUtil
-from ai_chat_util.ai_chat_util_base.ai_chat_util_models import ChatResponse
+from ai_chat_util.ai_chat_util_base.chat.core import create_llm_client
+from ai_chat_util.ai_chat_util_base.chat.core.analysis_service import AnalysisService
+from ai_chat_util.ai_chat_util_base.analyze_pdf_util.util import AnalyzePDFUtil
+from ai_chat_util.ai_chat_util_base.chat.model import ChatResponse
 from ai_chat_util.common.config.runtime import AiChatUtilConfig
 
 from support_desk_agent.config.models import AppConfig
@@ -45,19 +45,19 @@ def chat_response_to_text(response: ChatResponse) -> str:
 
 async def analyze_image_files(config: AppConfig, file_list: list[str], prompt: str, detail: str = "auto") -> str:
     client = create_ai_chat_util_client(config)
-    response = await LLMClientUtil.analyze_image_files(client, file_list, prompt, detail)
+    response = await AnalyzePDFUtil.analyze_image_files(client, file_list, prompt, detail)
     return chat_response_to_text(response)
 
 
 async def analyze_pdf_files(config: AppConfig, file_list: list[str], prompt: str, detail: str = "auto") -> str:
     client = create_ai_chat_util_client(config)
-    response = await LLMClientUtil.analyze_pdf_files(client, file_list, prompt, detail)
+    response = await AnalyzePDFUtil.analyze_pdf_files(client, file_list, prompt, detail)
     return chat_response_to_text(response)
 
 
 async def analyze_office_files(config: AppConfig, file_list: list[str], prompt: str, detail: str = "auto") -> str:
     client = create_ai_chat_util_client(config)
-    response = await LLMClientUtil.analyze_office_files(client, file_list, prompt, detail)
+    response = await AnalyzePDFUtil.analyze_office_files(client, file_list, prompt, detail)
     return chat_response_to_text(response)
 
 

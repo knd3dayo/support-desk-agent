@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 import zipfile
 
-from ai_chat_util.ai_chat_util_base.ai_chat_util_models import ChatResponse
+from ai_chat_util.ai_chat_util_base.chat.model import ChatResponse
 from docx import Document as DocxDocument
 from openpyxl import Workbook
 from pptx import Presentation
