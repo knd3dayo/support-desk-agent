@@ -26,6 +26,7 @@ from support_desk_agent.util.langchain import build_chat_openai_model
 from support_desk_agent.util.log_time_range import apply_derived_log_extract_range
 from support_desk_agent.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml
 from support_desk_agent.util.shared_memory_payload import SharedMemoryDocumentPayload, SharedMemorySectionPayload
+from support_desk_agent.util.ticket_matching import normalize_similarity_text
 
 # IntakeAgentはケースの初期受け入れと分類を担当するエージェントで、
 # 問い合わせ内容のPIIマスキング、チケット情報の取得、分類と緊急度判定、品質ゲートによる検証、
@@ -87,6 +88,10 @@ class IntakeAgent(AbstractAgent):
 
     config: AppConfig
     tools: IntakeAgentTools = field(default_factory=IntakeAgentTools)
+
+    def __init__(self, config: AppConfig, tools: IntakeAgentTools | None = None):
+        self.config = config
+        self.tools = tools or IntakeAgentTools()
 
     @classmethod
     def from_tool_maps(
@@ -414,10 +419,6 @@ class IntakeAgent(AbstractAgent):
         parts = [part for part in [number, title, state] if part]
         return " / ".join(parts)
 
-    @staticmethod
-    def _normalize_similarity_text(value: str) -> str:
-        return re.sub(r"[^0-9A-Za-z]+", "", value).lower()
-
     @classmethod
     def _ticket_id_similarity_for_fields(
         cls,
@@ -426,13 +427,13 @@ class IntakeAgent(AbstractAgent):
         candidate: dict[str, Any],
         field_names: list[str],
     ) -> float:
-        expected = cls._normalize_similarity_text(expected_ticket_id)
+        expected = normalize_similarity_text(expected_ticket_id)
         if not expected:
             return 0.0
         ratios = []
         for field_name in field_names:
             value = str(candidate.get(field_name) or "")
-            normalized = cls._normalize_similarity_text(value)
+            normalized = normalize_similarity_text(value)
             if not normalized:
                 continue
             ratios.append(SequenceMatcher(None, expected, normalized).ratio())
@@ -606,18 +607,26 @@ class IntakeAgent(AbstractAgent):
             update["case_title"] = derive_case_title(raw_issue, fallback=str(update.get("case_id") or "新規ケース"))
         return cast("CaseState", update)
 
-    PII_MASK_PROMPT = "Mask API keys, tokens, and secrets for intake processing."
 
     def apply_pii_mask(self, state: CaseState) -> CaseState:
-        update = as_state_dict(state)
-        raw_issue = str(update.get("raw_issue") or "").strip()
-        if raw_issue and self.config.agents.IntakeAgent.pii_mask.enabled:
-            update["masked_issue"] = self._invoke_tool(
+        """
+        問い合わせ内容のPIIマスキングを行う。
+        PIIマスキングが有効な場合、tools.pii_mask_toolを呼び出して、
+        raw_issueをマスキングし、masked_issueに保存する。
+        """
+
+        PII_MASK_PROMPT = "Mask API keys, tokens, and secrets for intake processing."
+    
+        if not self.config.agents.IntakeAgent.pii_mask.enabled:
+            return state
+
+        if state.raw_issue:
+            state.masked_issue = self._invoke_tool(
                 self.tools.pii_mask_tool,
-                raw_issue,
-                self.PII_MASK_PROMPT,
+                state.raw_issue,
+                PII_MASK_PROMPT,
             )
-        return cast("CaseState", update)
+        return state
 
     def hydrate_tickets(self, state: CaseState) -> CaseState:
         update = as_state_dict(state)
@@ -758,8 +767,7 @@ class IntakeAgent(AbstractAgent):
         update["agent_errors"] = agent_errors
         return cast("CaseState", update)
 
-    CLASSIFY_PROMPT = "Classify the intake issue for customer support workflow routing and investigation planning."
-
+    
     @staticmethod
     def _parse_classification(raw_text: str) -> dict[str, str]:
         candidate = raw_text.strip()
@@ -778,33 +786,34 @@ class IntakeAgent(AbstractAgent):
         }
 
     def classify_issue(self, state: CaseState) -> CaseState:
-        update = as_state_dict(state)
-        raw_issue = str(update.get("raw_issue") or "").strip()
-        masked_issue = str(update.get("masked_issue") or raw_issue)
+        raw_issue = str(state.get("raw_issue") or "").strip()
+        masked_issue = str(state.get("masked_issue") or raw_issue)
         if not raw_issue:
-            return cast("CaseState", update)
+            return state
+
+        CLASSIFY_PROMPT = "Classify the intake issue for customer support workflow routing and investigation planning."
 
         classification = self._parse_classification(
             self._invoke_tool(
                 self.tools.classify_ticket_tool,
                 masked_issue,
-                self.CLASSIFY_PROMPT,
-                conversation_messages=cast(list[dict[str, object]], update.get("conversation_messages") or []),
+                CLASSIFY_PROMPT,
+                conversation_messages=cast(list[dict[str, object]], state.get("conversation_messages") or []),
             )
         )
-        update["intake_category"] = classification["category"]
-        update["intake_urgency"] = self._resolve_classification_urgency(
+        state["intake_category"] = classification["category"]
+        state["intake_urgency"] = self._resolve_classification_urgency(
             masked_issue,
             classification["category"],
             classification["urgency"],
         )
-        update["intake_investigation_focus"] = classification["investigation_focus"]
-        update["intake_classification_reason"] = classification.get("reason", "")
+        state["intake_investigation_focus"] = classification["investigation_focus"]
+        state["intake_classification_reason"] = classification.get("reason", "")
         extracted_timeframe = self._extract_incident_timeframe(masked_issue)
-        existing_timeframe = str(update.get("intake_incident_timeframe") or "").strip()
-        update["intake_incident_timeframe"] = extracted_timeframe or existing_timeframe
-        apply_derived_log_extract_range(update, str(update.get("intake_incident_timeframe") or ""), config=self.config)
-        return cast("CaseState", update)
+        existing_timeframe = str(state.get("intake_incident_timeframe") or "").strip()
+        state["intake_incident_timeframe"] = extracted_timeframe or existing_timeframe
+        apply_derived_log_extract_range(state, str(state.get("intake_incident_timeframe") or ""), config=self.config)
+        return state
 
     def quality_gate(self, state: CaseState) -> CaseState:
         update = as_state_dict(state)
@@ -1008,12 +1017,15 @@ class IntakeAgent(AbstractAgent):
         from support_desk_agent.models.state import CaseState
 
         graph = StateGraph(CaseState)
+        # ノードを定義
         graph.add_node("intake_prepare", lambda state: cast(CaseState, self.prepare_state(cast(CaseState, state))))
         graph.add_node("intake_mask", lambda state: cast(CaseState, self.apply_pii_mask(cast(CaseState, state))))
         graph.add_node("intake_hydrate_tickets", lambda state: cast(CaseState, self.hydrate_tickets(cast(CaseState, state))))
         graph.add_node("intake_classify", lambda state: cast(CaseState, self.classify_issue(cast(CaseState, state))))
         graph.add_node("intake_quality_gate", lambda state: cast(CaseState, self.quality_gate(cast(CaseState, state))))
         graph.add_node("intake_finalize", lambda state: cast(CaseState, self.finalize_state(cast(CaseState, state))))
+
+        # ノード間のエッジを定義
         graph.add_edge(START, "intake_prepare")
         graph.add_edge("intake_prepare", "intake_mask")
         graph.add_edge("intake_mask", "intake_hydrate_tickets")
@@ -1021,6 +1033,7 @@ class IntakeAgent(AbstractAgent):
         graph.add_edge("intake_classify", "intake_quality_gate")
         graph.add_edge("intake_quality_gate", "intake_finalize")
         graph.add_edge("intake_finalize", END)
+
         return graph.compile()
 
     def create_wait_node(self):

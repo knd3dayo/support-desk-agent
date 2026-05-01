@@ -19,6 +19,7 @@ from support_desk_agent.util.asyncio_utils import run_awaitable_sync
 from support_desk_agent.tools.mcp_client import McpToolClient
 from support_desk_agent.util.langchain import build_chat_openai_model
 from support_desk_agent.util.parsing import McpToolSelectionDecision, parse_mcp_tool_selection_xml
+from support_desk_agent.util.ticket_matching import normalize_similarity_text
 
 if TYPE_CHECKING:
     from support_desk_agent.models.state import CaseState
@@ -95,10 +96,6 @@ class TicketUpdateAgent(AbstractAgent):
             return json.dumps(payload, ensure_ascii=False)
         return raw_result
 
-    @staticmethod
-    def _normalize_similarity_text(value: str) -> str:
-        return re.sub(r"[^0-9A-Za-z]+", "", value).lower()
-
     @classmethod
     def _ticket_id_similarity_for_fields(
         cls,
@@ -107,13 +104,13 @@ class TicketUpdateAgent(AbstractAgent):
         candidate: dict[str, Any],
         field_names: list[str],
     ) -> float:
-        expected = cls._normalize_similarity_text(expected_ticket_id)
+        expected = normalize_similarity_text(expected_ticket_id)
         if not expected:
             return 0.0
         ratios = []
         for field_name in field_names:
             value = str(candidate.get(field_name) or "")
-            normalized = cls._normalize_similarity_text(value)
+            normalized = normalize_similarity_text(value)
             if not normalized:
                 continue
             ratios.append(SequenceMatcher(None, expected, normalized).ratio())
