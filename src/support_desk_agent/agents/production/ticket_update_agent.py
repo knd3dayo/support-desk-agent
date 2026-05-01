@@ -375,9 +375,9 @@ class TicketUpdateAgent(AbstractAgent):
         return cast("CaseState", StateTransitionHelper.ticket_update_completed(state))
 
     def create_node(self):
-        from support_desk_agent.models.state import CaseStateModel
+        from support_desk_agent.models.state import CaseState
 
-        graph = StateGraph(CaseStateModel)
+        graph = StateGraph(CaseState)
         graph.add_node("ticket_update_prepare", self.prepare_update)
         graph.add_node("ticket_update_execute", self.execute_update)
         graph.add_edge(START, "ticket_update_prepare")

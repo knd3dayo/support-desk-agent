@@ -9,7 +9,7 @@ from support_desk_agent.agents.agent_definition import AgentDefinition
 from support_desk_agent.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
 from support_desk_agent.config.loader import load_config
 from support_desk_agent.config.models import AppConfig, KnowledgeDocumentSource
-from support_desk_agent.models.state import CaseState, CaseStateModel
+from support_desk_agent.models.state import CaseState
 from support_desk_agent.runtime.conversation_messages import extract_result_output_text
 from support_desk_agent.util.document import build_filtered_document_source_backend
 from support_desk_agent.util.formatting import format_result
@@ -118,7 +118,7 @@ class SampleInvestigateAgent(AbstractAgent):
                 system_prompt=system_prompt,
                 tools=[t for t in tools.values() if t],
                 memory=memory_sources or None,
-                context_schema=CaseStateModel,
+                context_schema=CaseState,
                 name="investigate-sample",
             ),
         )

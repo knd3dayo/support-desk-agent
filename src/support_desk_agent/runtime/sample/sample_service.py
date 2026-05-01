@@ -448,7 +448,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         workflow_kind = route_workflow(prompt)
         plan_steps = build_plan_steps(workflow_kind)
         plan_summary = summarize_plan(workflow_kind)
-        state: CaseState = {
+        state = CaseState.model_validate({
             "case_id": selected_case_id,
             "workflow_run_id": trace_id,
             "trace_id": trace_id,
@@ -464,7 +464,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             "internal_ticket_lookup_enabled": internal_ticket_lookup_enabled,
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
-        }
+        })
         # workflow の実行結果をそのまま返すだけでなく、ケース情報と履歴も同期しておく。
         result = self._invoke_workflow(state, trace_id)
         self._sync_case_title_from_state(
@@ -578,7 +578,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             conversation_messages=conversation_messages,
         )
         # workflow に渡す state には、復元済み会話と現在のチケット解決結果をまとめて載せる。
-        state: CaseState = {
+        state = CaseState.model_validate({
             "case_id": selected_case_id,
             "workflow_run_id": current_trace_id,
             "trace_id": current_trace_id,
@@ -595,7 +595,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
             "approval_decision": "pending",
-        }
+        })
         result = self._invoke_workflow(state, current_trace_id)
         self._sync_case_title_from_state(
             case_id=selected_case_id,
@@ -912,7 +912,7 @@ class SampleRuntimeService(AbstractRuntimeService[SampleRuntimeContext]):
         """checkpoint から trace 単位の workflow state を復元する。"""
 
         if not trace_id or not case_id or not workspace_path:
-            return {}
+            return CaseState()
 
         with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
             # LangGraph snapshot の値を正規化し、case_id/trace_id 系の揺れを吸収する。

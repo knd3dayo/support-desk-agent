@@ -31,7 +31,7 @@ from support_desk_agent.util.shared_memory_payload import SharedMemoryDocumentPa
 # 問い合わせ内容のPIIマスキング、チケット情報の取得、分類と緊急度判定、品質ゲートによる検証、
 # 状態の最終化などの機能を提供します。
 if TYPE_CHECKING:
-    from support_desk_agent.models.state import CaseState
+    from support_desk_agent.models.state import CaseState, as_state_dict
 
 
 @dataclass(slots=True)
@@ -605,7 +605,7 @@ class IntakeAgent(AbstractAgent):
     PII_MASK_PROMPT = "Mask API keys, tokens, and secrets for intake processing."
 
     def apply_pii_mask(self, state: CaseState) -> CaseState:
-        update = dict(state)
+        update = as_state_dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
         if raw_issue and self.config.agents.IntakeAgent.pii_mask.enabled:
             update["masked_issue"] = self._invoke_tool(
@@ -616,7 +616,7 @@ class IntakeAgent(AbstractAgent):
         return cast("CaseState", update)
 
     def hydrate_tickets(self, state: CaseState) -> CaseState:
-        update = dict(state)
+        update = as_state_dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
         workspace_path = str(update.get("workspace_path") or "").strip()
         if not raw_issue or not workspace_path:
@@ -774,7 +774,7 @@ class IntakeAgent(AbstractAgent):
         }
 
     def classify_issue(self, state: CaseState) -> CaseState:
-        update = dict(state)
+        update = as_state_dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
         masked_issue = str(update.get("masked_issue") or raw_issue)
         if not raw_issue:
@@ -803,7 +803,7 @@ class IntakeAgent(AbstractAgent):
         return cast("CaseState", update)
 
     def quality_gate(self, state: CaseState) -> CaseState:
-        update = dict(state)
+        update = as_state_dict(state)
         update["intake_evidence_files"] = self._resolve_evidence_files(cast("CaseState", update))
         validation_result = self.validate_intake(
             cast("CaseState", update),
@@ -820,7 +820,7 @@ class IntakeAgent(AbstractAgent):
         return cast("CaseState", update)
 
     def finalize_state(self, state: CaseState) -> CaseState:
-        update = dict(state)
+        update = as_state_dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
         masked_issue = str(update.get("masked_issue") or raw_issue)
         classification = {
@@ -1001,9 +1001,9 @@ class IntakeAgent(AbstractAgent):
         return cast("CaseState", StateTransitionHelper.waiting_for_customer_input(state))
 
     def create_node(self):
-        from support_desk_agent.models.state import CaseStateModel
+        from support_desk_agent.models.state import CaseState
 
-        graph = StateGraph(CaseStateModel)
+        graph = StateGraph(CaseState)
         graph.add_node("intake_prepare", lambda state: cast(CaseState, self.prepare_state(cast(CaseState, state))))
         graph.add_node("intake_mask", lambda state: cast(CaseState, self.apply_pii_mask(cast(CaseState, state))))
         graph.add_node("intake_hydrate_tickets", lambda state: cast(CaseState, self.hydrate_tickets(cast(CaseState, state))))
@@ -1020,9 +1020,9 @@ class IntakeAgent(AbstractAgent):
         return graph.compile()
 
     def create_wait_node(self):
-        from support_desk_agent.models.state import CaseStateModel
+        from support_desk_agent.models.state import CaseState
 
-        graph = StateGraph(CaseStateModel)
+        graph = StateGraph(CaseState)
         graph.add_node("wait_for_customer_input", self.wait_for_customer_input)
         graph.add_edge(START, "wait_for_customer_input")
         graph.add_edge("wait_for_customer_input", END)

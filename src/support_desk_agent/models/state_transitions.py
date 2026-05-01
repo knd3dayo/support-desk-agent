@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from support_desk_agent.models.state import as_state_dict
+
 from support_desk_agent.agents.roles import APPROVAL_AGENT
 from support_desk_agent.agents.roles import INTAKE_AGENT
 from support_desk_agent.agents.roles import SUPERVISOR_AGENT
@@ -54,7 +56,7 @@ class StateTransitionHelper:
         *,
         current_agent: str = SUPERVISOR_AGENT,
     ) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         update["status"] = CaseStatuses.INVESTIGATING
         update["current_agent"] = current_agent
         return update
@@ -65,7 +67,7 @@ class StateTransitionHelper:
         *,
         current_agent: str | None = None,
     ) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         update["status"] = CaseStatuses.DRAFT_READY
         if current_agent is not None:
             update["current_agent"] = current_agent
@@ -77,7 +79,7 @@ class StateTransitionHelper:
         *,
         masked_issue: str | None = None,
     ) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         update["status"] = CaseStatuses.TRIAGED
         update["current_agent"] = INTAKE_AGENT
         if masked_issue is not None:
@@ -90,7 +92,7 @@ class StateTransitionHelper:
         *,
         next_action: str = NextActionTexts.PROVIDE_INTAKE_INPUT,
     ) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         update["status"] = CaseStatuses.WAITING_CUSTOMER_INPUT
         update["current_agent"] = INTAKE_AGENT
         if not update.get("next_action"):
@@ -103,7 +105,7 @@ class StateTransitionHelper:
         *,
         current_agent: str = APPROVAL_AGENT,
     ) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         update["status"] = CaseStatuses.WAITING_APPROVAL
         update["current_agent"] = current_agent
         update.setdefault("approval_decision", "pending")
@@ -122,7 +124,7 @@ class StateTransitionHelper:
         payload: str,
         next_action: str,
     ) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         update["current_agent"] = TICKET_UPDATE_AGENT
         update["ticket_update_payload"] = payload
         update["next_action"] = next_action
@@ -135,7 +137,7 @@ class StateTransitionHelper:
         result_message: str = "Zendesk と Redmine の更新処理を完了しました。",
         next_action: str = NextActionTexts.COMPLETE_TICKET_UPDATE,
     ) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         update["status"] = CaseStatuses.CLOSED
         update["current_agent"] = TICKET_UPDATE_AGENT
         update["ticket_update_result"] = result_message

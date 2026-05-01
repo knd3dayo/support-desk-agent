@@ -15,7 +15,7 @@ from support_desk_agent.util.asyncio_utils import run_awaitable_sync
 from support_desk_agent.util.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
-    from support_desk_agent.models.state import CaseState
+    from support_desk_agent.models.state import CaseState, as_state_dict
 
 
 @dataclass(slots=True)
@@ -45,7 +45,7 @@ class BackSupportEscalationPhaseExecutor(AbstractAgent):
         }
 
     def execute(self, state: Mapping[str, Any]) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         case_id = str(update.get("case_id") or "").strip()
         workspace_path = str(update.get("workspace_path") or "").strip()
         memory_snapshot = {"context": "", "progress": "", "summary": ""}
@@ -104,9 +104,9 @@ class BackSupportEscalationPhaseExecutor(AbstractAgent):
         }
 
     def create_node(self):
-        from support_desk_agent.models.state import CaseStateModel
+        from support_desk_agent.models.state import CaseState
 
-        graph = StateGraph(CaseStateModel)
+        graph = StateGraph(CaseState)
         graph.add_node(
             "back_support_escalation",
             lambda state: cast("CaseState", self.execute(cast(dict[str, Any], state))),

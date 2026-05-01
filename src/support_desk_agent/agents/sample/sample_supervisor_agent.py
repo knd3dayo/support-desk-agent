@@ -20,7 +20,7 @@ from support_desk_agent.workspace import find_attachment_files, find_evidence_lo
 
 from support_desk_agent.agents.sample.sample_investigate_agent import SampleInvestigateAgent
 from support_desk_agent.agents.sample.sample_ticket_update_agent import SampleTicketUpdateAgent
-from support_desk_agent.models.state import CaseState
+from support_desk_agent.models.state import CaseState, as_state_dict
 from support_desk_agent.instructions import InstructionLoader
 
 class SampleSupervisorAgentUtil:
@@ -214,6 +214,7 @@ class SampleSupervisorAgent(AbstractAgent):
 
     def _build_investigation_query(self, state: CaseState, *, mode: str) -> str:
         case_id, workspace_path, raw_issue = SampleSupervisorAgentUtil._extract_case_context(state)
+
         followup_section = SampleSupervisorAgentUtil._format_followup_answers(state)
         ticket_context_section = format_ticket_context(cast(dict, state))
         shared_memory = self.tool_registry.read_shared_memory_for_case(case_id, workspace_path, role=SUPERVISOR_AGENT)
@@ -277,7 +278,11 @@ class SampleSupervisorAgent(AbstractAgent):
             if evidence_preview
             else ""
         )
-        attachment_paths = [str(path).strip() for path in list(state.get("investigation_attachment_paths") or []) if str(path).strip()]
+        attachment_paths = [
+            str(path).strip()
+            for path in cast(list[object], state.get("investigation_attachment_paths") or [])
+            if str(path).strip()
+        ]
         attachment_section = (
             "\n".join(
                 [
@@ -291,7 +296,8 @@ class SampleSupervisorAgent(AbstractAgent):
             else ""
         )
         plan_summary = str(state.get("plan_summary") or "").strip()
-        plan_steps = [str(step).strip() for step in list(state.get("plan_steps") or []) if str(step).strip()]
+        plan_steps = [str(step).strip() for step in cast(list[object], state.get("plan_steps") or []) if str(step).strip()]
+
         plan_section = (
             "\n\n".join(
                 part
@@ -305,7 +311,7 @@ class SampleSupervisorAgent(AbstractAgent):
             else ""
         )
         followup_notes_section = (
-            SampleSupervisorAgentUtil._format_supervisor_followup_notes(list(state.get("supervisor_followup_notes") or []))
+            SampleSupervisorAgentUtil._format_supervisor_followup_notes(cast(list[str], state.get("supervisor_followup_notes") or []))
             if mode == SampleInvestigateAgent.ACTION_MODE
             else ""
         )
@@ -346,11 +352,11 @@ class SampleSupervisorAgent(AbstractAgent):
             "evaluation_target": evaluation_target,
             "raw_issue": str(state.get("raw_issue") or "").strip(),
             "plan_summary": str(state.get("plan_summary") or "").strip(),
-            "plan_steps": list(state.get("plan_steps") or []),
+            "plan_steps": cast(list[str], state.get("plan_steps") or []),
             "investigation_summary": str(state.get("investigation_summary") or "").strip(),
-            "supervisor_followup_notes": list(state.get("supervisor_followup_notes") or []),
+            "supervisor_followup_notes": cast(list[str], state.get("supervisor_followup_notes") or []),
             "investigation_evidence_log_path": str(state.get("investigation_evidence_log_path") or "").strip(),
-            "investigation_attachment_paths": list(state.get("investigation_attachment_paths") or []),
+            "investigation_attachment_paths": cast(list[str], state.get("investigation_attachment_paths") or []),
         }
         return evidence
 
@@ -525,7 +531,7 @@ class SampleSupervisorAgent(AbstractAgent):
             return
 
     def execute_investigation(self, state: "CaseState") -> "CaseState":
-        update = cast("CaseState", StateTransitionHelper.supervisor_investigating(state))
+        update = cast("CaseState", StateTransitionHelper.supervisor_investigating(as_state_dict(state)))
         case_id = str(update.get("case_id") or "").strip()
         workspace_path = str(update.get("workspace_path") or "").strip()
         attachment_ignore_patterns = self.config.data_paths.attachment_ignore_patterns
@@ -552,7 +558,7 @@ class SampleSupervisorAgent(AbstractAgent):
             improvement_points=list(plan_evaluation.improvement_points),
         )
 
-        followup_loops = int(update.get("investigation_followup_loops") or 0)
+        followup_loops = int(cast(int | str, update.get("investigation_followup_loops") or 0))
         while True:
             update["investigation_followup_loops"] = followup_loops
             investigation_summary = self._execute_mode(update, mode=SampleInvestigateAgent.ACTION_MODE, instruction_text=instruction_text)
@@ -581,7 +587,7 @@ class SampleSupervisorAgent(AbstractAgent):
         return update
 
     def execute_escalation_review(self, state: "CaseState") -> "CaseState":
-        update = cast("CaseState", StateTransitionHelper.draft_ready(state, current_agent=SUPERVISOR_AGENT))
+        update = cast("CaseState", StateTransitionHelper.draft_ready(as_state_dict(state), current_agent=SUPERVISOR_AGENT))
         update["escalation_required"] = True
         update["escalation_reason"] = str(update.get("escalation_reason") or "追加確認のためバックサポートへ問い合わせます。")
         update["escalation_summary"] = str(
@@ -597,7 +603,7 @@ class SampleSupervisorAgent(AbstractAgent):
         return update
 
     def execute_draft_review(self, state: "CaseState") -> "CaseState":
-        update = cast("CaseState", StateTransitionHelper.draft_ready(state, current_agent=SUPERVISOR_AGENT))
+        update = cast("CaseState", StateTransitionHelper.draft_ready(as_state_dict(state), current_agent=SUPERVISOR_AGENT))
         update["review_focus"] = "サンプル回答として分かりやすいか確認する"
         update["draft_review_iterations"] = 1
         update["draft_review_max_loops"] = 1
@@ -609,7 +615,7 @@ class SampleSupervisorAgent(AbstractAgent):
     def wait_for_approval(self, state: "CaseState") -> "CaseState":
         return cast(
             "CaseState",
-            StateTransitionHelper.waiting_for_approval(state, current_agent=SUPERVISOR_AGENT),
+            StateTransitionHelper.waiting_for_approval(as_state_dict(state), current_agent=SUPERVISOR_AGENT),
         )
 
     def create_node(self) -> Any:
@@ -619,11 +625,11 @@ class SampleSupervisorAgent(AbstractAgent):
             raise RuntimeError("SampleSupervisorAgent requires ticket_update_executor for the sample workflow.")
 
         graph = StateGraph(CaseState)
-        graph.add_node("supervisor_entry", lambda state: cast(CaseState, dict(cast(dict[str, Any], state))))
-        graph.add_node("investigation", self.execute_investigation)
-        graph.add_node("draft_review", self.execute_draft_review)
-        graph.add_node("escalation_review", self.execute_escalation_review)
-        graph.add_node("wait_for_approval", self.wait_for_approval)
+        graph.add_node("supervisor_entry", lambda state: CaseState.model_validate(cast(dict[str, Any], state)))
+        graph.add_node("investigation", lambda state: self.execute_investigation(CaseState.model_validate(cast(dict[str, Any], state))))
+        graph.add_node("draft_review", lambda state: self.execute_draft_review(CaseState.model_validate(cast(dict[str, Any], state))))
+        graph.add_node("escalation_review", lambda state: self.execute_escalation_review(CaseState.model_validate(cast(dict[str, Any], state))))
+        graph.add_node("wait_for_approval", lambda state: self.wait_for_approval(CaseState.model_validate(cast(dict[str, Any], state))))
         graph.add_node("ticket_update_subgraph", self.ticket_update_executor.create_node())
         graph.add_edge(START, "supervisor_entry")
         graph.add_conditional_edges(

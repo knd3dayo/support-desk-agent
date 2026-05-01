@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -35,10 +35,7 @@ def _normalize_case_trace_id(value: str) -> str:
     return f"TRACE-{normalized}"
 
 
-CaseState = dict[str, Any]
-
-
-class CaseStateModel(BaseModel):
+class CaseState(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     case_id: str | None = None
@@ -126,5 +123,56 @@ class CaseStateModel(BaseModel):
             normalized["workflow_run_id"] = trace_id
         return normalized
 
-    def to_state_dict(self) -> CaseState:
-        return cast(CaseState, self.model_dump(exclude_none=True))
+    def to_state_dict(self) -> dict[str, Any]:
+        return self.model_dump(exclude_none=True)
+
+    def __len__(self) -> int:
+        return len(self.to_state_dict())
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self.model_fields:
+            value = getattr(self, key)
+            if value is None:
+                raise KeyError(key)
+            return value
+        extra = self.model_extra or {}
+        if key not in extra:
+            raise KeyError(key)
+        return extra[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        setattr(self, key, value)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def setdefault(self, key: str, default: Any) -> Any:
+        value = self.get(key)
+        if value is None:
+            self[key] = default
+            return default
+        return value
+
+    def update(self, other: dict[str, Any] | "CaseState" | None = None, **kwargs: Any) -> None:
+        merged = as_state_dict(other or {})
+        merged.update(kwargs)
+        for key, value in merged.items():
+            self[key] = value
+
+    def items(self):
+        return self.to_state_dict().items()
+
+    def keys(self):
+        return self.to_state_dict().keys()
+
+    def values(self):
+        return self.to_state_dict().values()
+
+
+def as_state_dict(state: CaseState | Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(state, CaseState):
+        return state.to_state_dict()
+    return dict(state)

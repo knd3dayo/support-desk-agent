@@ -7,6 +7,7 @@ from typing import Any, MutableMapping
 from pydantic import BaseModel, Field
 
 from support_desk_agent.config.models import AppConfig
+from support_desk_agent.models.state import CaseState
 from support_desk_agent.util.langchain import build_chat_openai_model
 
 
@@ -152,7 +153,7 @@ def derive_log_extract_range_from_timeframe(
 
 
 def apply_derived_log_extract_range(
-    state: MutableMapping[str, Any],
+    state: MutableMapping[str, Any] | CaseState,
     timeframe_text: str,
     *,
     config: AppConfig | None = None,

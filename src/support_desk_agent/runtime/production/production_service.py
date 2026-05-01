@@ -456,7 +456,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
         workflow_kind = route_workflow(prompt)
         plan_steps = build_plan_steps(workflow_kind)
         plan_summary = summarize_plan(workflow_kind)
-        state: CaseState = {
+        state = CaseState.model_validate({
             "case_id": selected_case_id,
             "workflow_run_id": trace_id,
             "trace_id": trace_id,
@@ -472,7 +472,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             "internal_ticket_lookup_enabled": internal_ticket_lookup_enabled,
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
-        }
+        })
         result = self._invoke_workflow(state, trace_id)
         self._sync_case_title_from_state(
             case_id=selected_case_id,
@@ -581,7 +581,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             prompt=prompt,
             conversation_messages=conversation_messages,
         )
-        state: CaseState = {
+        state = CaseState.model_validate({
             "case_id": selected_case_id,
             "workflow_run_id": current_trace_id,
             "trace_id": current_trace_id,
@@ -598,7 +598,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
             "plan_summary": plan_summary,
             "plan_steps": plan_steps,
             "approval_decision": "pending",
-        }
+        })
         result = self._invoke_workflow(state, current_trace_id)
         self._sync_case_title_from_state(
             case_id=selected_case_id,
@@ -898,7 +898,7 @@ class ProductionRuntimeService(AbstractRuntimeService[ProductionRuntimeContext])
 
     def _load_state(self, *, case_id: str | None, trace_id: str | None, workspace_path: str | None = None) -> CaseState:
         if not trace_id or not case_id or not workspace_path:
-            return {}
+            return CaseState()
 
         with self._workflow_checkpointer(case_id=case_id, workspace_path=workspace_path) as checkpointer:
             graph = self._build_case_workflow(checkpointer=checkpointer)

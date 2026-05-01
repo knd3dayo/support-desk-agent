@@ -19,7 +19,7 @@ from support_desk_agent.util.log_time_range import apply_derived_log_extract_ran
 from support_desk_agent.workspace import find_evidence_log_file
 
 if TYPE_CHECKING:
-    from support_desk_agent.models.state import CaseState
+    from support_desk_agent.models.state import CaseState, as_state_dict
 
 
 @dataclass(slots=True)
@@ -109,7 +109,7 @@ class InvestigateAgent(AbstractAgent):
         return lines
 
     def _requested_log_extract_range(self, state: Mapping[str, Any]) -> tuple[str, str] | None:
-        normalized_state = dict(state)
+        normalized_state = as_state_dict(state)
         apply_derived_log_extract_range(
             normalized_state,
             str(normalized_state.get("intake_incident_timeframe") or ""),
@@ -307,16 +307,16 @@ class InvestigateAgent(AbstractAgent):
         )
 
     def create_node(self) -> Any:
-        from support_desk_agent.models.state import CaseStateModel
+        from support_desk_agent.models.state import CaseState
 
-        graph = StateGraph(CaseStateModel)
+        graph = StateGraph(CaseState)
         graph.add_node("investigate_execute", lambda state: cast(CaseState, self.execute(cast(Mapping[str, Any], state))))
         graph.add_edge(START, "investigate_execute")
         graph.add_edge("investigate_execute", END)
         return graph.compile()
 
     def execute(self, state: Mapping[str, Any]) -> dict[str, Any]:
-        update = dict(state)
+        update = as_state_dict(state)
         query = str(update.get("raw_issue") or "").strip() or self._default_query()
         update["current_agent"] = INVESTIGATE_AGENT
         workspace_path = str(update.get("workspace_path") or "").strip()
