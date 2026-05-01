@@ -94,8 +94,6 @@ support_desk_agent:
     IntakeAgent:
       enabled: true
       auto_compress: true
-      pii_mask:
-        enabled: false
     InvestigateAgent:
       enabled: true
       auto_compress: true

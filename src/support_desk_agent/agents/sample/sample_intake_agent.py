@@ -429,8 +429,7 @@ class SampleIntakeAgent(AbstractAgent):
         )
 
     def prepare_state(self, state: dict[str, Any]) -> dict[str, Any]:
-        raw_issue = str(state.get("raw_issue") or "").strip()
-        return StateTransitionHelper.intake_triaged(state, masked_issue=raw_issue)
+        return StateTransitionHelper.intake_triaged(state)
 
     def classify_issue(self, state: dict[str, Any]) -> dict[str, Any]:
         update = as_state_dict(state)

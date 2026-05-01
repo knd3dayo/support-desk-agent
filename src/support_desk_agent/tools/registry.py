@@ -23,7 +23,6 @@ from support_desk_agent.config.tool_surface import MCP_OVERRIDEABLE_LOGICAL_TOOL
 
 from .builtin_tools import build_builtin_tools
 from .classify_ticket import build_default_classify_ticket_tool
-from .pii_mask import build_default_pii_mask_tool
 from .prepare_ticket_update import build_default_prepare_ticket_update_tool
 from .default_search_documents import build_default_search_documents_tool
 from .default_write_draft import build_default_write_draft_tool
@@ -203,13 +202,6 @@ class ToolRegistry:
                 ),
             ],
             INTAKE_AGENT: [
-                ToolSpec(
-                    "pii_mask",
-                    "Mask API keys and similar secrets from issue text or logs",
-                    build_default_pii_mask_tool(self._config),
-                    provider="builtin",
-                    target="configured-llm-pii-mask",
-                ),
                 ToolSpec(
                     "external_ticket",
                     "Fetch customer-facing external ticket information",

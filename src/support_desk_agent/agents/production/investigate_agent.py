@@ -12,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from support_desk_agent.agents.abstract_agent import AbstractAgent
 from support_desk_agent.agents.agent_definition import AgentDefinition
 from support_desk_agent.agents.roles import INVESTIGATE_AGENT, SUPERVISOR_AGENT
+from support_desk_agent.models.state import as_state_dict
 from support_desk_agent.util.asyncio_utils import run_awaitable_sync
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.util.formatting import format_result
@@ -19,7 +20,7 @@ from support_desk_agent.util.log_time_range import apply_derived_log_extract_ran
 from support_desk_agent.workspace import find_evidence_log_file
 
 if TYPE_CHECKING:
-    from support_desk_agent.models.state import CaseState, as_state_dict
+    from support_desk_agent.models.state import CaseState
 
 
 @dataclass(slots=True)

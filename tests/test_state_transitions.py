@@ -24,12 +24,11 @@ class StateTransitionHelperTests(unittest.TestCase):
         self.assertEqual(updated["current_agent"], SUPERVISOR_AGENT)
         self.assertEqual(updated["case_id"], "CASE-001")
 
-    def test_intake_triaged_sets_status_agent_and_masked_issue(self) -> None:
-        updated = StateTransitionHelper.intake_triaged({"raw_issue": "x"}, masked_issue="masked")
+    def test_intake_triaged_sets_status_and_agent(self) -> None:
+        updated = StateTransitionHelper.intake_triaged({"raw_issue": "x"})
 
         self.assertEqual(updated["status"], "TRIAGED")
         self.assertEqual(updated["current_agent"], INTAKE_AGENT)
-        self.assertEqual(updated["masked_issue"], "masked")
 
     def test_waiting_for_customer_input_sets_defaults(self) -> None:
         updated = StateTransitionHelper.waiting_for_customer_input({"case_id": "CASE-001"})

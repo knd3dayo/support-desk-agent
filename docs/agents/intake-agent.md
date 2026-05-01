@@ -44,7 +44,7 @@ CaseState へ反映する主な出力:
 
 - status = TRIAGED
 - current_agent = IntakeAgent
-- masked_issue
+- raw_issue
 - intake_category
 - intake_urgency
 - intake_investigation_focus
@@ -65,7 +65,7 @@ CaseState へ反映する主な出力:
 後続の SuperVisorAgent へ引き継ぐ集約結果として、少なくとも次を確定させる。
 
 - 問い合わせの正規化結果
-- PII マスキング済みの問い合わせ本文
+- 問い合わせ本文
 - カテゴリ判定結果
 - 緊急度
 - 初期調査観点
@@ -77,7 +77,6 @@ CaseState へ反映する主な出力:
 IntakeAgent が参照する使用ツール詳細は次を参照する。
 
 - 共通方針: [docs/tools/common.md](/home/user/source/repos/support-desk-agent/docs/tools/common.md)
-- [docs/tools/specs/pii_mask.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/pii_mask.md)
 - [docs/tools/specs/external_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/external_ticket.md)
 - [docs/tools/specs/internal_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/internal_ticket.md)
 - [docs/tools/specs/classify_ticket.md](/home/user/source/repos/support-desk-agent/docs/tools/specs/classify_ticket.md)
@@ -92,25 +91,22 @@ IntakeAgent の処理は true subgraph 内で次の段階を基本とする。
 
 1. 入力正規化
    raw_issue の余分なノイズを除去し、問い合わせの主題、事象、期待動作、制約条件を抽出しやすい形へ整える。
-2. PII マスキング
-   [config.yml](/home/user/source/repos/support-desk-agent/config.yml) の agents.IntakeAgent.pii_mask.enabled が true の場合にのみ実行する。既定値は false とし、無効時は raw_issue をそのまま後続へ渡す。
-3. ticket 初期 hydration
+2. ticket 初期 hydration
    明示指定された external_ticket_id または internal_ticket_id があり、対応する MCP ツールが有効な場合は ticket 情報と添付ファイルを取得し、workspace 配下へ保存する。取得結果は Supervisor と後続 agent が再利用できるよう path と要約を state に載せる。
-4. 分類
-   masked_issue を入力として、問い合わせカテゴリ、緊急度、初期調査の方向性を判定する。必要に応じて workflow_kind 判断の補助情報としても利用する。
-5. 障害時刻抽出
+3. 分類
+   raw_issue を入力として、問い合わせカテゴリ、緊急度、初期調査の方向性を判定する。必要に応じて workflow_kind 判断の補助情報としても利用する。
+4. 障害時刻抽出
    障害系と判断したケースでは、問い合わせ文から発生日時または時間帯を抽出し、後続の品質チェックに使えるようにする。
-6. 品質ゲート
+5. 品質ゲート
    IntakeAgent 自身が持つ validation API を使って問い合わせ分類、緊急度、incident_investigation 時の発生時間帯を検証する。必要項目が不足している場合は intake_missing_fields と intake_rework_reason を更新する。
-7. 共有メモリ初期化と follow-up 整理
+6. 共有メモリ初期化と follow-up 整理
    write_shared_memory を使って shared/context.md と shared/progress.md に初期状態を書き込む。不足項目がある場合は follow-up 質問を生成し、WAITING_CUSTOMER_INPUT に遷移できる状態へ整える。
-8. 継続問い合わせの再 intake 判定
+7. 継続問い合わせの再 intake 判定
    resume_customer_input や継続問い合わせ入力を受けた場合は、既存 state、customer_followup_answers、ticket hydration 済み情報を見て、追加質問の回収継続、品質ゲート再判定、または SuperVisorAgent への即時再連携を判断する。
 
 subgraph 内の標準ノード構成は次の通りとする。
 
 - intake_prepare
-- intake_mask
 - intake_hydrate_tickets
 - intake_classify
 - intake_quality_gate
@@ -133,7 +129,7 @@ shared/context.md の初期記録例:
 - Case ID
 - Trace ID
 - 正規化済み問い合わせ要約
-- マスキング後問い合わせまたは原文
+- 原文問い合わせ
 - 分類結果
 - 初期調査方針
 - ticket 情報の取得結果と添付ファイル保存先
@@ -163,7 +159,7 @@ shared/progress.md の初期記録例:
 - 複雑化する処理は専用の実行クラスへ切り出す
 - intake subgraph の生成責務は [src/support_desk_agent/agents/intake_agent.py](/home/user/source/repos/support-desk-agent/src/support_desk_agent/agents/intake_agent.py) 側に置き、workflow 側は subgraph を呼び出すだけにする
 - workflow が呼ぶ入口は IntakeAgent.create_node() と IntakeAgent.create_wait_node() とし、未注入は wiring ミスとして早期に検出する
-- 実行クラスは pii_mask、external_ticket、internal_ticket、classify_ticket、write_shared_memory を必要に応じて呼び出したうえで、state 更新、workspace への ticket hydration、品質ゲート、共有メモリ初期化、plan / action 分岐を担う
+- 実行クラスは external_ticket、internal_ticket、classify_ticket、write_shared_memory を必要に応じて呼び出したうえで、state 更新、workspace への ticket hydration、品質ゲート、共有メモリ初期化、plan / action 分岐を担う
 - 品質ゲート判定ロジックは IntakeAgent の validation API として同居させ、Supervisor からはその API を参照する
 - ticket 情報と添付ファイルの保存先は case workspace 配下の .artifacts/intake/ を標準とし、後続 agent はそこを参照する
 

@@ -79,14 +79,10 @@ class StateTransitionHelper:
     @staticmethod
     def intake_triaged(
         state: "CaseState" | Mapping[str, Any],
-        *,
-        masked_issue: str | None = None,
     ) -> dict[str, Any]:
         update = as_state_dict(state)
         update["status"] = CaseStatuses.TRIAGED
         update["current_agent"] = INTAKE_AGENT
-        if masked_issue is not None:
-            update["masked_issue"] = masked_issue
         return update
 
     @staticmethod

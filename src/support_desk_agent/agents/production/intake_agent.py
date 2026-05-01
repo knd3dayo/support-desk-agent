@@ -17,6 +17,7 @@ from support_desk_agent.agents.agent_definition import AgentDefinition
 from support_desk_agent.agents.roles import INTAKE_AGENT, SUPERVISOR_AGENT
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.config.models import TicketCandidateMatchingSettings, TicketServerBindingSettings
+from support_desk_agent.models.state import as_state_dict
 from support_desk_agent.models.state_transitions import NextActionTexts, StateTransitionHelper
 from support_desk_agent.util.asyncio_utils import run_awaitable_sync
 from support_desk_agent.runtime.case_titles import derive_case_title
@@ -32,12 +33,11 @@ from support_desk_agent.util.ticket_matching import normalize_similarity_text
 # 問い合わせ内容のPIIマスキング、チケット情報の取得、分類と緊急度判定、品質ゲートによる検証、
 # 状態の最終化などの機能を提供します。
 if TYPE_CHECKING:
-    from support_desk_agent.models.state import CaseState, as_state_dict
+    from support_desk_agent.models.state import CaseState
 
 
 @dataclass(slots=True)
 class IntakeAgentTools:
-    pii_mask_tool: Callable[..., Any] | None = None
     external_ticket_tool: Callable[..., Any] | None = None
     internal_ticket_tool: Callable[..., Any] | None = None
     classify_ticket_tool: Callable[..., Any] | None = None
@@ -55,7 +55,6 @@ class IntakeAgentTools:
         ticket_mcp_client: McpToolClient | None = None,
     ) -> "IntakeAgentTools":
         return cls(
-            pii_mask_tool=intake_tools.get("pii_mask"),
             external_ticket_tool=intake_tools.get("external_ticket"),
             internal_ticket_tool=intake_tools.get("internal_ticket"),
             classify_ticket_tool=intake_tools.get("classify_ticket"),
@@ -73,7 +72,7 @@ class IntakeAgent(AbstractAgent):
     create_node() で Intake フェーズの実装をLanggraph のノードとして提供します。
     IntakeAgentは以下のSubGraphノードで構成されます:
     prepare_state() でケース状態の初期化、
-    apply_pii_mask() で問い合わせ内容の PII マスキング、
+    hydrate_tickets() で関連チケットの補足、
     classify_issue() で問い合わせ内容の分類と緊急度判定、
     quality_gate() で分類結果の検証と不足情報の抽出、
     finalize_state() で最終的な状態更新と共有コンテキストへの記録を行う。
@@ -599,34 +598,13 @@ class IntakeAgent(AbstractAgent):
 
     def prepare_state(self, state: CaseState) -> CaseState:
         raw_issue = str(state.get("raw_issue") or "").strip()
-        update = StateTransitionHelper.intake_triaged(state, masked_issue=raw_issue)
+        update = StateTransitionHelper.intake_triaged(state)
         update.setdefault("intake_ticket_context_summary", {})
         update.setdefault("intake_ticket_artifacts", {})
         update.setdefault("customer_followup_answers", {})
         if raw_issue and not str(update.get("case_title") or "").strip():
             update["case_title"] = derive_case_title(raw_issue, fallback=str(update.get("case_id") or "新規ケース"))
         return cast("CaseState", update)
-
-
-    def apply_pii_mask(self, state: CaseState) -> CaseState:
-        """
-        問い合わせ内容のPIIマスキングを行う。
-        PIIマスキングが有効な場合、tools.pii_mask_toolを呼び出して、
-        raw_issueをマスキングし、masked_issueに保存する。
-        """
-
-        PII_MASK_PROMPT = "Mask API keys, tokens, and secrets for intake processing."
-    
-        if not self.config.agents.IntakeAgent.pii_mask.enabled:
-            return state
-
-        if state.raw_issue:
-            state.masked_issue = self._invoke_tool(
-                self.tools.pii_mask_tool,
-                state.raw_issue,
-                PII_MASK_PROMPT,
-            )
-        return state
 
     def hydrate_tickets(self, state: CaseState) -> CaseState:
         update = as_state_dict(state)
@@ -787,7 +765,6 @@ class IntakeAgent(AbstractAgent):
 
     def classify_issue(self, state: CaseState) -> CaseState:
         raw_issue = str(state.get("raw_issue") or "").strip()
-        masked_issue = str(state.get("masked_issue") or raw_issue)
         if not raw_issue:
             return state
 
@@ -796,20 +773,20 @@ class IntakeAgent(AbstractAgent):
         classification = self._parse_classification(
             self._invoke_tool(
                 self.tools.classify_ticket_tool,
-                masked_issue,
+                raw_issue,
                 CLASSIFY_PROMPT,
                 conversation_messages=cast(list[dict[str, object]], state.get("conversation_messages") or []),
             )
         )
         state["intake_category"] = classification["category"]
         state["intake_urgency"] = self._resolve_classification_urgency(
-            masked_issue,
+            raw_issue,
             classification["category"],
             classification["urgency"],
         )
         state["intake_investigation_focus"] = classification["investigation_focus"]
         state["intake_classification_reason"] = classification.get("reason", "")
-        extracted_timeframe = self._extract_incident_timeframe(masked_issue)
+        extracted_timeframe = self._extract_incident_timeframe(raw_issue)
         existing_timeframe = str(state.get("intake_incident_timeframe") or "").strip()
         state["intake_incident_timeframe"] = extracted_timeframe or existing_timeframe
         apply_derived_log_extract_range(state, str(state.get("intake_incident_timeframe") or ""), config=self.config)
@@ -835,7 +812,6 @@ class IntakeAgent(AbstractAgent):
     def finalize_state(self, state: CaseState) -> CaseState:
         update = as_state_dict(state)
         raw_issue = str(update.get("raw_issue") or "").strip()
-        masked_issue = str(update.get("masked_issue") or raw_issue)
         classification = {
             "category": str(update.get("intake_category") or "ambiguous_case"),
             "urgency": str(update.get("intake_urgency") or "medium"),
@@ -876,7 +852,6 @@ class IntakeAgent(AbstractAgent):
                     heading_level=2,
                     bullets=[
                         f"Raw issue: {raw_issue}",
-                        f"Masked issue: {masked_issue}",
                         f"Category: {classification['category']}",
                         f"Urgency: {classification['urgency']}",
                         f"Investigation focus: {classification['investigation_focus']}",
@@ -913,7 +888,6 @@ class IntakeAgent(AbstractAgent):
                         title="Intake Summary",
                         bullets=[
                             f"Raw issue: {raw_issue}",
-                            f"Masked issue: {masked_issue}",
                             f"Category: {classification['category']}",
                             f"Urgency: {classification['urgency']}",
                             f"Investigation focus: {classification['investigation_focus']}",
@@ -1004,7 +978,6 @@ class IntakeAgent(AbstractAgent):
 
     def execute(self, state: CaseState) -> CaseState:
         update = self.prepare_state(state)
-        update = self.apply_pii_mask(update)
         update = self.hydrate_tickets(update)
         update = self.classify_issue(update)
         update = self.quality_gate(update)
@@ -1019,7 +992,6 @@ class IntakeAgent(AbstractAgent):
         graph = StateGraph(CaseState)
         # ノードを定義
         graph.add_node("intake_prepare", lambda state: cast(CaseState, self.prepare_state(cast(CaseState, state))))
-        graph.add_node("intake_mask", lambda state: cast(CaseState, self.apply_pii_mask(cast(CaseState, state))))
         graph.add_node("intake_hydrate_tickets", lambda state: cast(CaseState, self.hydrate_tickets(cast(CaseState, state))))
         graph.add_node("intake_classify", lambda state: cast(CaseState, self.classify_issue(cast(CaseState, state))))
         graph.add_node("intake_quality_gate", lambda state: cast(CaseState, self.quality_gate(cast(CaseState, state))))
@@ -1027,8 +999,7 @@ class IntakeAgent(AbstractAgent):
 
         # ノード間のエッジを定義
         graph.add_edge(START, "intake_prepare")
-        graph.add_edge("intake_prepare", "intake_mask")
-        graph.add_edge("intake_mask", "intake_hydrate_tickets")
+        graph.add_edge("intake_prepare", "intake_hydrate_tickets")
         graph.add_edge("intake_hydrate_tickets", "intake_classify")
         graph.add_edge("intake_classify", "intake_quality_gate")
         graph.add_edge("intake_quality_gate", "intake_finalize")

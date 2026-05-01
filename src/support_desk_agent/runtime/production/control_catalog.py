@@ -323,18 +323,6 @@ def _build_control_points(config: AppConfig, instructions: dict[str, object]) ->
             code_refs=["src/support_desk_agent/config/models.py", "src/support_desk_agent/runtime/service.py"],
         ),
         _control_point(
-            control_point_id="agent.intake.pii_mask",
-            category="configuration",
-            owner="IntakeAgent",
-            origin="config.agents.IntakeAgent.pii_mask.enabled",
-            condition="IntakeAgent prepare/mask phase",
-            effect=f"PII mask is {'enabled' if config.agents.IntakeAgent.pii_mask.enabled else 'disabled'} by default",
-            overrideable=True,
-            config_key="agents.IntakeAgent.pii_mask.enabled",
-            docs_refs=["docs/configuration.md", "docs/agents/common.md"],
-            code_refs=["src/support_desk_agent/config/models.py", "src/support_desk_agent/agents/intake_agent.py"],
-        ),
-        _control_point(
             control_point_id="agent.escalation.rules",
             category="configuration",
             owner="BackSupportEscalationAgent",
@@ -609,12 +597,6 @@ def _build_runtime_decision_log(
             "category": "execution",
             "outcome": str(state.get("execution_mode") or "unknown"),
             "detail": "実行モードに応じて plan/action の分岐を行いました。",
-        },
-        {
-            "control_point_id": "agent.intake.pii_mask",
-            "category": "configuration",
-            "outcome": "enabled" if config.agents.IntakeAgent.pii_mask.enabled else "disabled",
-            "detail": f"IntakeAgent の PII マスク既定値は {'有効' if config.agents.IntakeAgent.pii_mask.enabled else '無効'}です。",
         },
     ]
 

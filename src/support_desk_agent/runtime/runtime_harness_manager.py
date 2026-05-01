@@ -218,16 +218,6 @@ class RuntimeHarnessManager:
                     effect_summary="when set, supervisor review excerpts are shortened to the configured limit; disabled by default",
                 ),
             ]
-        if role == INTAKE_AGENT:
-            return [
-                self._policy(
-                    "intake.pii_mask_enabled",
-                    self.config.agents.IntakeAgent.pii_mask.enabled,
-                    source="config.agents.IntakeAgent.pii_mask.enabled",
-                    applies_when="intake masking phase",
-                    effect_summary="customer input is masked before classification when PII masking is enabled",
-                )
-            ]
         return []
 
     def get_policy_value(self, policy_id: str, *, role: str | None = None, default: object = None) -> object:

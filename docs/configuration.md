@@ -43,7 +43,7 @@ support_desk_agent:
 
 ### IntakeAgent
 
-`agents.IntakeAgent.pii_mask.enabled` で入力の PII マスキング有無を制御する。
+IntakeAgent は `raw_issue` を直接分類入力として扱う。ticket 取得系の有効化は `tools.ticket_sources.external` / `tools.ticket_sources.internal` で制御する。
 
 ## 3. constraint_mode
 

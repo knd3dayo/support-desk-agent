@@ -113,7 +113,6 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
             agent = IntakeAgent(
                 config=config,
                 tools=IntakeAgentTools(
-                    pii_mask_tool=lambda *_args, **_kwargs: "",
                     external_ticket_tool=lambda *_args, **_kwargs: "",
                     internal_ticket_tool=lambda *_args, **_kwargs: "",
                     classify_ticket_tool=lambda *_args, **_kwargs: "",
@@ -142,7 +141,6 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         agent = IntakeAgent(
             config=config,
             tools=IntakeAgentTools(
-                pii_mask_tool=lambda *_args, **_kwargs: "",
                 external_ticket_tool=lambda *_args, **_kwargs: "",
                 internal_ticket_tool=lambda *_args, **_kwargs: "",
                 classify_ticket_tool=lambda *_args, **_kwargs: "",
@@ -209,7 +207,6 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         agent = IntakeAgent(
             config=config,
             tools=IntakeAgentTools(
-                pii_mask_tool=lambda *_args, **_kwargs: "",
                 external_ticket_tool=lambda *_args, **_kwargs: "",
                 internal_ticket_tool=lambda *_args, **_kwargs: "",
                 classify_ticket_tool=lambda *_args, **_kwargs: "",
@@ -272,7 +269,6 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         agent = IntakeAgent(
             config=config,
             tools=IntakeAgentTools(
-                pii_mask_tool=lambda *_args, **_kwargs: "",
                 external_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("external_ticket tool is not configured. Configure tools.ticket_sources.external in config.yml.")),
                 internal_ticket_tool=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("internal_ticket tool is not configured. Configure tools.ticket_sources.internal in config.yml.")),
                 classify_ticket_tool=lambda *_args, **_kwargs: "",
@@ -311,7 +307,6 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         agent = IntakeAgent(
             config=config,
             tools=IntakeAgentTools(
-                pii_mask_tool=lambda *_args, **_kwargs: "",
                 external_ticket_tool=lambda *_args, **_kwargs: "",
                 internal_ticket_tool=lambda *_args, **_kwargs: "",
                 classify_ticket_tool=lambda *_args, **_kwargs: "",
@@ -375,7 +370,6 @@ class IntakeAgentValidationApiTests(unittest.TestCase):
         agent = IntakeAgent(
             config=config,
             tools=IntakeAgentTools(
-                pii_mask_tool=lambda *_args, **_kwargs: "",
                 external_ticket_tool=lambda *_args, **_kwargs: "",
                 internal_ticket_tool=lambda *_args, **_kwargs: "",
                 classify_ticket_tool=lambda *_args, **_kwargs: "",

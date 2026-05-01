@@ -71,8 +71,6 @@ support_desk_agent:
       enabled: true
       auto_compress: true
       # constraint_mode: default
-      pii_mask:
-        enabled: false
     
     InvestigateAgent:
       enabled: true

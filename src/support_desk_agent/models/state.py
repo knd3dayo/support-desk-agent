@@ -51,7 +51,6 @@ class CaseState(BaseModel):
     status: CaseStatus | None = None
     raw_issue: str | None = None
     conversation_messages: list[dict[str, object]] | None = None
-    masked_issue: str | None = None
     intake_category: WorkflowKind | None = None
     intake_urgency: str | None = None
     intake_investigation_focus: str | None = None

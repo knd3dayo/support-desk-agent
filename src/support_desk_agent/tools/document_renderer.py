@@ -10,6 +10,8 @@ from support_desk_agent.util.shared_memory_payload import SharedMemorySectionPay
 def render_document_payload(payload: Any, *, default_heading_level: int = 1) -> str:
     if payload is None:
         return ""
+    if hasattr(payload, "model_dump"):
+        payload = payload.model_dump(exclude_none=True)
     if isinstance(payload, str):
         return payload
     if isinstance(payload, list):

@@ -131,7 +131,6 @@ class _FakeDraftModel:
 class _FakeToolRegistry:
     def __init__(self, config: AppConfig):
         self._config = config
-        self.pii_mask_calls = 0
         self.external_ticket_calls: list[str] = []
         self.internal_ticket_calls: list[str] = []
         case_memory_manager = CaseMemoryManager(config)
@@ -148,7 +147,6 @@ class _FakeToolRegistry:
     def get_tools(self, role: str) -> list[ToolSpec]:
         if role == INTAKE_AGENT:
             return [
-                ToolSpec("pii_mask", "Mask secrets", self._pii_mask, provider="builtin", target="test-pii-mask"),
                 ToolSpec("external_ticket", "External ticket", self._external_ticket, provider="builtin", target="test-external-ticket"),
                 ToolSpec("internal_ticket", "Internal ticket", self._internal_ticket, provider="builtin", target="test-internal-ticket"),
                 ToolSpec(
@@ -368,10 +366,6 @@ class _FakeToolRegistry:
     @staticmethod
     def _redmine_update(*_: object, **__: object) -> str:
         return "redmine updated"
-
-    def _pii_mask(self, text: str, _: str) -> str:
-        self.pii_mask_calls += 1
-        return f"[MASKED]{text}"
 
     @staticmethod
     def _classify_ticket(text: str, _: str) -> str:
@@ -718,9 +712,6 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(str(state.get("internal_ticket_id") or ""), str(result.get("internal_ticket_id") or ""))
         self.assertEqual(str(state.get("external_ticket_id") or ""), "")
         self.assertEqual(str(state.get("internal_ticket_id") or ""), "")
-        registry = cast(_FakeToolRegistry, self.service.context.tool_registry)
-        self.assertEqual(registry.pii_mask_calls, 0)
-
     def test_action_with_uploaded_evidence_skips_incident_timeframe_followup(self) -> None:
         self.service.initialize_case("CASE-TEST-EVIDENCE", str(self.workspace_path))
         self.service.save_workspace_file(
@@ -912,29 +903,6 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         self.assertEqual(registry.external_ticket_calls, [])
         self.assertEqual(registry.internal_ticket_calls, [])
 
-    def test_action_applies_pii_mask_only_when_enabled(self) -> None:
-        config = AppConfig.model_validate(
-            {
-                "llm": {"provider": "openai", "model": "gpt-4.1", "api_key": "sk-test-value"},
-                "config_paths": {},
-                "data_paths": {},
-                "agents": {"IntakeAgent": {"pii_mask": {"enabled": True}}},
-                "interfaces": {},
-            }
-        )
-        service = self._build_service(config)
-
-        result = service.action(
-            prompt="password=secret の問い合わせです。仕様を確認したいです。",
-            workspace_path=str(self.workspace_path),
-            case_id="CASE-TEST-009",
-        )
-
-        state = cast(CaseState, result["state"])
-        self.assertTrue(str(state.get("masked_issue") or "").startswith("[MASKED]"))
-        registry = cast(_FakeToolRegistry, service.context.tool_registry)
-        self.assertEqual(registry.pii_mask_calls, 1)
-
     def test_action_prioritizes_intake_hydrated_log_attachment(self) -> None:
         evidence_dir = self.workspace_path / ".evidence"
         evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -969,7 +937,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
         agents = cast(list[dict[str, object]], catalog["agents"])
         intake_entry = next(item for item in agents if str(item.get("role") or "") == INTAKE_AGENT)
         intake_tools = cast(list[dict[str, object]], intake_entry["tools"])
-        self.assertIn("pii_mask", [str(tool.get("name") or "") for tool in intake_tools])
+        self.assertNotIn("pii_mask", [str(tool.get("name") or "") for tool in intake_tools])
 
         instruction_catalog = cast(dict[str, object], catalog["instructions"])
         role_entries = cast(list[dict[str, object]], instruction_catalog["roles"])

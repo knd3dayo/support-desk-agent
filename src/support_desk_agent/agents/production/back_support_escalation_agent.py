@@ -11,11 +11,12 @@ from langgraph.graph import END, START, StateGraph
 from support_desk_agent.agents.abstract_agent import AbstractAgent
 from support_desk_agent.agents.agent_definition import AgentDefinition
 from support_desk_agent.agents.roles import BACK_SUPPORT_ESCALATION_AGENT, SUPERVISOR_AGENT
+from support_desk_agent.models.state import as_state_dict
 from support_desk_agent.util.asyncio_utils import run_awaitable_sync
 from support_desk_agent.util.shared_memory_payload import SharedMemoryDocumentPayload
 
 if TYPE_CHECKING:
-    from support_desk_agent.models.state import CaseState, as_state_dict
+    from support_desk_agent.models.state import CaseState
 
 
 @dataclass(slots=True)

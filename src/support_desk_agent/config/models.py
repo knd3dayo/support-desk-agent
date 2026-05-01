@@ -139,10 +139,6 @@ class KnowledgeRetrievalSettings(DocumentSourceSettings):
     pass
 
 
-class IntakePiiMaskSettings(StrictConfigModel):
-    enabled: bool = False
-
-
 class TicketCandidateMatchingSettings(StrictConfigModel):
     candidate_id_fields: list[str] = Field(default_factory=lambda: ["number", "issue_number", "id", "key"])
     candidate_text_fields: list[str] = Field(default_factory=lambda: ["title", "body", "summary", "description"])
@@ -187,7 +183,6 @@ class IntakeAgentSettings(StrictConfigModel):
     auto_compress: bool = True
     model: str | None = None
     constraint_mode: ConstraintMode | None = None
-    pii_mask: IntakePiiMaskSettings = Field(default_factory=IntakePiiMaskSettings)
 
 
 class AgentSettings(StrictConfigModel):

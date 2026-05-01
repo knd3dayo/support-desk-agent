@@ -266,9 +266,6 @@ support_desk_agent:
   #     auto_compress: true
   #     # 未指定なら agents.default_constraint_mode を継承します。
   #     constraint_mode: default
-  #     pii_mask:
-  #       # true の場合のみ Intake で PII マスキングを実行します。
-  #       enabled: false
   #
   #   # 調査統合 Agent の設定です。
   #   # 仕様確認、ログ解析、ドラフト作成を 1 つの Agent に集約します。
