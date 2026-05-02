@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Annotated, Any, Callable, Literal, cast, get_args, get_origin, get_type_hints
 from urllib.parse import urlparse
 
-from ai_chat_util.ai_chat_util_base.file_util.core import (
+from ai_chat_util.core.analysis.base import (
     create_zip as create_zip_with_ai_chat_util,
     extract_base64_to_text as extract_base64_to_text_with_ai_chat_util,
     extract_text_from_file as extract_text_from_file_with_ai_chat_util,

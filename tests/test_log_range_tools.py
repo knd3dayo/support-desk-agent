@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 import zipfile
 
-from ai_chat_util.ai_chat_util_base.chat.model import ChatResponse
+from ai_chat_util.core.chat.model import ChatResponse
 from docx import Document as DocxDocument
 from openpyxl import Workbook
 from pptx import Presentation
@@ -198,7 +198,8 @@ class LogRangeToolTests(unittest.TestCase):
         self.assertEqual(bridged.llm.provider, config.llm.provider)
         self.assertEqual(bridged.llm.completion_model, config.llm.model)
         self.assertEqual(bridged.llm.api_key, config.llm.api_key)
-        self.assertEqual(bridged.office2pdf.libreoffice_path, config.tools.libreoffice_command)
+        self.assertEqual(bridged.office2pdf.method, "libreoffice_exec")
+        self.assertEqual(bridged.office2pdf.libreoffice_exec.libreoffice_path, config.tools.libreoffice_command)
 
     def test_analyze_pdf_files_delegates_to_ai_chat_util(self) -> None:
         config = self._build_config()
