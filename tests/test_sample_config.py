@@ -47,6 +47,16 @@ class SampleConfigTests(unittest.TestCase):
         self.assertEqual(external_ticket["candidate_matching"]["candidate_id_fields"], ["number", "issue_number", "id", "key"])
         self.assertEqual(internal_ticket["candidate_matching"]["min_combined_similarity"], 0.35)
 
+    def test_support_desk_agent_sample_uses_visible_workspace_subdirs(self) -> None:
+        config_path = Path(__file__).resolve().parents[1] / "samples" / "support-desk-agent" / "config-sample.yml"
+        loaded = load_config(config_path)
+
+        self.assertEqual(loaded.data_paths.shared_memory_subdir, "memory")
+        self.assertEqual(loaded.data_paths.artifacts_subdir, "artifacts")
+        self.assertEqual(loaded.data_paths.evidence_subdir, "evidence")
+        self.assertEqual(loaded.data_paths.report_subdir, "report")
+        self.assertEqual(loaded.data_paths.trace_subdir, "traces")
+
     def test_load_config_allows_env_override_for_llm_model_and_base_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.yml"

@@ -62,6 +62,8 @@ class SampleInvestigateAgent(AbstractAgent):
                 "根拠では、実際に確認したログ断片・ファイル名・設定名を具体的に示してください。"
                 "Supervisor から existence 確認済みの evidence preview が与えられている場合、そのファイルが見つからないとは書かず、"
                 "preview に含まれる内容を一次情報として扱ってください。"
+                "Supervisor が明示した添付 path 以外のファイルパスを推測して使ってはいけません。"
+                "添付 path に .zip が明示されていない限り、list_zip_contents や extract_zip を呼び出してはいけません。"
                 "英語だけの回答は禁止です。日本語で完結にまとめ、サポート担当者がそのまま使える文面にしてください。"
             )
         prompt = f"{prompt}\n\n実行モード: {mode}\n{mode_instruction}"

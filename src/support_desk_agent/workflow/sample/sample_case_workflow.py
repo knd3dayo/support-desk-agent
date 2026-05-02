@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from support_desk_agent.agents.roles import SUPERVISOR_AGENT
 from support_desk_agent.agents.sample.sample_intake_agent import SampleIntakeAgent
 from support_desk_agent.agents.sample.sample_supervisor_agent import SampleSupervisorAgent
+from support_desk_agent.agents.sample.sample_supervisor_agent import SampleSupervisorAgentUtil
 from support_desk_agent.models.state import CaseState, as_state_dict
 from support_desk_agent.models.state_transitions import CaseStatuses
 
@@ -101,4 +102,4 @@ class CaseWorkflow:
 
 
     def _route_after_investigation(self, state: CaseState) -> str:
-        return SampleSupervisorAgent.route_after_investigation(cast(dict[str, object], state))
+        return SampleSupervisorAgentUtil.route_after_investigation(cast(dict[str, object], state))

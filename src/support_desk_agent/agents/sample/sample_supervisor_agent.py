@@ -177,10 +177,13 @@ class SampleSupervisorAgentUtil:
 
         workspace_path = str(state.get("workspace_path") or "").strip()
         if workspace_path:
-            evidence_dir = Path(workspace_path).expanduser().resolve() / ".evidence"
-            if evidence_dir.exists():
+            workspace_root = Path(workspace_path).expanduser().resolve()
+            for evidence_dir_name in (".evidence", "evidence", "extracted"):
+                evidence_dir = workspace_root / evidence_dir_name
+                if not evidence_dir.exists():
+                    continue
                 for path in sorted(p for p in evidence_dir.rglob("*") if p.is_file()):
-                    relative_path = path.relative_to(Path(workspace_path).expanduser().resolve()).as_posix()
+                    relative_path = path.relative_to(workspace_root).as_posix()
                     if relative_path not in adopted_sources:
                         adopted_sources.append(relative_path)
 
@@ -278,6 +281,19 @@ class SampleSupervisorAgent(AbstractAgent):
             if evidence_preview
             else ""
         )
+        evidence_priority_section = (
+            "\n".join(
+                [
+                    "このケースでは evidence ログ実ファイルが Supervisor により確認済みです。",
+                    "調査の主経路は Evidence file/path/preview の分析です。ZIP 添付の確認は補助的に扱い、evidence ログだけで不足する場合に限って追加で使ってください。",
+                    "vdp.log が見つからない、未提供、再提供が必要とは書かず、まず既存 evidence ログの内容を根拠に結論を出してください。",
+                    "Evidence log preview が含まれている場合、その時点で Supervisor は実ファイルを読めています。ファイル不存在やアクセス不能を結論にしてはいけません。",
+                    "最終回答の根拠には、Evidence log preview または Evidence path から確認できる具体的なログ行・エラーメッセージを必ず1つ以上含めてください。",
+                ]
+            )
+            if evidence_path or evidence_preview
+            else ""
+        )
         attachment_paths = [
             str(path).strip()
             for path in cast(list[object], state.get("investigation_attachment_paths") or [])
@@ -327,6 +343,7 @@ class SampleSupervisorAgent(AbstractAgent):
                 log_range_section,
                 evidence_section,
                 evidence_preview_section,
+                evidence_priority_section,
                 attachment_section,
                 plan_section,
                 followup_notes_section,
@@ -344,7 +361,11 @@ class SampleSupervisorAgent(AbstractAgent):
             )
 
         parts = [part for part in (preface, f"元の問い合わせ:\n{raw_issue}" if raw_issue else "", *extra_sections) if part]
-        mode_preface = "調査計画だけを作成してください。実際の調査はまだ実行しないでください。" if mode == SampleInvestigateAgent.PLAN_MODE else "確定した調査計画と followup notes を踏まえて調査を実行してください。"
+        mode_preface = (
+            "調査計画だけを作成してください。実際の調査はまだ実行しないでください。"
+            if mode == SampleInvestigateAgent.PLAN_MODE
+            else "確定した調査計画と followup notes を踏まえて調査を実行してください。evidence ログが存在する場合はそれを最優先で分析し、ZIP 抽出は補助的に扱ってください。"
+        )
         return "\n\n".join([mode_preface, *parts])
 
     def _build_objective_evidence(self, state: "CaseState", *, evaluation_target: str) -> dict[str, Any]:
@@ -540,6 +561,8 @@ class SampleSupervisorAgent(AbstractAgent):
             workspace_path,
             ignore_patterns=attachment_ignore_patterns,
         )
+        if evidence_log is not None:
+            attachment_paths = [path for path in attachment_paths if path.resolve() != evidence_log.resolve()]
         update["investigation_evidence_log_path"] = str(evidence_log) if evidence_log is not None else ""
         update["investigation_attachment_paths"] = [str(path) for path in attachment_paths]
 

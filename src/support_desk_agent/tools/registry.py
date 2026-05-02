@@ -196,7 +196,7 @@ class ToolRegistry:
                 ToolSpec(
                     "write_working_memory",
                     "Write agent working memory",
-                    CaseMemoryManager(self._config).build_default_write_working_memory_tool(INTAKE_AGENT),
+                    CaseMemoryManager(self._config).build_default_write_working_memory_tool(SUPERVISOR_AGENT),
                     provider="builtin",
                     target="default-working-memory-writer",
                 ),

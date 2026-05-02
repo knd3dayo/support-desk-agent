@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
 
+from support_desk_agent.agents.roles import SUPERVISOR_AGENT
 from support_desk_agent.config.models import AppConfig
 from support_desk_agent.tools.registry import ToolRegistry
 
@@ -49,6 +51,18 @@ class ToolRegistryTests(unittest.TestCase):
         result = registry.invoke_tool("write_shared_memory", "SupervisorAgent", value="ok")
 
         self.assertEqual(result, "handled:ok")
+
+    def test_supervisor_working_memory_tool_targets_supervisor_memory(self) -> None:
+        registry = ToolRegistry(self._build_config())
+        handler = registry.get_tool_handler("write_working_memory", SUPERVISOR_AGENT)
+
+        self.assertIsNotNone(handler)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw = registry.invoke_tool("write_working_memory", SUPERVISOR_AGENT, case_id="CASE-TEST", workspace_path=tmpdir)
+
+        payload = json.loads(raw)
+        self.assertEqual(payload["agent_name"], SUPERVISOR_AGENT)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,12 @@ support_desk_agent:
 
   config_paths: {}
 
-  data_paths: {}
+  data_paths:
+    shared_memory_subdir: memory
+    artifacts_subdir: artifacts
+    evidence_subdir: evidence
+    report_subdir: report
+    trace_subdir: traces
 
   runtime:
     mode: sample

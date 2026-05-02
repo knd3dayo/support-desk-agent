@@ -239,6 +239,8 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("結論", prompt)
         self.assertIn("根拠", prompt)
         self.assertIn("英語だけの回答は禁止", prompt)
+        self.assertIn("添付 path に .zip が明示されていない限り", prompt)
+        self.assertIn("添付 path 以外のファイルパスを推測して使ってはいけません", prompt)
 
     def test_plan_mode_prompt_requests_japanese_structured_plan(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
@@ -289,6 +291,10 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("Evidence file: vdp.log", executor.query)
         self.assertIn("Evidence log preview:", executor.query)
         self.assertIn("error line", executor.query)
+        self.assertIn("evidence ログ実ファイルが Supervisor により確認済み", executor.query)
+        self.assertIn("ZIP 添付の確認は補助的に扱い", executor.query)
+        self.assertIn("ファイル不存在やアクセス不能を結論にしてはいけません", executor.query)
+        self.assertIn("具体的なログ行・エラーメッセージを必ず1つ以上含めてください", executor.query)
         self.assertIn("Working memory tool parameters", executor.query)
         self.assertIn("CASE-TEST-SAMPLE-ATTACH-001", executor.query)
         self.assertIn("guide.pdf", executor.query)
@@ -298,6 +304,41 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("analyze_pdf_files", executor.query)
         self.assertIn("list_zip_contents", executor.query)
         self.assertIn("extract_zip", executor.query)
+
+    def test_supervisor_excludes_confirmed_evidence_log_from_attachment_paths(self) -> None:
+        executor = _CapturingInvestigateExecutor()
+        supervisor = SampleSupervisorAgent(self._build_config(), investigate_executor=executor)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / "extracted"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "vdp.log").write_text("error line", encoding="utf-8")
+            with patch("support_desk_agent.agents.sample.sample_supervisor_agent.ObjectiveEvaluator.evaluate") as evaluate_mock:
+                evaluate_mock.side_effect = [
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="plan ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                    ObjectiveEvaluatorStructuredResult(
+                        criterion_evaluations=[],
+                        agent_evaluations=[],
+                        overall_summary="result ok",
+                        improvement_points=[],
+                        overall_score=90,
+                    ),
+                ]
+                result = supervisor.execute_investigation(
+                    {
+                        "case_id": "CASE-TEST-SAMPLE-ATTACH-LOG-001",
+                        "workspace_path": tmpdir,
+                        "raw_issue": "ログを調べて",
+                    }
+                )
+
+        self.assertEqual(result["investigation_attachment_paths"], [])
 
     def test_supervisor_includes_non_media_attachments_in_query(self) -> None:
         executor = _CapturingInvestigateExecutor()
@@ -398,6 +439,38 @@ class SampleInvestigateAgentTests(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual(result.name, "custom-name.txt")
+
+    def test_find_evidence_log_file_falls_back_to_extracted_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            extracted_dir = Path(tmpdir) / "extracted"
+            extracted_dir.mkdir(parents=True, exist_ok=True)
+            (extracted_dir / "vdp.log").write_text("hello", encoding="utf-8")
+
+            from support_desk_agent.workspace import find_evidence_log_file
+
+            result = find_evidence_log_file(tmpdir)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.parent.name, "extracted")
+
+    def test_find_attachment_files_excludes_zip_from_evidence_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence_dir = Path(tmpdir) / ".evidence"
+            extracted_dir = Path(tmpdir) / "extracted"
+            attachment_dir = Path(tmpdir) / ".artifacts" / "intake" / "external_attachments"
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            extracted_dir.mkdir(parents=True, exist_ok=True)
+            attachment_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / "vdp.zip").write_text("zip", encoding="utf-8")
+            (extracted_dir / "vdp.log").write_text("log", encoding="utf-8")
+            (attachment_dir / "customer.pdf").write_text("pdf", encoding="utf-8")
+
+            from support_desk_agent.workspace import find_attachment_files
+
+            result = find_attachment_files(tmpdir)
+
+        relative_paths = sorted(path.relative_to(Path(tmpdir)).as_posix() for path in result)
+        self.assertEqual(relative_paths, [".artifacts/intake/external_attachments/customer.pdf", "extracted/vdp.log"])
 
     def test_execute_returns_sub_agent_result_without_post_processing(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())
