@@ -17,6 +17,12 @@ class CaseMemoryStore:
     def __init__(self, config: AppConfig):
         self._config = config
 
+    def _is_hidden_workspace_entry(self, relative_path: str) -> bool:
+        parts = [part for part in Path(relative_path).parts if part not in {"", "."}]
+        if not parts:
+            return False
+        return parts[0] == self._config.data_paths.trace_subdir
+
     def read_case_id_marker(self, workspace_path: str | Path) -> str | None:
         marker = Path(workspace_path).expanduser().resolve() / CASE_ID_FILENAME
         if not marker.exists():
@@ -149,6 +155,7 @@ class CaseMemoryStore:
                     "name": child.name,
                     "path": relative_child,
                     "kind": "directory" if child.is_dir() else "file",
+                    "hidden": self._is_hidden_workspace_entry(relative_child),
                     "size": child.stat().st_size if child.is_file() else None,
                     "updated_at": datetime.fromtimestamp(child.stat().st_mtime, tz=UTC).isoformat(),
                 }

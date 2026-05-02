@@ -1378,6 +1378,7 @@ class RuntimeServiceFlowTests(unittest.TestCase):
 
         self.assertEqual(uploaded["path"], "uploads/sample.txt")
         self.assertEqual(listing["entries"][0]["name"], "sample.txt")
+        self.assertFalse(listing["entries"][0]["hidden"])
         self.assertEqual(preview["content"], "workspace payload")
         self.assertTrue(archive_path.exists())
         with zipfile.ZipFile(archive_path) as archive:

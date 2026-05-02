@@ -44,7 +44,48 @@ class MemoryToolTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(entries[0]["name"], "example.txt")
         self.assertEqual(entries[0]["kind"], "file")
+        self.assertFalse(entries[0]["hidden"])
         self.assertEqual(store.read_workspace_text("CASE-TEST-006", str(self.workspace_path), "notes/example.txt"), "hello world")
+
+    def test_case_memory_store_marks_traces_hidden_only(self) -> None:
+        store = CaseMemoryStore(self.config)
+        store.initialize_case("CASE-TEST-006A", str(self.workspace_path))
+        store.write_workspace_file(
+            "CASE-TEST-006A",
+            str(self.workspace_path),
+            ".traces/checkpoints.sqlite",
+            b"sqlite",
+        )
+        store.write_workspace_file(
+            "CASE-TEST-006A",
+            str(self.workspace_path),
+            ".report/report.md",
+            b"report",
+        )
+        store.write_workspace_file(
+            "CASE-TEST-006A",
+            str(self.workspace_path),
+            ".evidence/evidence.log",
+            b"evidence",
+        )
+        store.write_workspace_file(
+            "CASE-TEST-006A",
+            str(self.workspace_path),
+            ".artifacts/result.txt",
+            b"artifact",
+        )
+
+        root_entries = {
+            entry["name"]: entry
+            for entry in store.list_workspace_entries("CASE-TEST-006A", str(self.workspace_path), ".")
+        }
+        trace_entries = store.list_workspace_entries("CASE-TEST-006A", str(self.workspace_path), ".traces")
+
+        self.assertTrue(root_entries[".traces"]["hidden"])
+        self.assertFalse(root_entries[".report"]["hidden"])
+        self.assertFalse(root_entries[".evidence"]["hidden"])
+        self.assertFalse(root_entries[".artifacts"]["hidden"])
+        self.assertTrue(trace_entries[0]["hidden"])
 
     def test_case_memory_store_appends_and_reads_chat_history(self) -> None:
         store = CaseMemoryStore(self.config)

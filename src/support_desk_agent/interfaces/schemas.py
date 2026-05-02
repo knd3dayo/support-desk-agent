@@ -127,6 +127,7 @@ class WorkspaceEntry(BaseModel):
     name: str
     path: str
     kind: str
+    hidden: bool = False
     size: int | None = None
     updated_at: str | None = None
 

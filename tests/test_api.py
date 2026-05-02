@@ -252,6 +252,7 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertEqual(upload.json()["path"], "uploads/note.txt")
         self.assertEqual(browse.status_code, 200)
         self.assertEqual(browse.json()["entries"][0]["name"], "note.txt")
+        self.assertFalse(browse.json()["entries"][0]["hidden"])
         self.assertTrue(browse.json()["entries"][0]["updated_at"])
         self.assertEqual(preview.status_code, 200)
         self.assertEqual(preview.json()["content"], "api payload")
@@ -261,6 +262,28 @@ class ApiWorkspaceTests(unittest.TestCase):
         self.assertTrue(archive_path.exists())
         with zipfile.ZipFile(archive_path) as archive:
             self.assertIn("CASE-API-001/uploads/note.txt", archive.namelist())
+
+    def test_workspace_browse_marks_traces_hidden_only(self) -> None:
+        (self.case_path / ".traces").mkdir(exist_ok=True)
+        (self.case_path / ".traces" / "checkpoints.sqlite").write_text("sqlite", encoding="utf-8")
+        (self.case_path / ".report").mkdir(exist_ok=True)
+        (self.case_path / ".report" / "support-improvement-TRACE.md").write_text("report", encoding="utf-8")
+        (self.case_path / ".evidence").mkdir(exist_ok=True)
+        (self.case_path / ".evidence" / "case.log").write_text("evidence", encoding="utf-8")
+        (self.case_path / ".artifacts").mkdir(exist_ok=True)
+        (self.case_path / ".artifacts" / "draft.txt").write_text("artifact", encoding="utf-8")
+
+        response = self.client.get(
+            "/cases/CASE-API-001/workspace",
+            params={"workspace_path": str(self.case_path), "path": "."},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        entries = {entry["name"]: entry for entry in response.json()["entries"]}
+        self.assertTrue(entries[".traces"]["hidden"])
+        self.assertFalse(entries[".report"]["hidden"])
+        self.assertFalse(entries[".evidence"]["hidden"])
+        self.assertFalse(entries[".artifacts"]["hidden"])
 
     def test_workspace_raw_uses_inline_markdown_media_type(self) -> None:
         target = self.case_path / "report.md"

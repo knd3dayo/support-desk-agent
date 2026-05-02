@@ -825,7 +825,10 @@ export default function App() {
 
       startTransition(() => {
         setWorkspaceView(nextWorkspace);
-        setSelectedEntry(nextWorkspace.entries.find((entry) => entry.path === target.path) ?? { name: nextPreview.name, path: target.path, kind: 'file' });
+        setSelectedEntry(
+          nextWorkspace.entries.find((entry) => entry.path === target.path)
+            ?? { name: nextPreview.name, path: target.path, kind: 'file', hidden: false }
+        );
         setPreview(nextPreview);
       });
       setStatusLine(`${nextPreview.name} をプレビューしています。`);
@@ -1400,13 +1403,16 @@ export default function App() {
                     <button
                       key={entry.path}
                       type="button"
-                      className={`tree-node ${selectedEntry?.path === entry.path ? 'active' : ''}`}
+                      className={`tree-node ${selectedEntry?.path === entry.path ? 'active' : ''} ${entry.hidden ? 'is-internal' : ''}`}
                       onClick={() => void openEntry(entry)}
                     >
                       <span className={`tree-entry-icon ${entry.kind === 'directory' ? 'directory' : 'file'}`} aria-hidden="true" />
                       <div className="tree-entry-copy">
                         <strong>{entry.name}</strong>
-                        <span className="tree-entry-kind">{entry.kind === 'directory' ? 'フォルダ' : 'ファイル'}</span>
+                        <span className="tree-entry-kind">
+                          {entry.kind === 'directory' ? 'フォルダ' : 'ファイル'}
+                          {entry.hidden ? <span className="tree-entry-badge">internal</span> : null}
+                        </span>
                       </div>
                     </button>
                   ))}

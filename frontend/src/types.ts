@@ -39,6 +39,7 @@ export type WorkspaceEntry = {
   name: string;
   path: string;
   kind: 'file' | 'directory' | string;
+  hidden?: boolean;
   size?: number | null;
   updated_at?: string | null;
 };
