@@ -164,15 +164,29 @@ class SampleInvestigateAgentTests(unittest.TestCase):
         self.assertIn("list_zip_contents", tool_names)
         self.assertIn("extract_zip", tool_names)
         self.assertIn("create_zip", tool_names)
-        self.assertIn("detect_log_format_and_search", tool_names)
         self.assertIn("infer_log_header_pattern", tool_names)
-        self.assertIn("extract_log_time_range", tool_names)
         self.assertIn("analyze_image_files", tool_names)
         self.assertIn("analyze_pdf_files", tool_names)
         self.assertIn("analyze_office_files", tool_names)
         self.assertIn("convert_office_files_to_pdf", tool_names)
         self.assertIn("convert_pdf_files_to_images", tool_names)
         self.assertIn("write_working_memory", tool_names)
+        self.assertNotIn("extract_log_time_range", tool_names)
+
+    def test_create_sub_agent_keeps_log_range_tool_when_query_has_time_hints(self) -> None:
+        agent = SampleInvestigateAgent(self._build_config())
+
+        with patch("support_desk_agent.agents.sample.sample_investigate_agent.build_filtered_document_source_backend") as backend_mock:
+            with patch("support_desk_agent.agents.sample.sample_investigate_agent.create_deep_agent_compatible_agent") as create_mock:
+                backend_mock.return_value = object()
+                create_mock.return_value = object()
+                agent.create_sub_agent(
+                    query="ログを調べて\n\nログ抽出の手掛かり:\n- incident timeframe: 2025-10-21 20:55 頃\n- requested extract range: 2025-10-21T20:40:00 -> 2025-10-21T21:10:00"
+                )
+
+        tools = create_mock.call_args.kwargs["tools"]
+        tool_names = [getattr(tool, "__name__", "") for tool in tools]
+        self.assertIn("extract_log_time_range", tool_names)
 
     def test_create_sub_agent_wraps_async_tools_synchronously(self) -> None:
         agent = SampleInvestigateAgent(self._build_config())

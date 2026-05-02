@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 from typing import Any
 
+from langchain_core.messages import AIMessage
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
@@ -36,6 +37,8 @@ class ObjectiveEvaluatorStructuredResult(BaseModel):
     overall_summary: str
     improvement_points: list[str]
     overall_score: int = Field(ge=0, le=100)
+
+
 @dataclass(frozen=True, slots=True)
 class ObjectiveEvaluator:
     config: AppConfig
@@ -74,35 +77,90 @@ class ObjectiveEvaluator:
         evaluation_target: Literal["plan", "result"],
     ) -> ObjectiveEvaluatorStructuredResult:
         model = build_chat_openai_model(self.config)
+        messages = [
+            SystemMessage(
+                content=(
+                    f"{self.instruction_text.strip()}\n\n"
+                    f"{self._build_target_instruction(evaluation_target)}"
+                ).strip()
+            ),
+            HumanMessage(
+                content=(
+                    f"以下の証拠パックを用いて {evaluation_target} を評価してください。"
+                    "structured output schema に厳密に従い、日本語で返してください。\n"
+                    + json.dumps(evidence, ensure_ascii=False)
+                )
+            ),
+        ]
         try:
             structured_model = model.with_structured_output(
                 ObjectiveEvaluatorStructuredResult,
                 method="function_calling",
             )
-            response = structured_model.invoke([
-                SystemMessage(
-                    content=(
-                        f"{self.instruction_text.strip()}\n\n"
-                        f"{self._build_target_instruction(evaluation_target)}"
-                    ).strip()
-                ),
-                HumanMessage(
-                    content=(
-                        f"以下の証拠パックを用いて {evaluation_target} を評価してください。"
-                        "structured output schema に厳密に従い、日本語で返してください。\n"
-                        + json.dumps(evidence, ensure_ascii=False)
-                    )
-                ),
-            ])
-            if isinstance(response, ObjectiveEvaluatorStructuredResult):
-                return response
-            if isinstance(response, dict):
-                return ObjectiveEvaluatorStructuredResult.model_validate(response)
-            if hasattr(response, "model_dump"):
-                return ObjectiveEvaluatorStructuredResult.model_validate(response.model_dump())
-            raise ValueError("ObjectiveEvaluator returned an unsupported structured output payload.")
+            try:
+                response = structured_model.invoke(messages)
+                return self._coerce_structured_result(response)
+            except Exception:
+                raw_response = model.invoke(messages)
+                return self._coerce_structured_result(self._extract_text(raw_response))
         finally:
             close_chat_openai_model(model)
+
+    @staticmethod
+    def _extract_text(response: Any) -> str:
+        if isinstance(response, AIMessage):
+            return str(response.content)
+        if hasattr(response, "content"):
+            return str(getattr(response, "content"))
+        return str(response)
+
+    @classmethod
+    def _coerce_structured_result(cls, response: Any) -> ObjectiveEvaluatorStructuredResult:
+        if isinstance(response, ObjectiveEvaluatorStructuredResult):
+            return response
+        if isinstance(response, str):
+            parsed = cls._parse_json_payload(response)
+            return ObjectiveEvaluatorStructuredResult.model_validate(cls._unwrap_result_payload(parsed))
+        if isinstance(response, dict):
+            return ObjectiveEvaluatorStructuredResult.model_validate(cls._unwrap_result_payload(response))
+        if hasattr(response, "model_dump"):
+            return ObjectiveEvaluatorStructuredResult.model_validate(cls._unwrap_result_payload(response.model_dump()))
+        raise ValueError("ObjectiveEvaluator returned an unsupported structured output payload.")
+
+    @staticmethod
+    def _parse_json_payload(raw_text: str) -> dict[str, Any]:
+        candidate = raw_text.strip()
+        if candidate.startswith("```"):
+            candidate = candidate.strip("`")
+            if candidate.startswith("json"):
+                candidate = candidate[4:].lstrip()
+        parsed = json.loads(candidate)
+        if not isinstance(parsed, dict):
+            raise ValueError("ObjectiveEvaluator raw fallback did not return a JSON object.")
+        return parsed
+
+    @classmethod
+    def _unwrap_result_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        required_fields = {
+            "criterion_evaluations",
+            "agent_evaluations",
+            "overall_summary",
+            "improvement_points",
+            "overall_score",
+        }
+        if required_fields.issubset(payload.keys()):
+            return payload
+        for key in ("structured_response", "result", "output", "response", "args"):
+            nested = payload.get(key)
+            if isinstance(nested, dict):
+                return cls._unwrap_result_payload(nested)
+        for value in payload.values():
+            if isinstance(value, dict):
+                try:
+                    return cls._unwrap_result_payload(value)
+                except ValueError:
+                    continue
+        raise ValueError("ObjectiveEvaluator structured payload is missing required fields.")
 
     @staticmethod
     def build_objective_evaluator_definition() -> AgentDefinition:

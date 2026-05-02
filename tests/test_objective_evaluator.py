@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock, patch
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from support_desk_agent.agents.objective_evaluator import ObjectiveEvaluator, ObjectiveEvaluatorStructuredResult
 from support_desk_agent.config.models import AppConfig
@@ -87,6 +87,23 @@ class ObjectiveEvaluatorTests(unittest.TestCase):
         messages = structured_model.invoke.call_args.args[0]
         self.assertIn("日本語で完結", messages[0].content)
         self.assertIn("working memory や progress への記録不足だけで過剰に減点せず", messages[0].content)
+
+    def test_evaluate_falls_back_to_raw_json_when_structured_parse_fails(self) -> None:
+        model = Mock()
+        structured_model = Mock()
+        structured_model.invoke.side_effect = ValueError("structured parse failed")
+        model.with_structured_output.return_value = structured_model
+        model.invoke.return_value = AIMessage(
+            content='{"criterion_evaluations": [], "agent_evaluations": [], "overall_summary": "fallback ok", "improvement_points": [], "overall_score": 85}'
+        )
+
+        evaluator = ObjectiveEvaluator(config=self._build_config(), instruction_text="instruction")
+
+        with patch("support_desk_agent.agents.objective_evaluator.build_chat_openai_model", return_value=model):
+            result = evaluator.evaluate(evidence={"investigation_summary": "test"}, evaluation_target="result")
+
+        self.assertEqual(result.overall_score, 85)
+        model.invoke.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -27,6 +27,11 @@ from langgraph.graph.state import CompiledStateGraph
 class SampleInvestigateAgent(AbstractAgent):
     PLAN_MODE = "plan"
     ACTION_MODE = "action"
+    _LOG_RANGE_HINT_MARKERS = (
+        "incident timeframe:",
+        "requested extract range:",
+        "extract_log_time_range",
+    )
 
     @staticmethod
     def _agent_memory_sources() -> list[str]:
@@ -45,6 +50,11 @@ class SampleInvestigateAgent(AbstractAgent):
     @staticmethod
     def _default_query() -> str:
         return "調査すべき内容をここに記載してください"
+
+    @classmethod
+    def _should_enable_log_range_tools(cls, query: str) -> bool:
+        normalized_query = query.lower()
+        return any(marker in normalized_query for marker in cls._LOG_RANGE_HINT_MARKERS)
 
     def _build_system_prompt(self, query: str, instruction_text: str = "", mode: str = ACTION_MODE) -> str:
         prompt = INVESTIGATE_SYSTEM_PROMPT_TEMPLATE.format(query=query)
@@ -103,7 +113,14 @@ class SampleInvestigateAgent(AbstractAgent):
             document_sources=effective_document_sources,
             route_base=route_base,
         )
-        tools = {t.name: wrap_tool_handler_sync(t.handler) for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)}
+        enabled_tool_names = None
+        if not self._should_enable_log_range_tools(query):
+            enabled_tool_names = {"extract_log_time_range"}
+        tools = {
+            t.name: wrap_tool_handler_sync(t.handler)
+            for t in self.tool_registry.get_tools(INVESTIGATE_AGENT)
+            if enabled_tool_names is None or t.name not in enabled_tool_names
+        }
         system_prompt = self._build_system_prompt(query, instruction_text, mode=mode)
         model = build_chat_openai_model(self.config)
         memory_sources = self._agent_memory_sources()
