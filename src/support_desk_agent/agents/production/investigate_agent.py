@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class InvestigateAgentTools:
-    detect_log_format_tool: Callable[..., Any] | None = None
     infer_log_header_pattern_tool: Callable[..., Any] | None = None
     extract_log_time_range_tool: Callable[..., Any] | None = None
     search_documents_tool: Callable[..., Any] | None = None
@@ -44,7 +43,6 @@ class InvestigateAgentTools:
     ) -> "InvestigateAgentTools":
         shared_tools = fallback_tools or {}
         return cls(
-            detect_log_format_tool=investigate_tools.get("detect_log_format"),
             infer_log_header_pattern_tool=investigate_tools.get("infer_log_header_pattern"),
             extract_log_time_range_tool=investigate_tools.get("extract_log_time_range"),
             search_documents_tool=investigate_tools.get("search_documents"),
@@ -127,30 +125,17 @@ class InvestigateAgent(AbstractAgent):
         workspace_path = str(state.get("workspace_path") or "").strip()
         if requested_range is None or not workspace_path:
             return ""
-        if self.tools.infer_log_header_pattern_tool is None or self.tools.extract_log_time_range_tool is None:
+        if self.tools.extract_log_time_range_tool is None:
             return ""
 
         range_start, range_end = requested_range
-        inferred = json.loads(self._invoke_tool(self.tools.infer_log_header_pattern_tool, str(log_path)))
-        if not isinstance(inferred, dict):
-            return ""
-        header_pattern = str(inferred.get("header_pattern") or "").strip()
-        timestamp_start = inferred.get("timestamp_start")
-        timestamp_end = inferred.get("timestamp_end")
-        if not header_pattern or not isinstance(timestamp_start, int) or not isinstance(timestamp_end, int):
-            return ""
-
         extracted = json.loads(
             self._invoke_tool(
                 self.tools.extract_log_time_range_tool,
                 str(log_path),
                 workspace_path,
-                header_pattern,
-                timestamp_start,
-                timestamp_end,
                 range_start,
                 range_end,
-                str(inferred.get("timestamp_format") or "") or None,
             )
         )
         if not isinstance(extracted, dict):
@@ -162,44 +147,6 @@ class InvestigateAgent(AbstractAgent):
         if matched_count > 0:
             return f"指定時間帯 {range_start} から {range_end} のログ断片を {output_path} に保存しました。"
         return f"指定時間帯 {range_start} から {range_end} に一致するログ断片は見つからず、空の成果物を {output_path} に保存しました。"
-
-    @classmethod
-    def _summarize_log_analysis(cls, parsed: dict[str, Any], log_path: Path) -> str:
-        search_results = cast(dict[str, list[object]], parsed.get("search_results") or {})
-        severity_entries = cast(list[object], search_results.get("severity") or [])
-        exception_entries = cast(list[object], search_results.get("java_exception") or [])
-        detected_format = str(parsed.get("detected_format") or "unknown")
-        severity_names: list[str] = []
-        for entry in severity_entries:
-            if not isinstance(entry, dict):
-                continue
-            line = str(entry.get("line") or "")
-            for level in ["FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"]:
-                if level in line and level not in severity_names:
-                    severity_names.append(level)
-        exception_names: list[str] = []
-        for entry in exception_entries:
-            if not isinstance(entry, dict):
-                continue
-            line = str(entry.get("line") or "")
-            for token in line.split():
-                normalized = token.rstrip(":;,.")
-                if normalized.endswith("Exception") or normalized.endswith("Error"):
-                    if normalized not in exception_names:
-                        exception_names.append(normalized)
-        parts = [
-            f"{log_path.name} を解析し、形式は {detected_format} と判定しました。",
-            f"severity 一致 {len(severity_entries)} 件、例外一致 {len(exception_entries)} 件。",
-        ]
-        if severity_names:
-            parts.append(f"主な severity: {', '.join(severity_names)}。")
-        if exception_names:
-            parts.append(f"検出した例外候補: {', '.join(exception_names)}。")
-        signal_lines = cls._collect_signal_lines(severity_entries or exception_entries, limit=1)
-        if signal_lines:
-            parts.append(f"代表的な異常行: {signal_lines[0]}。")
-        return "".join(parts)
-
     def _build_ticket_results(self, state: Mapping[str, Any]) -> list[dict[str, object]]:
         results: list[dict[str, object]] = []
         summaries = cast(dict[str, str], state.get("intake_ticket_context_summary") or {})
@@ -334,15 +281,6 @@ class InvestigateAgent(AbstractAgent):
             if workspace_path
             else None
         )
-        if log_path is not None and self.tools.detect_log_format_tool is not None:
-            try:
-                parsed = json.loads(self._invoke_tool(self.tools.detect_log_format_tool, str(log_path), []))
-                if isinstance(parsed, dict):
-                    log_summary = self._summarize_log_analysis(parsed, log_path)
-                    log_file = str(log_path.resolve())
-            except Exception:
-                log_summary = ""
-                log_file = ""
         if log_path is not None:
             try:
                 extraction_summary = self._maybe_extract_log_time_range(update, log_path)

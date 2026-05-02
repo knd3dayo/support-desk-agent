@@ -22,7 +22,6 @@ from support_desk_agent.util.ai_chat_util_bridge import (
     analyze_pdf_files as analyze_pdf_files_with_ai_chat_util,
     convert_office_files_to_pdf as convert_office_files_to_pdf_with_ai_chat_util,
     convert_pdf_files_to_images as convert_pdf_files_to_images_with_ai_chat_util,
-    detect_log_format_and_search as detect_log_format_and_search_with_ai_chat_util,
     extract_log_time_range as extract_log_time_range_with_ai_chat_util,
     infer_log_header_pattern as infer_log_header_pattern_with_ai_chat_util,
 )
@@ -295,21 +294,6 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
             dpi,
         )
 
-    async def detect_log_format_and_search(
-        file_path: Annotated[str, "解析対象のログファイルパス"],
-        search_terms: Annotated[list[str] | None, "追加で検索するキーワード一覧"] = None,
-        sample_line_limit: Annotated[int, "ログ先頭から形式判定に使う最大行数"] = 100,
-        match_limit: Annotated[int, "パターンごとに返す最大ヒット件数"] = 50,
-    ) -> str:
-        path = _ensure_existing_paths([file_path])[0]
-        return await detect_log_format_and_search_with_ai_chat_util(
-            config,
-            str(path),
-            search_terms,
-            sample_line_limit,
-            match_limit,
-        )
-
     async def infer_log_header_pattern(
         file_path: Annotated[str, "解析対象のログファイルパス"],
         sample_line_limit: Annotated[int, "ログ先頭から推定に使う最大行数"] = 100,
@@ -320,28 +304,24 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
     async def extract_log_time_range(
         file_path: Annotated[str, "抽出対象のログファイルパス"],
         workspace_path: Annotated[str, "派生ファイルを書き出す workspace ルート"],
-        header_pattern: Annotated[str, "各ログレコード先頭行に一致する正規表現"],
-        timestamp_start: Annotated[int, "先頭行内の時刻文字列の開始位置"],
-        timestamp_end: Annotated[int, "先頭行内の時刻文字列の終了位置"],
         range_start: Annotated[str, "抽出開始時刻"],
         range_end: Annotated[str, "抽出終了時刻"],
-        time_format: Annotated[str | None, "datetime.strptime 互換の時刻書式"] = None,
+        time_format: Annotated[str | None, "range_start と range_end の解釈に使う datetime.strptime 互換の時刻書式。未指定時は ISO-8601 を期待"] = None,
         output_subdir: Annotated[str, "抽出ログを書き出す artifacts 配下サブディレクトリ"] = "log_extracts",
         output_filename: Annotated[str | None, "抽出結果の出力ファイル名"] = None,
+        sample_line_limit: Annotated[int, "ログ先頭からヘッダ推定に使う最大行数"] = 100,
     ) -> str:
         source_path = _ensure_existing_paths([file_path])[0]
         return await extract_log_time_range_with_ai_chat_util(
             config,
             str(source_path),
             workspace_path,
-            header_pattern,
-            timestamp_start,
-            timestamp_end,
             range_start,
             range_end,
             time_format,
             output_subdir,
             output_filename,
+            sample_line_limit,
         )
 
     return {
@@ -367,19 +347,14 @@ def build_builtin_tools(config: AppConfig) -> dict[str, BuiltinTool]:
         "list_zip_contents": _builtin_tool("list_zip_contents", "List ZIP archive contents", list_zip_contents),
         "extract_zip": _builtin_tool("extract_zip", "Extract ZIP archive", extract_zip),
         "create_zip": _builtin_tool("create_zip", "Create ZIP archive", create_zip),
-        "detect_log_format_and_search": _builtin_tool(
-            "detect_log_format_and_search",
-            "Detect log format from the first lines, generate regex patterns, and search the log",
-            detect_log_format_and_search,
-        ),
         "infer_log_header_pattern": _builtin_tool(
             "infer_log_header_pattern",
-            "Infer a log header regex and timestamp slice from the first lines of a log file",
+            "Infer a log header regex and timestamp format from the first lines of a log file",
             infer_log_header_pattern,
         ),
         "extract_log_time_range": _builtin_tool(
             "extract_log_time_range",
-            "Extract records in a timestamp range from a log file and save them into the workspace artifacts",
+            "Infer the log header pattern, extract records in a timestamp range, and save them into the workspace artifacts",
             extract_log_time_range,
         ),
     }

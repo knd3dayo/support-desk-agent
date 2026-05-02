@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from ai_chat_util.core.analysis.analyze_util import AnalyzeImageUtil, AnalyzeLogUtil, AnalyzeOfficeUtil, AnalyzePDFUtil
 from ai_chat_util.core.chat import create_llm_client
 from ai_chat_util.core.chat.model import ChatResponse
 from ai_chat_util.core.common.config.runtime import AiChatUtilConfig
-
+from ai_chat_util.core.analysis.model import ExtractLogTimeRangeData, InferLogFormatData
 from support_desk_agent.config.models import AppConfig
 
 
@@ -42,6 +43,18 @@ def create_ai_chat_util_client(config: AppConfig):
 
 def chat_response_to_text(response: ChatResponse) -> str:
     return response.output.strip()
+
+
+def _parse_datetime_value(value: str, time_format: str | None = None) -> datetime:
+    text = value.strip()
+    if time_format:
+        return datetime.strptime(text, time_format)
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(
+            f"Unsupported datetime value: {value}. Provide ISO-8601 text or specify time_format."
+        ) from exc
 
 
 async def analyze_image_files(config: AppConfig, file_list: list[str], prompt: str, detail: str = "auto") -> str:
@@ -108,28 +121,11 @@ async def convert_pdf_files_to_images(
         output_dir=None if resolved_output_dir is None else str(resolved_output_dir),
         dpi=dpi,
     )
-
-
-async def detect_log_format_and_search(
-    _config: AppConfig,
-    file_path: str,
-    search_terms: list[str] | None = None,
-    sample_line_limit: int = 100,
-    match_limit: int = 50,
-) -> str:
-    return AnalyzeLogUtil.detect_log_format_and_search_from_file(
-        file_path=file_path,
-        search_terms=search_terms,
-        sample_line_limit=sample_line_limit,
-        match_limit=match_limit,
-    )
-
-
 async def infer_log_header_pattern(
     config: AppConfig,
     file_path: str,
     sample_line_limit: int = 100,
-) -> str:
+) -> InferLogFormatData:
     client = create_ai_chat_util_client(config)
     return await AnalyzeLogUtil.infer_log_header_pattern(
         client,
@@ -142,25 +138,29 @@ async def extract_log_time_range(
     config: AppConfig,
     file_path: str,
     workspace_path: str,
-    header_pattern: str,
-    timestamp_start: int,
-    timestamp_end: int,
     range_start: str,
     range_end: str,
     time_format: str | None = None,
     output_subdir: str = "log_extracts",
     output_filename: str | None = None,
-) -> str:
-    return AnalyzeLogUtil.extract_log_time_range_to_file(
+    sample_line_limit: int = 100,
+) -> ExtractLogTimeRangeData:
+    client = create_ai_chat_util_client(config)
+    output_dir = Path(workspace_path).expanduser().resolve() / output_subdir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    result = await AnalyzeLogUtil.extract_time_range_from_logfile(
+        client,
         file_path=file_path,
-        workspace_path=workspace_path,
-        artifacts_subdir=config.data_paths.artifacts_subdir,
-        header_pattern=header_pattern,
-        timestamp_start=timestamp_start,
-        timestamp_end=timestamp_end,
-        range_start=range_start,
-        range_end=range_end,
-        time_format=time_format,
-        output_subdir=output_subdir,
-        output_filename=output_filename,
+        output_path=str(output_dir),
+        start_time=_parse_datetime_value(range_start, time_format),
+        end_time=_parse_datetime_value(range_end, time_format),
+        sample_line_limit=sample_line_limit,
     )
+
+    if output_filename:
+        target_path = output_dir / output_filename
+        Path(result.output_path).replace(target_path)
+        result = result.model_copy(update={"output_path": str(target_path)})
+    return result
+

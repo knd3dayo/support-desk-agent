@@ -233,13 +233,6 @@ class ToolRegistry:
             ],
             INVESTIGATE_AGENT: [
                 ToolSpec(
-                    "detect_log_format",
-                    "Detect log format and generate regex-based search results",
-                    self._builtin_tools["detect_log_format_and_search"].handler,
-                    provider="builtin",
-                    target="detect_log_format_and_search",
-                ),
-                ToolSpec(
                     "search_documents",
                     "Search configured manuals and knowledge documents via DeepAgents backend",
                     build_default_search_documents_tool(self._config),
@@ -284,13 +277,6 @@ class ToolRegistry:
             ],
             LOG_ANALYZER_AGENT: [
                 ToolSpec("read_log_file", "Read attached log file", _not_implemented_tool("read_log_file")),
-                ToolSpec(
-                    "detect_log_format",
-                    "Detect log format and generate regex-based search results",
-                    self._builtin_tools["detect_log_format_and_search"].handler,
-                    provider="builtin",
-                    target="detect_log_format_and_search",
-                ),
                 ToolSpec("run_python_analysis", "Run code-based log analysis", _not_implemented_tool("run_python_analysis")),
                 ToolSpec(
                     "write_working_memory",

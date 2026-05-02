@@ -16,8 +16,7 @@ class _LogHeaderPatternInference(BaseModel):
     LLMから返される推定結果を受け取るための型。
     """
     header_pattern: str = Field(default="")
-    timestamp_start: int = Field(default=-1)
-    timestamp_end: int = Field(default=-1)
+    format_description: str = Field(default="")
     timestamp_format: str = Field(default="")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     reason: str = Field(default="")
@@ -25,7 +24,7 @@ class _LogHeaderPatternInference(BaseModel):
 
 def build_default_infer_log_pattern_tool(config: AppConfig):
     """
-    ログファイルの先頭行サンプルから、レコード先頭の正規表現・タイムスタンプ位置・書式を推定するツールを構築。
+    ログファイルの先頭行サンプルから、レコード先頭の正規表現・ログ形式説明・時刻書式を推定するツールを構築。
     指示文(instructions)はInstructionLoader経由で外部化。
     """
     def _infer_log_pattern(*, file_path: str, sample_line_limit: int = 100) -> str:
@@ -51,8 +50,7 @@ def build_default_infer_log_pattern_tool(config: AppConfig):
                 "sample_line_limit": sample_line_limit,
                 "sample_preview": [],
                 "header_pattern": "",
-                "timestamp_start": -1,
-                "timestamp_end": -1,
+                "format_description": "",
                 "timestamp_format": "",
                 "confidence": 0.0,
                 "reason": "ログファイルが空です。",
@@ -94,7 +92,7 @@ def build_default_infer_log_pattern_tool(config: AppConfig):
 
         # 結果をJSONで返す
         payload = {
-            "status": "matched" if parsed.header_pattern and parsed.timestamp_start >= 0 and parsed.timestamp_end > parsed.timestamp_start else "unavailable",
+            "status": "matched" if parsed.header_pattern and parsed.timestamp_format else "unavailable",
             "file_path": str(path),
             "sample_line_limit": sample_line_limit,
             "sample_preview": sample_lines[:10],
